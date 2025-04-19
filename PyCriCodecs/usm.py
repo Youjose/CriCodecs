@@ -1,4 +1,5 @@
 import os
+import itertools
 from typing import BinaryIO
 from io import FileIO, BytesIO
 from .chunk import *
@@ -676,7 +677,7 @@ class USMBuilder:
                             )
                     SFA_chunk += stream.get_header().ljust(stream.hca["HeaderSize"]+ padding, b"\x00")
                     SFA_chunks[self.streams.index(stream)].append(SFA_chunk)
-                    for i in stream.get_frames():
+                    for i, frame in enumerate(stream.get_frames(), start=1):
                         padding = (0x20 - (stream.hca["FrameSize"] % 0x20) if stream.hca["FrameSize"] % 0x20 != 0 else 0)
                         SFA_chunk = USMChunkHeader.pack(
                                 USMChunckHeaderType.SFA.value,
@@ -693,8 +694,8 @@ class USMBuilder:
                                 0,
                                 0
                                 )
-                        SFA_chunk += i[1].ljust(stream.hca["FrameSize"] + padding , b"\x00")
-                        current_interval += self.base_interval_per_SFA_chunk[self.streams.index(stream)]
+                        SFA_chunk += frame[1].ljust(stream.hca["FrameSize"] + padding , b"\x00")
+                        current_interval = round(i * self.base_interval_per_SFA_chunk[self.streams.index(stream)])
                         SFA_chunks[self.streams.index(stream)].append(SFA_chunk)
                     else:
                         SFA_chunk = USMChunkHeader.pack(
@@ -727,43 +728,15 @@ class USMBuilder:
     # TODO Add support for Subtitle information.
     def build_usm(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None):
         header = self.build_header(SFV_list, SFA_chunks, SBT_chunks)
-        len_sfv = len(SFV_list)
-        if self.audio:
-            len_sfa = [len(x) for x in SFA_chunks]
+
+        if not self.audio:
+            chunks = SFV_list
         else:
-            len_sfa = [0]
-        max_len = max(len_sfv, max(len_sfa))
+            chunks = list(itertools.chain(SFV_list, *SFA_chunks))
+        chunks.sort(key=chunk_key_sort)
+        for chunk in chunks:
+            header += chunk
 
-        # SFV gets the order priority if the interval is matching that of SFA
-        # furthermore, SFA chunks keep going until the next SFV interval is reached.
-        # 
-        current_interval = 0
-        target_interval = 0
-        sfa_count = 0
-        for i in range(max_len):
-            if i < len_sfv:
-                header += SFV_list[i]
-            target_interval += self.SFV_interval_for_VP9
-
-            if self.audio:
-                while current_interval < target_interval:
-                    idx = 0
-                    for stream in SFA_chunks:
-                        if current_interval > target_interval:
-                            # This would not just break the loop, this would break everything.
-                            # Will not happen in typical cases. But if a video had a really weird framerate, this might skew it.
-                            current_interval += self.base_interval_per_SFA_chunk[0] # Not safe. FIXME
-                            break 
-                        if sfa_count == 0:
-                            header += stream[sfa_count]
-                        if sfa_count < len_sfa[idx]-1:
-                            header += stream[sfa_count+1]
-                        idx += 1
-                    else:
-                        current_interval += self.base_interval_per_SFA_chunk[0]
-                        # This is wrong actually, I made the base interval a list in case the intervals are different
-                        # But it seems they are the same no matter what, however I will leave it as this just in case.
-                        sfa_count += 1
         self.usm = header
     
     def build_header(self, SFV_list: list, SFA_chunks: list = False, SBT_chunks = None) -> bytes:
@@ -1174,7 +1147,8 @@ class USMBuilder:
                 hca.Pyparse_header()
                 framesize = hca.hca["FrameSize"]
                 self.SFA_chunk_size.append(framesize)
-                self.base_interval_per_SFA_chunk.append(64) # I am not sure about this.
+                # e.g. 64 for 48KHz and ~139 for 22.05KHz
+                self.base_interval_per_SFA_chunk.append((1024 * 3) / (hca.hca["SampleRate"] / 1000)) # I am not sure about this.
     
     def init_key(self, key: str):
         # Copied from USM class, it's hard to combine them at this point with how the USM class is created for extraction.
@@ -1300,3 +1274,10 @@ class USMBuilder:
     
     def get_usm(self) -> bytes:
         return self.usm
+
+
+def chunk_key_sort(chunk):
+    header, chuncksize, unk08, offset, padding, chno, unk0D, unk0E, type, frametime, framerate, unk18, unk1C = USMChunkHeader.unpack(chunk[:USMChunkHeader.size])
+    prio = 0 if header.decode() == "@SFV" else 1
+    # all stream chunks before section_end chunks, then sort by frametime, with SFV chunks before SFA chunks
+    return (type, frametime, prio)
