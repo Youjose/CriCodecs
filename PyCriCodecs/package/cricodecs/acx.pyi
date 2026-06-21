@@ -1,0 +1,53 @@
+from typing import Any, ClassVar
+
+class AcxEntryType:
+    UNKNOWN: ClassVar["AcxEntryType"]
+    ADX: ClassVar["AcxEntryType"]
+    OGG: ClassVar["AcxEntryType"]
+
+class AcxEntry:
+    index: int
+    offset: int
+    size: int
+    type: AcxEntryType
+    suggested_path: str
+
+class AcxInfo:
+    source_path: str | None
+    entry_count: int
+    entries: list[AcxEntry]
+
+class AcxBuildEntry:
+    source_path: str | None
+    data: bytes | None
+
+class AcxBuildConfig:
+    alignment: int
+
+class Acx:
+    source_path: str | None
+    entry_count: int
+    entries: list[AcxEntry]
+
+    @staticmethod
+    def load(source: Any) -> "Acx": ...
+    @staticmethod
+    def load_bytes(data: bytes) -> "Acx": ...
+    @staticmethod
+    def load_source(source: Any) -> "Acx": ...
+    def info(self) -> AcxInfo: ...
+    def entry(self, index: int) -> AcxEntry: ...
+    def file_bytes(self, index: int) -> bytes: ...
+    def extract_file(self, index: int, output_path: Any) -> None: ...
+    def extract(self, output_dir: Any) -> None: ...
+    def add_file(self, source_path: Any, archive_path: Any | None = None, alignment: int | None = None) -> int: ...
+    def set_file_data(self, index: int, data: bytes) -> None: ...
+    def remove_file(self, index: int) -> None: ...
+    def rebuild(self) -> bytes: ...
+    def save(self, output_path: Any | None = None) -> bytes | None: ...
+
+def load(source: Any) -> Acx: ...
+def extract(source: Any, output_dir: Any) -> None: ...
+def build(entries: Any, output_path: Any | None = None, config: AcxBuildConfig | None = None) -> bytes | None: ...
+
+__all__: list[str]

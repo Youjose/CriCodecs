@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.aax binary
+*.acb binary
+*.adx binary
+*.ahx binary
+*.aix binary
+*.awb binary
+*.bin binary
+*.cpk binary
+*.csb binary
+*.hca binary
+*.ivf binary
+*.usm binary
+*.wav binary

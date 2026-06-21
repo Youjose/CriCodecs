@@ -1,0 +1,103 @@
+from collections.abc import Mapping
+from typing import Any, ClassVar
+
+class ColumnFlag:
+    NAME: ClassVar["ColumnFlag"]
+    DEFAULT: ClassVar["ColumnFlag"]
+    ROW: ClassVar["ColumnFlag"]
+
+class ColumnType:
+    UINT8: ClassVar["ColumnType"]
+    SINT8: ClassVar["ColumnType"]
+    UINT16: ClassVar["ColumnType"]
+    SINT16: ClassVar["ColumnType"]
+    UINT32: ClassVar["ColumnType"]
+    SINT32: ClassVar["ColumnType"]
+    UINT64: ClassVar["ColumnType"]
+    SINT64: ClassVar["ColumnType"]
+    FLOAT: ClassVar["ColumnType"]
+    DOUBLE: ClassVar["ColumnType"]
+    STRING: ClassVar["ColumnType"]
+    VLDATA: ClassVar["ColumnType"]
+    GUID: ClassVar["ColumnType"]
+
+class DataRef:
+    offset: int
+    size: int
+
+class Guid:
+    bytes: bytes
+
+class Column:
+    name: str
+    name_raw: bytes
+    type: ColumnType
+    flag: ColumnFlag
+    flag_bits: int
+    has_default: bool
+    has_row: bool
+    offset: int
+    default_offset: int
+    row_offset: int
+
+class UtfInfo:
+    table_name: str
+    row_count: int
+    column_count: int
+    version: int
+    table_size: int
+    row_width: int
+    data_alignment: int
+    is_loaded: bool
+    columns: tuple[Column, ...]
+
+class Utf:
+    table_name: str
+    table_name_raw: bytes
+    row_count: int
+    column_count: int
+    version: int
+    table_size: int
+    row_width: int
+    data_alignment: int
+    is_loaded: bool
+    columns: list[Column]
+
+    @staticmethod
+    def load(source: Any, encoding: str | None = None) -> "Utf": ...
+    @staticmethod
+    def load_bytes(data: bytes, encoding: str | None = None) -> "Utf": ...
+    @staticmethod
+    def load_source(source: Any, encoding: str | None = None) -> "Utf": ...
+    @staticmethod
+    def create(table_name: str | bytes, version: int = 0, encoding: str | None = None) -> "Utf": ...
+    def table_name_text(self, encoding: str | None = None) -> str: ...
+    def info(self, encoding: str | None = None) -> UtfInfo: ...
+    def column(self, index: int) -> Column: ...
+    def find_column(self, name: str | bytes, encoding: str | None = None) -> int: ...
+    def column_name(self, index: int, encoding: str | None = None) -> str: ...
+    def column_name_raw(self, index: int) -> bytes: ...
+    def value(self, row: int, column: int | str | bytes, encoding: str | None = None) -> Any: ...
+    def value_raw(self, row: int, column: int | str | bytes) -> Any: ...
+    def default_value(self, column: int | str | bytes, encoding: str | None = None) -> Any: ...
+    def default_value_raw(self, column: int | str | bytes) -> Any: ...
+    def default_data(self, column: int | str | bytes) -> bytes: ...
+    def string(self, row: int, column: int | str | bytes, encoding: str | None = None) -> str: ...
+    def string_raw(self, row: int, column: int | str | bytes) -> bytes: ...
+    def data(self, row: int, column: int | str | bytes) -> bytes: ...
+    def row(self, row: int, encoding: str | None = None) -> Mapping[str, Any]: ...
+    def rows(self, encoding: str | None = None) -> tuple[Mapping[str, Any], ...]: ...
+    def defaults(self, encoding: str | None = None) -> Mapping[str, Any]: ...
+    def add_column(self, name: str | bytes, type: ColumnType, flag: int | ColumnFlag | tuple[ColumnFlag, ...] = ColumnFlag.NAME, encoding: str | None = None) -> None: ...
+    def add_row(self) -> int: ...
+    def set(self, row: int, column: int | str | bytes, value: Any, encoding: str | None = None) -> None: ...
+    def set_default_value(self, column: int | str | bytes, value: Any, encoding: str | None = None) -> None: ...
+    def set_row_width(self, row_width: int) -> None: ...
+    def set_data_alignment(self, alignment: int) -> None: ...
+    def build(self) -> bytes: ...
+    def save_bytes(self, encoding: str | None = None) -> bytes: ...
+
+def load(source: Any, *, encoding: str | None = None) -> Utf: ...
+def create(table_name: str | bytes, version: int = 0, *, encoding: str | None = None) -> Utf: ...
+
+__all__: list[str]

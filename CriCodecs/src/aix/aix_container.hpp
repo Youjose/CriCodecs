@@ -1,0 +1,120 @@
+#pragma once
+/**
+ * @file aix_container.hpp
+ * @brief AIX segmented/layered ADX container API.
+ *
+ * Reader and builder behavior are grounded in official `aixmux` evidence.
+ * The C++23 object surface is CriCodecs work by Youjose.
+ */
+
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <optional>
+#include <span>
+#include <string>
+#include <vector>
+
+#include "../utilities/io.hpp"
+
+namespace cricodecs::aix {
+
+using AixError = std::string;
+
+struct AixSegment {
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    int32_t sample_count = 0;
+    int32_t sample_rate = 0;
+};
+
+struct AixLayer {
+    uint32_t sample_rate = 0;
+    uint32_t channel_count = 0;
+};
+
+struct AixLoopInfo {
+    size_t start_segment = 0;
+    size_t end_segment = 0;
+    uint64_t start_sample = 0;
+    uint64_t end_sample = 0;
+};
+
+struct AixBuildSegment {
+    std::vector<std::vector<uint8_t>> layer_adx_data;
+};
+
+class Aix {
+public:
+    std::expected<void, AixError> load(const std::filesystem::path& path);
+    std::expected<void, AixError> load(std::span<const uint8_t> data);
+    std::expected<void, AixError> load(std::vector<uint8_t>&& data);
+
+    [[nodiscard]] static std::expected<std::vector<uint8_t>, AixError> build(
+        std::span<const AixBuildSegment> segments
+    );
+    [[nodiscard]] static std::expected<void, AixError> build_to_file(
+        std::span<const AixBuildSegment> segments,
+        const std::filesystem::path& output_path
+    );
+
+    std::expected<std::vector<uint8_t>, AixError> segment_bytes(
+        size_t segment_index,
+        size_t layer_index
+    ) const;
+    std::expected<void, AixError> extract_file(
+        size_t segment_index,
+        size_t layer_index,
+        const std::filesystem::path& output_path
+    ) const;
+    std::expected<void, AixError> extract(const std::filesystem::path& output_dir) const {
+        return extract_all(output_dir);
+    }
+    std::expected<void, AixError> extract_all(const std::filesystem::path& output_dir) const;
+    std::expected<std::vector<uint8_t>, AixError> extract_layer_segment(
+        size_t segment_index,
+        size_t layer_index
+    ) const {
+        return segment_bytes(segment_index, layer_index);
+    }
+
+    [[nodiscard]] const std::filesystem::path& source_path() const noexcept { return m_source_path; }
+    [[nodiscard]] const std::vector<AixSegment>& segments() const noexcept { return m_segments; }
+    [[nodiscard]] const std::vector<AixLayer>& layers() const noexcept { return m_layers; }
+    [[nodiscard]] uint64_t total_sample_count() const noexcept { return m_total_sample_count; }
+    [[nodiscard]] const std::optional<AixLoopInfo>& inferred_loop() const noexcept { return m_inferred_loop; }
+
+private:
+    struct AixPacket {
+        uint32_t file_offset = 0;
+        uint32_t total_size = 0;
+        uint16_t payload_size = 0;
+        uint32_t sequence = 0;
+        int8_t layer_index = -1;
+        uint8_t layer_count = 0;
+    };
+
+    struct LayerPayloads {
+        std::vector<std::span<const uint8_t>> spans;
+        size_t total_size = 0;
+    };
+
+    static constexpr size_t max_segments = 120;
+
+    std::filesystem::path m_source_path;
+    std::vector<uint8_t> m_owned_bytes;
+    io::reader m_reader;
+    std::vector<AixSegment> m_segments;
+    std::vector<AixLayer> m_layers;
+    std::vector<std::vector<AixPacket>> m_segment_packets;
+    uint64_t m_total_sample_count = 0;
+    std::optional<AixLoopInfo> m_inferred_loop;
+
+    std::expected<void, AixError> parse();
+    std::expected<LayerPayloads, AixError> layer_payloads(size_t segment_index, size_t layer_index) const;
+};
+
+using AixReader = Aix;
+
+} // namespace cricodecs::aix

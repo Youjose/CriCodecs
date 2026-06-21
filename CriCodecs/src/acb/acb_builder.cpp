@@ -1,0 +1,262 @@
+/**
+ * @file acb_builder.cpp
+ * @brief ACB save/build helpers.
+ *
+ * The current ACB surface started from vgmstream and PyCriCodecsEx behavior,
+ * then was checked against Cri Atom Craft lib evidence.
+ * Build-side shaping and verification follow-up by Youjose.
+ */
+
+#include "acb_container.hpp"
+
+#include "../utilities/io.hpp"
+
+namespace cricodecs::acb {
+
+namespace {
+
+constexpr uint16_t invalid_wave_id = 0xFFFF;
+
+} // namespace
+
+std::optional<std::span<const uint8_t>> AcbContainer::embedded_awb() const {
+    auto data = m_header.get_data(0, "AwbFile");
+    if (!data || data->empty()) {
+        return std::nullopt;
+    }
+    return *data;
+}
+
+bool AcbContainer::has_embedded_awb() const {
+    return embedded_awb().has_value();
+}
+
+std::optional<std::filesystem::path> AcbContainer::companion_awb_path() const {
+    if (has_embedded_awb() || m_source_path.empty()) {
+        return std::nullopt;
+    }
+
+    auto candidate = m_source_path.parent_path() / (std::string(name()) + ".awb");
+    return std::filesystem::exists(candidate) ? std::optional(candidate) : std::nullopt;
+}
+
+std::expected<awb::AwbContainer, std::string> AcbContainer::load_awb() const {
+    if (auto data = embedded_awb()) {
+        auto loaded = awb::AwbContainer::load(*data);
+        if (!loaded) {
+            return std::unexpected(loaded.error());
+        }
+        return std::move(*loaded);
+    }
+
+    auto companion = companion_awb_path();
+    if (!companion) {
+        return std::unexpected("ACB load_awb failed: no embedded AWB data or companion AWB file was found");
+    }
+
+    auto loaded = awb::AwbContainer::load(*companion);
+    if (!loaded) {
+        return std::unexpected(loaded.error());
+    }
+    return std::move(*loaded);
+}
+
+std::expected<std::reference_wrapper<const awb::AwbContainer>, std::string> AcbContainer::associated_awb() const {
+    if (!m_associated_awb) {
+        auto loaded = load_awb();
+        if (!loaded) {
+            return std::unexpected(loaded.error());
+        }
+        m_associated_awb.emplace(std::move(*loaded));
+    }
+
+    return std::cref(*m_associated_awb);
+}
+
+std::expected<awb::AacEncryptionState, std::string> AcbContainer::probe_waveform_aac_encryption(
+    uint32_t index,
+    uint64_t keycode) const {
+    if (index >= m_waveforms.size()) {
+        return std::unexpected("ACB waveform index is out of range");
+    }
+
+    const auto& waveform = m_waveforms[index];
+    if (waveform.encode_type != 19) {
+        return std::unexpected("ACB waveform AAC probe failed: waveform is not AAC/M4A (EncodeType != 19)");
+    }
+
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+
+    const bool is_memory_bank = waveform.streaming != 1;
+    const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
+    if (wave_id == invalid_wave_id) {
+        return std::unexpected("ACB waveform AAC probe failed: waveform does not have a usable AWB ID");
+    }
+
+    const auto& awb_ref = awb->get();
+    auto awb_index = awb_ref.find_index_by_wave_id(wave_id);
+    if (!awb_index) {
+        return std::unexpected("ACB waveform AAC probe failed: waveform AWB ID was not found in the associated AWB");
+    }
+
+    auto state = awb_ref.probe_aac_encryption(*awb_index, keycode);
+    if (!state) {
+        return std::unexpected(state.error());
+    }
+
+    return *state;
+}
+
+std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_data(
+    uint32_t index,
+    uint64_t aac_keycode) const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+    return extract_waveform_data_from_awb(index, awb->get(), aac_keycode);
+}
+
+std::expected<std::span<const uint8_t>, std::string> AcbContainer::waveform_data_from_awb(
+    uint32_t index,
+    const awb::AwbContainer& awb) const {
+    if (index >= m_waveforms.size()) {
+        return std::unexpected("ACB waveform index is out of range");
+    }
+
+    const auto& waveform = m_waveforms[index];
+    const bool is_memory_bank = waveform.streaming != 1;
+    const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
+    if (wave_id == invalid_wave_id) {
+        return std::unexpected("ACB waveform extract failed: waveform does not have a usable AWB ID");
+    }
+
+    auto awb_index = awb.find_index_by_wave_id(wave_id);
+    if (!awb_index) {
+        return std::unexpected("ACB waveform extract failed: waveform AWB ID was not found in the associated AWB");
+    }
+
+    auto data = awb.file_data(*awb_index);
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+
+    return *data;
+}
+
+std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_data_from_awb(
+    uint32_t index,
+    const awb::AwbContainer& awb,
+    uint64_t aac_keycode) const {
+    auto data = waveform_data_from_awb(index, awb);
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+
+    const auto& waveform = m_waveforms[index];
+    if (waveform.encode_type != 19 || aac_keycode == 0) {
+        return std::vector<uint8_t>(data->begin(), data->end());
+    }
+
+    switch (awb::probe_aac_encryption(*data, aac_keycode)) {
+        case awb::AacEncryptionState::Clear:
+            return std::vector<uint8_t>(data->begin(), data->end());
+        case awb::AacEncryptionState::Encrypted:
+            return awb::decrypt_aac(*data, aac_keycode);
+        case awb::AacEncryptionState::Indeterminate:
+        default:
+            return std::unexpected("ACB waveform extract failed: AAC payload did not match a clear or decryptable M4A header with the provided key");
+    }
+}
+
+std::expected<void, std::string> AcbContainer::extract_file(
+    uint32_t index,
+    const std::filesystem::path& output_path,
+    uint64_t aac_keycode) const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+    return extract_file_from_awb(index, awb->get(), output_path, aac_keycode);
+}
+
+std::expected<void, std::string> AcbContainer::extract_file_from_awb(
+    uint32_t index,
+    const awb::AwbContainer& awb,
+    const std::filesystem::path& output_path,
+    uint64_t aac_keycode) const {
+    auto data = waveform_data_from_awb(index, awb);
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+
+    std::vector<uint8_t> decrypted;
+    std::span<const uint8_t> output = *data;
+    const auto& waveform = m_waveforms[index];
+    if (waveform.encode_type == 19 && aac_keycode != 0) {
+        switch (awb::probe_aac_encryption(*data, aac_keycode)) {
+            case awb::AacEncryptionState::Clear:
+                break;
+            case awb::AacEncryptionState::Encrypted: {
+                decrypted = awb::decrypt_aac(*data, aac_keycode);
+                output = std::span<const uint8_t>(decrypted);
+                break;
+            }
+            case awb::AacEncryptionState::Indeterminate:
+            default:
+                return std::unexpected("ACB waveform extract failed: AAC payload did not match a clear or decryptable M4A header with the provided key");
+        }
+    }
+
+    std::error_code filesystem_error;
+    if (output_path.has_parent_path()) {
+        std::filesystem::create_directories(output_path.parent_path(), filesystem_error);
+        if (filesystem_error) {
+            return std::unexpected("ACB extract failed: could not create output directory: " + filesystem_error.message());
+        }
+    }
+
+    io::writer writer;
+    if (auto open_result = writer.open(output_path); !open_result) {
+        return std::unexpected("ACB extract failed: could not open output: " + output_path.string());
+    }
+
+    if (auto write_result = writer.write(output); !write_result) {
+        (void)writer.close();
+        return std::unexpected("ACB extract failed: could not write output: " + output_path.string());
+    }
+    if (auto close_result = writer.close(); !close_result) {
+        return std::unexpected("ACB extract failed: could not finalize output: " + output_path.string());
+    }
+
+    return {};
+}
+
+std::expected<void, std::string> AcbContainer::extract(
+    const std::filesystem::path& output_dir,
+    uint64_t aac_keycode) const {
+    std::error_code filesystem_error;
+    std::filesystem::create_directories(output_dir, filesystem_error);
+    if (filesystem_error) {
+        return std::unexpected("ACB extract failed: could not create output directory: " + filesystem_error.message());
+    }
+
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+
+    for (uint32_t index = 0; index < waveform_count(); ++index) {
+        auto extracted = extract_file_from_awb(index, awb->get(), output_dir / waveform_filename(index), aac_keycode);
+        if (!extracted) {
+            return std::unexpected(extracted.error());
+        }
+    }
+
+    return {};
+}
+
+} // namespace cricodecs::acb

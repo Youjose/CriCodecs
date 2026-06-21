@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create, for example v0.0.1b0"
+        required: true
+        type: string
+      publish_pypi:
+        description: "Publish artifacts to PyPI after building"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release input
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate branch and tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          test "$GITHUB_REF_NAME" = "main"
+          version="$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as file:
+              print(tomllib.load(file)["project"]["version"])
+          PY
+          )"
+          test "${TAG#v}" = "$version"
+
+  sdist:
+    name: Source distribution
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build --sdist
+          python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  wheels-native:
+    name: Wheels (${{ matrix.os }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            archs: auto64
+          - os: macos-26-intel
+            archs: auto64
+          - os: windows-2025-vs2026
+            archs: auto64
+
+    env:
+      CIBW_ARCHS: ${{ matrix.archs }}
+      CIBW_TEST_COMMAND: python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert 'sample_rate=' in text; print(text)"
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.2
+        with:
+          output-dir: wheelhouse
+
+      - name: Audit macOS wheels
+        if: runner.os == 'macOS'
+        run: |
+          python -m pip install delocate
+          delocate-listdeps --all wheelhouse/*.whl
+
+      - name: Audit Windows wheels
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install delvewheel
+          Get-ChildItem wheelhouse/*.whl | ForEach-Object { delvewheel show $_.FullName }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  wheels-linux-x86_64:
+    name: Wheels (linux x86_64)
+    needs: validate
+    runs-on: ubuntu-latest
+
+    env:
+      CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+      CIBW_SKIP: "pp* *-musllinux_* *-win32 *-manylinux_i686"
+      CIBW_ARCHS_LINUX: x86_64
+      CIBW_MANYLINUX_X86_64_IMAGE: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.34
+      CIBW_ENVIRONMENT_LINUX: CMAKE_ARGS="-DCMAKE_MODULE_LINKER_FLAGS=-static-libstdc++\ -static-libgcc -DCMAKE_SHARED_LINKER_FLAGS=-static-libstdc++\ -static-libgcc"
+      CIBW_REPAIR_WHEEL_COMMAND_LINUX: auditwheel repair --plat manylinux_2_35_x86_64 -w {dest_dir} {wheel}
+      CIBW_TEST_SKIP: "*-manylinux_x86_64"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build GCC 16 manylinux image
+        run: docker build -t cricodecs-manylinux-gcc16:gcc16.1-manylinux2.34 .github/manylinux-gcc16
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.2
+        with:
+          output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-x86_64
+          path: wheelhouse/*.whl
+
+  release:
+    name: GitHub release
+    needs: [sdist, wheels-native, wheels-linux-x86_64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Check artifacts
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+          ls -lh dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: ${{ inputs.publish_pypi }}
+    needs: release
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

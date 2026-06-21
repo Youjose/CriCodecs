@@ -1,0 +1,96 @@
+/**
+ * @file acb_container.cpp
+ * @brief ACB container object helpers.
+ *
+ * ACB/AWB traversal behavior was initially guided by vgmstream and
+ * PyCriCodecsEx, then narrowed against Cri Atom Craft evidence.
+ * The inspectable C++23 object surface is CriCodecs work by Youjose.
+ */
+
+#include "acb_container.hpp"
+
+namespace cricodecs::acb {
+
+namespace {
+
+constexpr uint16_t invalid_wave_id = 0xFFFF;
+
+} // namespace
+
+std::string_view AcbContainer::find_name(uint16_t wave_id) const {
+    auto it = m_name_map.find(wave_id);
+    if (it != m_name_map.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+std::string_view AcbContainer::waveform_name(uint32_t index) const {
+    if (index >= m_waveform_names.size()) {
+        return {};
+    }
+    return m_waveform_names[index];
+}
+
+std::string_view AcbContainer::waveform_name_raw(uint32_t index) const {
+    if (index >= m_waveform_names_raw.size()) {
+        return {};
+    }
+    return m_waveform_names_raw[index];
+}
+
+std::string AcbContainer::waveform_filename(uint32_t index, bool include_index_prefix) const {
+    if (index >= m_waveforms.size()) {
+        return {};
+    }
+
+    std::string result;
+    if (include_index_prefix) {
+        result = std::to_string(index + 1);
+        result += "_";
+    }
+
+    if (auto resolved_name = waveform_name(index); !resolved_name.empty()) {
+        result += resolved_name;
+    } else {
+        result += "wave_";
+        result += std::to_string(index + 1);
+    }
+
+    result += encode_type_extension(m_waveforms[index].encode_type);
+    return result;
+}
+
+std::string_view AcbContainer::name() const {
+    if (auto name = m_header.get_string(0, "Name")) {
+        return *name;
+    }
+    return m_header.table_name();
+}
+
+uint16_t AcbContainer::waveform_id_for_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept {
+    if (waveform.id != invalid_wave_id) {
+        return waveform.id;
+    }
+
+    if (is_memory_bank) {
+        if (waveform.memory_awb_id != invalid_wave_id) {
+            return waveform.memory_awb_id;
+        }
+        return waveform.stream_awb_id;
+    }
+
+    if (waveform.stream_awb_id != invalid_wave_id) {
+        return waveform.stream_awb_id;
+    }
+    return waveform.memory_awb_id;
+}
+
+bool AcbContainer::waveform_matches_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept {
+    if (is_memory_bank) {
+        return waveform.streaming != 1;
+    }
+    return waveform.streaming != 0;
+}
+
+} // namespace cricodecs::acb

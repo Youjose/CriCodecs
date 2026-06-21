@@ -1,0 +1,580 @@
+#pragma once
+/**
+ * @file awb_container.hpp
+ * @brief AWB (AFS2/Atom Wave Bank) - CRI audio container
+ *
+ * Unified class for extraction, building, and editing of AWB containers.
+ * AWB stores multiple audio files (HCA, ADX, etc.) with alignment.
+ */
+
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <expected>
+#include <filesystem>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "../utilities/io.hpp"
+#include "../utilities/io_reader.hpp"
+#include "../utilities/numeric.hpp"
+#include "awb_aac_encryption.hpp"
+
+namespace cricodecs::awb {
+
+using io::read_le;
+using io::write_le;
+using io::read_le_n;
+using io::write_le_n;
+using util::align_up;
+
+struct AwbEntry {
+    uint64_t wave_id = 0;
+    uint64_t offset = 0;
+    uint64_t size = 0;
+};
+
+class AwbContainer {
+public:
+    static constexpr uint16_t DEFAULT_ALIGNMENT = 0x20;
+    static constexpr uint8_t DEFAULT_VERSION = 2;
+    static constexpr uint8_t DEFAULT_ID_SIZE = 2;
+    static constexpr uint8_t DEFAULT_OFFSET_SIZE = 4;
+
+    AwbContainer() = default;
+
+    [[nodiscard]] static std::expected<AwbContainer, std::string> load(std::span<const uint8_t> data) {
+        AwbContainer awb;
+        awb.m_owned_source.assign(data.begin(), data.end());
+        awb.m_source_path.clear();
+        awb.m_source = awb.m_owned_source;
+        auto err = awb.parse_header();
+        if (err != std::nullopt) return std::unexpected(*err);
+        return awb;
+    }
+
+    [[nodiscard]] static std::expected<AwbContainer, std::string> load(std::vector<uint8_t>&& data) {
+        AwbContainer awb;
+        awb.m_owned_source = std::move(data);
+        awb.m_source_path.clear();
+        awb.m_source = awb.m_owned_source;
+        auto err = awb.parse_header();
+        if (err != std::nullopt) return std::unexpected(*err);
+        return awb;
+    }
+
+    [[nodiscard]] static std::expected<AwbContainer, std::string> load(const std::filesystem::path& path) {
+        AwbContainer awb;
+        if (auto result = awb.m_reader.open(path); !result) {
+            return std::unexpected("AWB load failed: failed to open " + path.string() + " (" + result.error() + ")");
+        }
+        awb.m_source_path = path;
+        awb.m_owned_source.clear();
+        awb.m_source = awb.m_reader.data();
+        auto err = awb.parse_header();
+        if (err != std::nullopt) return std::unexpected(*err);
+        return awb;
+    }
+
+    [[nodiscard]] uint32_t file_count() const noexcept { return static_cast<uint32_t>(m_entries.size()); }
+    [[nodiscard]] uint8_t version() const noexcept { return m_version; }
+    [[nodiscard]] uint8_t offset_size() const noexcept { return m_offset_size; }
+    [[nodiscard]] uint8_t id_size() const noexcept { return m_id_size; }
+    [[nodiscard]] uint16_t alignment() const noexcept { return m_alignment; }
+    [[nodiscard]] uint16_t subkey() const noexcept { return m_subkey; }
+    [[nodiscard]] const std::filesystem::path& source_path() const noexcept { return m_source_path; }
+
+    [[nodiscard]] const AwbEntry& entry(uint32_t index) const { return m_entries[index]; }
+    [[nodiscard]] const std::vector<AwbEntry>& entries() const noexcept { return m_entries; }
+
+    [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> file_data(uint32_t index) const {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB file_data failed: file index out of range");
+        }
+        return file_payload(index, "file_data");
+    }
+
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> file_bytes(uint32_t index) const {
+        auto data = file_data(index);
+        if (!data) {
+            return std::unexpected(data.error());
+        }
+
+        return std::vector<uint8_t>(data->begin(), data->end());
+    }
+
+    [[nodiscard]] std::expected<void, std::string> extract_file(
+        uint32_t index,
+        const std::filesystem::path& output_path) const {
+        auto bytes = file_bytes(index);
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+
+        std::error_code filesystem_error;
+        if (const auto parent = output_path.parent_path(); !parent.empty()) {
+            std::filesystem::create_directories(parent, filesystem_error);
+            if (filesystem_error) {
+                return std::unexpected("AWB extract failed: " + filesystem_error.message());
+            }
+        }
+
+        io::writer writer;
+        if (auto result = writer.open(output_path); !result) {
+            return std::unexpected("AWB extract failed: " + std::string(result.error()));
+        }
+        if (auto result = writer.write(*bytes); !result) {
+            return std::unexpected("AWB extract failed: " + std::string(result.error()));
+        }
+        if (auto result = writer.close(); !result) {
+            return std::unexpected("AWB extract failed: " + std::string(result.error()));
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::expected<std::filesystem::path, std::string> suggested_path(uint32_t index) const {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB suggested_path failed: file index out of range");
+        }
+        const auto& entry = m_entries[index];
+        return std::filesystem::path{
+            (index < 10 ? "0000" : index < 100 ? "000" : index < 1000 ? "00" : index < 10000 ? "0" : "") +
+            std::to_string(index) + "_" + std::to_string(entry.wave_id) + ".bin"
+        };
+    }
+
+    [[nodiscard]] std::expected<void, std::string> extract(const std::filesystem::path& output_dir) const {
+        std::error_code filesystem_error;
+        std::filesystem::create_directories(output_dir, filesystem_error);
+        if (filesystem_error) {
+            return std::unexpected("AWB extract failed: " + filesystem_error.message());
+        }
+
+        for (uint32_t index = 0; index < m_entries.size(); ++index) {
+            auto suggested = suggested_path(index);
+            if (!suggested) {
+                return std::unexpected(suggested.error());
+            }
+            const auto output_path = output_dir / *suggested;
+            auto result = extract_file(index, output_path);
+            if (!result) {
+                return result;
+            }
+        }
+
+        return {};
+    }
+
+    [[nodiscard]] std::expected<AacEncryptionState, std::string> probe_aac_encryption(uint32_t index,
+                                                                                       uint64_t keycode) const {
+        auto data = file_data(index);
+        if (!data) {
+            return std::unexpected(data.error());
+        }
+
+        return ::cricodecs::awb::probe_aac_encryption(*data, keycode);
+    }
+
+    [[nodiscard]] std::expected<uint64_t, std::string> wave_id(uint32_t index) const {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB wave_id failed: file index out of range");
+        }
+        return m_entries[index].wave_id;
+    }
+
+    [[nodiscard]] std::optional<uint32_t> find_index_by_wave_id(uint64_t wave_id) const noexcept {
+        for (uint32_t i = 0; i < m_entries.size(); ++i) {
+            if (m_entries[i].wave_id == wave_id) {
+                return i;
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool is_materialized() const noexcept {
+        return !m_entries.empty() &&
+               m_file_data.size() == m_entries.size() &&
+               m_file_data_overrides.size() == m_entries.size() &&
+               std::all_of(m_file_data_overrides.begin(), m_file_data_overrides.end(), [](uint8_t owned) {
+                   return owned != 0;
+               });
+    }
+
+    [[nodiscard]] static AwbContainer create(uint8_t version = DEFAULT_VERSION,
+                                             uint16_t alignment = DEFAULT_ALIGNMENT,
+                                             uint16_t subkey = 0,
+                                             uint8_t id_size = DEFAULT_ID_SIZE,
+                                             uint8_t offset_size = DEFAULT_OFFSET_SIZE) {
+        AwbContainer awb;
+        awb.m_version = version;
+        awb.m_alignment = alignment;
+        awb.m_subkey = subkey;
+        awb.m_id_size = id_size;
+        awb.m_offset_size = offset_size;
+        return awb;
+    }
+
+    uint64_t add_file(std::span<const uint8_t> data) {
+        const uint64_t next_id = next_default_wave_id();
+        add_file(data, next_id);
+        return next_id;
+    }
+
+    void add_file(std::span<const uint8_t> data, uint64_t wave_id) {
+        ensure_payload_slots();
+        m_file_data.emplace_back(data.begin(), data.end());
+        m_file_data_overrides.push_back(1);
+        m_entries.push_back(AwbEntry{wave_id, 0, static_cast<uint64_t>(data.size())});
+    }
+
+    [[nodiscard]] std::expected<void, std::string> replace_file(uint32_t index, std::span<const uint8_t> data) {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB replace_file failed: file index out of range");
+        }
+        ensure_payload_slots();
+        m_file_data[index].assign(data.begin(), data.end());
+        m_file_data_overrides[index] = 1;
+        m_entries[index].size = static_cast<uint64_t>(data.size());
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> remove_file(uint32_t index) {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB remove_file failed: file index out of range");
+        }
+        ensure_payload_slots();
+        m_file_data.erase(m_file_data.begin() + static_cast<std::ptrdiff_t>(index));
+        m_file_data_overrides.erase(m_file_data_overrides.begin() + static_cast<std::ptrdiff_t>(index));
+        m_entries.erase(m_entries.begin() + static_cast<std::ptrdiff_t>(index));
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> move_file(uint32_t from_index, uint32_t to_index) {
+        if (from_index >= m_entries.size() || to_index >= m_entries.size()) {
+            return std::unexpected("AWB move_file failed: file index out of range");
+        }
+        if (from_index == to_index) {
+            return {};
+        }
+
+        ensure_payload_slots();
+        auto entry = m_entries[from_index];
+        auto payload = std::move(m_file_data[from_index]);
+        const auto override_flag = m_file_data_overrides[from_index];
+        const auto from = static_cast<std::ptrdiff_t>(from_index);
+        const auto to = static_cast<std::ptrdiff_t>(to_index);
+        m_entries.erase(m_entries.begin() + from);
+        m_file_data.erase(m_file_data.begin() + from);
+        m_file_data_overrides.erase(m_file_data_overrides.begin() + from);
+        m_entries.insert(m_entries.begin() + to, std::move(entry));
+        m_file_data.insert(m_file_data.begin() + to, std::move(payload));
+        m_file_data_overrides.insert(m_file_data_overrides.begin() + to, override_flag);
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_wave_id(uint32_t index, uint64_t wave_id) {
+        if (index >= m_entries.size()) {
+            return std::unexpected("AWB set_wave_id failed: file index out of range");
+        }
+        m_entries[index].wave_id = wave_id;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_version(uint8_t version) {
+        m_version = version;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_offset_size(uint8_t offset_size) {
+        if (offset_size != 2 && offset_size != 4 && offset_size != 8) {
+            return std::unexpected("AWB set_offset_size failed: unsupported offset size");
+        }
+        m_offset_size = offset_size;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_id_size(uint8_t id_size) {
+        if (id_size != 1 && id_size != 2 && id_size != 4 && id_size != 8) {
+            return std::unexpected("AWB set_id_size failed: unsupported ID size");
+        }
+        m_id_size = id_size;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_alignment(uint16_t alignment) {
+        if (alignment == 0) {
+            return std::unexpected("AWB set_alignment failed: alignment must be non-zero");
+        }
+        m_alignment = alignment;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, std::string> set_subkey(uint16_t subkey) {
+        m_subkey = subkey;
+        return {};
+    }
+
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> save() { return build(); }
+    [[nodiscard]] std::expected<void, std::string> save_to_file(const std::filesystem::path& output_path) {
+        auto bytes = save();
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+        io::writer writer;
+        if (auto result = writer.open(output_path); !result) {
+            return std::unexpected("AWB save failed: " + std::string(result.error()));
+        }
+        if (auto result = writer.write(*bytes); !result) {
+            return std::unexpected("AWB save failed: " + std::string(result.error()));
+        }
+        if (auto result = writer.close(); !result) {
+            return std::unexpected("AWB save failed: " + std::string(result.error()));
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> build() const {
+        const uint32_t num_files = static_cast<uint32_t>(m_entries.size());
+        if (num_files == 0) {
+            return std::unexpected("AWB build failed: no files to build");
+        }
+        if (m_offset_size != 2 && m_offset_size != 4 && m_offset_size != 8) {
+            return std::unexpected("AWB build failed: unsupported offset size");
+        }
+        if (m_id_size != 1 && m_id_size != 2 && m_id_size != 4 && m_id_size != 8) {
+            return std::unexpected("AWB build failed: unsupported ID size");
+        }
+
+        std::vector<std::span<const uint8_t>> payloads;
+        payloads.reserve(num_files);
+        for (uint32_t i = 0; i < num_files; ++i) {
+            auto payload = file_payload(i, "build");
+            if (!payload) {
+                return std::unexpected(payload.error());
+            }
+            payloads.push_back(*payload);
+        }
+
+        // AFS2 stores header tables as an unaligned byte blob; offsets are
+        // applied after aligning to the file's alignment field before payloads,
+        // consistent with `ref/docs/afs_format_notes.md`.
+        const uint64_t header_raw = 16ull + (static_cast<uint64_t>(m_id_size) * num_files) +
+                                    (static_cast<uint64_t>(m_offset_size) * (num_files + 1ull));
+        const uint64_t header_aligned = align_up(header_raw, m_alignment);
+
+        std::vector<uint64_t> actual_offsets;
+        std::vector<uint64_t> stored_offsets;
+        actual_offsets.reserve(num_files + 1ull);
+        stored_offsets.reserve(num_files + 1ull);
+
+        uint64_t current_offset = header_aligned;
+        actual_offsets.push_back(current_offset);
+        stored_offsets.push_back(header_raw);
+
+        for (uint32_t i = 0; i < num_files; ++i) {
+            const uint64_t raw_end = current_offset + payloads[i].size();
+            stored_offsets.push_back(raw_end);
+
+            uint64_t next_offset = raw_end;
+            if (i + 1 < num_files) {
+                // CRI AFS2 archives keep each subsequent payload on alignment
+                // boundaries implied by the header alignment field; see
+                // `ref/docs/afs_format_notes.md`.
+                next_offset = align_up(raw_end, m_alignment);
+            }
+            actual_offsets.push_back(next_offset);
+            current_offset = next_offset;
+        }
+
+        const uint64_t total_size = actual_offsets.back();
+        if (total_size > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+            return std::unexpected("AWB build failed: output size exceeds addressable memory");
+        }
+
+        std::vector<uint8_t> output(static_cast<size_t>(total_size), 0);
+
+        // Write header.
+        output[0x00] = 'A';
+        output[0x01] = 'F';
+        output[0x02] = 'S';
+        output[0x03] = '2';
+        output[0x04] = m_version;
+        output[0x05] = m_offset_size;
+        write_le<uint16_t>(output.data() + 0x06, m_id_size);
+        write_le<uint32_t>(output.data() + 0x08, num_files);
+        write_le<uint16_t>(output.data() + 0x0C, m_alignment);
+        write_le<uint16_t>(output.data() + 0x0E, m_subkey);
+
+        size_t pos = 16;
+        for (uint32_t i = 0; i < num_files; ++i) {
+            write_le_n<uint64_t>(output.data() + pos, m_entries[i].wave_id, m_id_size);
+            pos += m_id_size;
+        }
+
+        for (uint32_t i = 0; i <= num_files; ++i) {
+            write_le_n<uint64_t>(output.data() + pos, stored_offsets[i], m_offset_size);
+            pos += m_offset_size;
+        }
+
+        for (uint32_t i = 0; i < num_files; ++i) {
+            std::memcpy(output.data() + actual_offsets[i], payloads[i].data(), payloads[i].size());
+        }
+
+        return output;
+    }
+
+    [[nodiscard]] std::expected<void, std::string> materialize() {
+        if (is_materialized()) {
+            return {};
+        }
+        if (m_source.empty() && !m_entries.empty()) {
+            return std::unexpected("AWB materialize failed: source data is empty");
+        }
+        ensure_payload_slots();
+
+        for (uint32_t i = 0; i < m_entries.size(); ++i) {
+            if (m_file_data_overrides[i] != 0) {
+                continue;
+            }
+            const auto& e = m_entries[i];
+            if (e.offset > m_source.size() || e.size > m_source.size() - e.offset) {
+                return std::unexpected("AWB materialize failed: entry offset/size is out of range");
+            }
+            m_file_data[i].assign(
+                m_source.begin() + static_cast<std::ptrdiff_t>(e.offset),
+                m_source.begin() + static_cast<std::ptrdiff_t>(e.offset + e.size)
+            );
+            m_file_data_overrides[i] = 1;
+        }
+        return {};
+    }
+
+private:
+    // Loaded source bytes stay owned by the container so entry spans remain
+    // valid after path and byte-backed loads alike.
+    std::span<const uint8_t> m_source;
+    io::reader m_reader;
+    std::vector<uint8_t> m_owned_source;
+    std::filesystem::path m_source_path;
+
+    uint8_t m_version = DEFAULT_VERSION;
+    uint8_t m_offset_size = DEFAULT_OFFSET_SIZE;
+    uint8_t m_id_size = DEFAULT_ID_SIZE;
+    uint16_t m_alignment = DEFAULT_ALIGNMENT;
+    uint16_t m_subkey = 0;
+
+    std::vector<AwbEntry> m_entries;
+    std::vector<std::vector<uint8_t>> m_file_data;
+    std::vector<uint8_t> m_file_data_overrides;
+
+    [[nodiscard]] std::optional<std::string> parse_header() {
+        if (m_source.size() < 16) {
+            return "AWB parse failed: data is smaller than the header";
+        }
+        if (!(m_source[0] == 'A' && m_source[1] == 'F' && m_source[2] == 'S' && m_source[3] == '2')) {
+            return "AWB parse failed: invalid magic, expected AFS2";
+        }
+
+        m_version = m_source[0x04];
+        m_offset_size = m_source[0x05];
+        m_id_size = static_cast<uint8_t>(read_le<uint16_t>(m_source.data() + 0x06));
+        const uint32_t count = read_le<uint32_t>(m_source.data() + 0x08);
+        m_alignment = read_le<uint16_t>(m_source.data() + 0x0C);
+        m_subkey = read_le<uint16_t>(m_source.data() + 0x0E);
+
+        if (m_offset_size != 2 && m_offset_size != 4 && m_offset_size != 8) {
+            return "AWB parse failed: unsupported offset size";
+        }
+        if (m_id_size != 1 && m_id_size != 2 && m_id_size != 4 && m_id_size != 8) {
+            return "AWB parse failed: unsupported ID size";
+        }
+        if (m_alignment == 0) {
+            return "AWB parse failed: alignment is zero";
+        }
+
+        size_t pos = 16;
+        const size_t needed = pos + (static_cast<size_t>(m_id_size) * count) +
+                             (static_cast<size_t>(m_offset_size) * (count + 1ull));
+        if (m_source.size() < needed) {
+            return "AWB parse failed: header tables exceed source size";
+        }
+
+        std::vector<uint64_t> ids(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            ids[i] = read_le_n<uint64_t>(m_source.data() + pos, m_id_size);
+            pos += m_id_size;
+        }
+
+        std::vector<uint64_t> raw_offsets(count + 1ull);
+        for (uint32_t i = 0; i <= count; ++i) {
+            raw_offsets[i] = read_le_n<uint64_t>(m_source.data() + pos, m_offset_size);
+            pos += m_offset_size;
+        }
+
+        m_entries.clear();
+        m_file_data.clear();
+        m_file_data_overrides.clear();
+        m_entries.resize(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            // Parse side follows the same AFS2 rule: table offset entries are
+            // aligned to the stored m_alignment value before payload access,
+            // as described in `ref/docs/afs_format_notes.md`.
+            const uint64_t actual_offset = align_up(raw_offsets[i], m_alignment);
+            const uint64_t raw_end = raw_offsets[i + 1];
+            if (raw_end < actual_offset || raw_end > m_source.size()) {
+                return "AWB parse failed: file entry offset/size is out of range";
+            }
+
+            m_entries[i].wave_id = ids[i];
+            m_entries[i].offset = actual_offset;
+            m_entries[i].size = raw_end - actual_offset;
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] uint64_t next_default_wave_id() const noexcept {
+        uint64_t next_id = 0;
+        for (const auto& entry : m_entries) {
+            if (entry.wave_id >= next_id) {
+                next_id = entry.wave_id + 1;
+            }
+        }
+        return next_id;
+    }
+
+    void ensure_payload_slots() {
+        if (m_file_data.size() < m_entries.size()) {
+            m_file_data.resize(m_entries.size());
+        }
+        if (m_file_data_overrides.size() < m_entries.size()) {
+            m_file_data_overrides.resize(m_entries.size(), 0);
+        }
+    }
+
+    [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> file_payload(uint32_t index,
+                                                                                    std::string_view operation) const {
+        if (index < m_file_data_overrides.size() && m_file_data_overrides[index] != 0) {
+            if (index >= m_file_data.size()) {
+                return std::unexpected("AWB " + std::string(operation) + " failed: owned file data is missing");
+            }
+            return std::span<const uint8_t>(m_file_data[index].data(), m_file_data[index].size());
+        }
+
+        if (m_source.empty()) {
+            return std::unexpected("AWB " + std::string(operation) + " failed: source data is empty");
+        }
+        const auto& e = m_entries[index];
+        if (e.offset > m_source.size() || e.size > m_source.size() - e.offset) {
+            return std::unexpected("AWB " + std::string(operation) + " failed: entry offset/size is out of range");
+        }
+        return m_source.subspan(static_cast<size_t>(e.offset), static_cast<size_t>(e.size));
+    }
+
+};
+
+} // namespace cricodecs::awb

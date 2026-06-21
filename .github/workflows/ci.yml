@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build sdist
+        run: python -m build --sdist
+
+      - name: Check package metadata
+        run: python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  source-build:
+    name: Source build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            generator: Ninja
+            platform: ""
+          - os: macos-26-intel
+            generator: Ninja
+            platform: ""
+          - os: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            platform: "-A x64"
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja
+
+      - name: Show toolchain
+        run: cmake --version
+
+      - name: Configure core library
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF
+
+      - name: Build core library
+        run: cmake --build build --config Release --parallel
+
+  gcc16-source-build:
+    name: Source build (GCC 16.1)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build core library with GCC 16.1
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            gcc:16.1 \
+            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel"
+
+  pip-install:
+    name: Pip install (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-26-intel, windows-2025-vs2026]
+        python-version: ["3.9", "3.14"]
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install from source tree
+        run: python -m pip install --verbose .
+
+      - name: Import smoke
+        run: python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert 'sample_rate=' in text; print(text)"
