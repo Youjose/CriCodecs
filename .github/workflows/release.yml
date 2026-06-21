@@ -110,43 +110,9 @@ jobs:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
 
-  wheels-linux-x86_64:
-    name: Wheels (linux x86_64)
-    needs: validate
-    runs-on: ubuntu-latest
-
-    env:
-      CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
-      CIBW_SKIP: "pp* *-musllinux_* *-win32 *-manylinux_i686"
-      CIBW_ARCHS_LINUX: x86_64
-      CIBW_MANYLINUX_X86_64_IMAGE: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.34
-      CIBW_ENVIRONMENT_LINUX: CMAKE_ARGS="-DCMAKE_MODULE_LINKER_FLAGS=-static-libstdc++\ -static-libgcc -DCMAKE_SHARED_LINKER_FLAGS=-static-libstdc++\ -static-libgcc"
-      CIBW_REPAIR_WHEEL_COMMAND_LINUX: auditwheel repair --plat manylinux_2_35_x86_64 -w {dest_dir} {wheel}
-      CIBW_TEST_SKIP: "*-manylinux_x86_64"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build GCC 16 manylinux image
-        run: docker build -t cricodecs-manylinux-gcc16:gcc16.1-manylinux2.34 .github/manylinux-gcc16
-
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v3.2
-        with:
-          output-dir: wheelhouse
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-linux-x86_64
-          path: wheelhouse/*.whl
-
   release:
     name: GitHub release
-    needs: [sdist, wheels-native, wheels-linux-x86_64]
+    needs: [sdist, wheels-native]
     runs-on: ubuntu-latest
     permissions:
       contents: write
