@@ -163,6 +163,10 @@ namespace cricodecs::cli::detail {
             continue;
         }
         if (arg == "--version") {
+            options.show_version = true;
+            continue;
+        }
+        if (arg == "--header-version") {
             auto value = require_value(arg);
             if (!value) {
                 return std::unexpected(value.error());
@@ -240,7 +244,7 @@ namespace cricodecs::cli::detail {
         options.input_path = std::filesystem::path(arg);
     }
 
-    if (options.help) {
+    if (options.help || options.show_version) {
         return options;
     }
     if (!options.input_path.has_value()) {
@@ -311,14 +315,14 @@ void print_usage(std::ostream& out, bool show_identity) {
     out <<
         "Usage: cricodecs <input> [-e] [--encode|--build] [--raw] [--list] [--encrypt|--decrypt] [-m] [--json] [-q] [-f TYPE] [-o PATH]\n"
         "                 [--index N] [--key VALUE] [--subkey VALUE] [--cipher-type VALUE] [--aac-keycode VALUE]\n"
-        "                 [--encoding NAME] [--audio PATH] [--profile NAME] [--version VALUE]\n"
+        "                 [--encoding NAME] [--audio PATH] [--profile NAME] [--header-version VALUE]\n"
         "\n"
         "  -e, --export         explicit export; same as default behavior\n"
         "      --encode         encode WAV input as hca/adx/ahx; requires -f and -o\n"
         "      --build          build afs/awb/cpk/acx/csb/cvm from directory or supported list/script input\n"
         "      --audio PATH     add build audio input; repeatable for usm/sfd\n"
         "      --profile NAME   build profile where supported\n"
-        "      --version VALUE  builder/header version where supported\n"
+        "      --header-version VALUE  builder/header version where supported\n"
         "      --add SRC=DEST   add file to archive; DEST is archive path/name or AWB wave ID\n"
         "      --replace T=SRC  replace archive entry T with source file SRC\n"
         "      --remove T       remove archive entry T\n"
@@ -341,6 +345,7 @@ void print_usage(std::ostream& out, bool show_identity) {
         "      --cipher-type    target cipher/encryption type where applicable\n"
         "      --aac-keycode    AAC keycode for ACB waveform extraction\n"
         "      --encoding       text encoding override where applicable\n"
+        "      --version        show version/build information\n"
         "  -h, --help           show this help text\n"
         "\n"
         "Valid force types:\n"

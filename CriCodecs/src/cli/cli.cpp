@@ -99,6 +99,10 @@ int run(std::span<const std::string> args, std::ostream& out, std::ostream& err)
         print_usage(out, !options->quiet);
         return 0;
     }
+    if (options->show_version) {
+        out << build_identity() << '\n';
+        return 0;
+    }
 
     const auto& input_path = *options->input_path;
     if (!std::filesystem::exists(input_path)) {

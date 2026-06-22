@@ -91,6 +91,7 @@ struct Options {
     bool compress = false;
     bool encrypt = false;
     bool decrypt = false;
+    bool show_version = false;
     std::optional<Format> force_type;
     std::optional<std::filesystem::path> output_path;
     std::optional<std::string> encoding;

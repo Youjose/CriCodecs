@@ -38,10 +38,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            generator: Ninja
-            platform: ""
-            artifact_name: linux-x86_64
           - os: macos-26
             generator: Ninja
             platform: ""
@@ -87,12 +83,45 @@ jobs:
         run: .\stage\cricodecs.exe --help | Out-Null
 
       - name: Archive CLI zip
-        run: cmake -E tar cf "cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip stage
+        run: cmake -E chdir stage cmake -E tar cf "../cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip .
 
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.artifact_name }}
           path: cricodecs-cli-${{ matrix.artifact_name }}.zip
+
+  cli-zip-linux:
+    name: CLI zip (linux-x86_64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux CLI with GCC 16.1
+        run: |
+          docker run --rm \
+            -e CC=gcc \
+            -e CXX=g++ \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            gcc:16.1 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends python3 python3-pip
+              python3 -m pip install --break-system-packages cmake ninja
+              c++ --version
+              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel
+              python3 -m cmake --install build-cli-linux --prefix stage-cli-linux
+              ./stage-cli-linux/cricodecs --help >/dev/null
+              python3 -m cmake -E chdir stage-cli-linux python3 -m cmake -E tar cf ../cricodecs-cli-linux-x86_64.zip --format=zip .
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-x86_64
+          path: cricodecs-cli-linux-x86_64.zip
 
   source-build:
     name: Source build (${{ matrix.os }})
@@ -143,6 +172,8 @@ jobs:
       - name: Build core library with GCC 16.1
         run: |
           docker run --rm \
+            -e CC=gcc \
+            -e CXX=g++ \
             -v "${{ github.workspace }}:/work" \
             -w /work \
             gcc:16.1 \
@@ -154,7 +185,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-26, macos-26-intel, windows-2025-vs2026]
+        os: [macos-26, macos-26-intel, windows-2025-vs2026]
         python-version: ["3.9", "3.14"]
 
     env:
@@ -175,3 +206,29 @@ jobs:
 
       - name: CLI entry-point smoke
         run: cricodecs --help
+
+  pip-install-linux:
+    name: Pip install (linux-x86_64, GCC 16.1)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install package with GCC 16.1
+        run: |
+          docker run --rm \
+            -e CC=gcc \
+            -e CXX=g++ \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            gcc:16.1 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends python3 python3-pip
+              python3 -m pip install --break-system-packages --upgrade pip
+              c++ --version
+              python3 -m pip install --break-system-packages --verbose .
+              python3 -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert '\''sample_rate='\'' in text; print(text)"
+              cricodecs --help
+            '

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create, for example v0.0.1b0"
+        description: "Release tag to create, for example v0.0.1b1"
         required: true
         type: string
       publish_pypi:
@@ -118,10 +118,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            generator: Ninja
-            platform: ""
-            artifact_name: linux-x86_64
           - os: macos-26
             generator: Ninja
             platform: ""
@@ -148,8 +144,15 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade pip cmake ninja
 
+      - name: Resolve release version
+        id: release_version
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Configure CLI
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_VERSION=${{ steps.release_version.outputs.version }} -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
 
       - name: Build CLI
         run: cmake --build build --config Release --target cricodecs_cli --parallel
@@ -167,16 +170,60 @@ jobs:
         run: .\stage\cricodecs.exe --help | Out-Null
 
       - name: Archive CLI zip
-        run: cmake -E tar cf "cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip stage
+        run: cmake -E chdir stage cmake -E tar cf "../cricodecs-${{ steps.release_version.outputs.version }}-cli-${{ matrix.artifact_name }}.zip" --format=zip .
 
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.artifact_name }}
-          path: cricodecs-cli-${{ matrix.artifact_name }}.zip
+          path: cricodecs-${{ steps.release_version.outputs.version }}-cli-${{ matrix.artifact_name }}.zip
+
+  cli-zip-linux:
+    name: CLI zip (linux-x86_64)
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: release_version
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Linux CLI with GCC 16.1
+        env:
+          VERSION: ${{ steps.release_version.outputs.version }}
+        run: |
+          docker run --rm \
+            -e CC=gcc \
+            -e CXX=g++ \
+            -e CRICODECS_RELEASE_VERSION="${VERSION}" \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            gcc:16.1 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends python3 python3-pip
+              python3 -m pip install --break-system-packages cmake ninja
+              c++ --version
+              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_VERSION="${CRICODECS_RELEASE_VERSION}" -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel
+              python3 -m cmake --install build-cli-linux --prefix stage-cli-linux
+              ./stage-cli-linux/cricodecs --help >/dev/null
+              python3 -m cmake -E chdir stage-cli-linux python3 -m cmake -E tar cf "../cricodecs-${CRICODECS_RELEASE_VERSION}-cli-linux-x86_64.zip" --format=zip .
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-x86_64
+          path: cricodecs-${{ steps.release_version.outputs.version }}-cli-linux-x86_64.zip
 
   release:
     name: GitHub release
-    needs: [sdist, wheels-native, cli-zip]
+    needs: [sdist, wheels-native, cli-zip, cli-zip-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write

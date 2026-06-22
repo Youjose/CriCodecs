@@ -1,8 +1,10 @@
-cmake_minimum_required(VERSION 4.2)
+cmake_minimum_required(VERSION 3.20...4.2)
 project(CriCodecs LANGUAGES CXX)
 
-option(CRICODECS_BUILD_PYTHON "Build the Python bindings" OFF)
+option(CRICODECS_BUILD_TESTS "Build the active GoogleTest suites" ON)
+option(CRICODECS_BUILD_PYTHON "Build the experimental Python binding prototype" OFF)
 option(CRICODECS_BUILD_CLI "Build the shared CriCodecs CLI executable" ON)
+option(CRICODECS_BUILD_CRISTUDIO "Build the CriStudio desktop GUI" OFF)
 
 set(CRICODECS_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 include(${CMAKE_CURRENT_SOURCE_DIR}/cricodecs_library.cmake)
@@ -30,6 +32,15 @@ if(CRICODECS_BUILD_CLI)
     endif()
 endif()
 
+if(CRICODECS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests)
+endif()
+
 if(CRICODECS_BUILD_PYTHON)
     add_subdirectory(PyCriCodecs)
+endif()
+
+if(CRICODECS_BUILD_CRISTUDIO)
+    add_subdirectory(CriStudio)
 endif()
