@@ -337,6 +337,8 @@ public:
         return describe_stream(chunk.stream_id());
     }
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> extract_stream(uint32_t index);
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> decrypt() const;
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> encrypt() const;
     [[nodiscard]] std::expected<void, std::string> extract_file(
         uint32_t index,
         const std::filesystem::path& output_path
@@ -375,6 +377,7 @@ private:
         const AudioCodecMap& audio_codecs,
         std::vector<uint8_t>& output
     ) const;
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> transform_container(bool encrypt) const;
     [[nodiscard]] std::expected<void, std::string> write_stream_payloads(
         UsmStreamId id,
         const AudioCodecMap& audio_codecs,

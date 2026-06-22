@@ -106,6 +106,15 @@ uint32_t cpk_crc32(std::span<const uint8_t> data, uint32_t seed) noexcept {
     return util::CriCrc32::checksum(data, seed);
 }
 
+void crypt_utf_payload_in_place(std::span<uint8_t> payload) {
+    uint64_t m = 0x655F;
+    constexpr uint64_t t = 0x4115;
+    for (auto& byte : payload) {
+        byte ^= static_cast<uint8_t>(m & 0xFF);
+        m = (m * t) & 0xFFFFFFFFull;
+    }
+}
+
 } // namespace
 
 std::expected<std::vector<uint8_t>, std::string> Cpk::save() {
@@ -113,6 +122,18 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::save() {
         const auto data = m_reader.data();
         return std::vector<uint8_t>(data.begin(), data.end());
     }
+    return save_impl(false);
+}
+
+std::expected<std::vector<uint8_t>, std::string> Cpk::decrypt() {
+    return save_impl(false);
+}
+
+std::expected<std::vector<uint8_t>, std::string> Cpk::encrypt() {
+    return save_impl(true);
+}
+
+std::expected<std::vector<uint8_t>, std::string> Cpk::save_impl(bool encrypt_utf_chunks) {
     if (m_files.empty()) {
         return std::unexpected("CPK build failed: archive has no entries");
     }
@@ -125,7 +146,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::save() {
         return std::unexpected(prepared_entries.error());
     }
 
-    auto archive = build_archive(*prepared_entries);
+    auto archive = build_archive(*prepared_entries, encrypt_utf_chunks);
     if (!archive) {
         return std::unexpected(archive.error());
     }
@@ -288,7 +309,10 @@ std::expected<std::vector<Cpk::PreparedEntry>, std::string> Cpk::prepare_entries
     return prepared_entries;
 }
 
-std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<PreparedEntry>& prepared_entries) {
+std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(
+    std::vector<PreparedEntry>& prepared_entries,
+    bool encrypt_utf_chunks
+) {
     const CpkPreset declared_preset = m_options.preset;
     const PresetFlags preset_flags = flags_for_preset(m_options.preset);
     const bool emit_toc = m_options.enable_toc.value_or(preset_flags.toc);
@@ -346,7 +370,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
             return std::unexpected(toc_data.error());
         }
         toc_payload = std::move(*toc_data);
-        toc_chunk = wrap_chunk("TOC ", toc_payload);
+        toc_chunk = wrap_chunk("TOC ", toc_payload, encrypt_utf_chunks);
         toc_chunk.resize(static_cast<size_t>(align_up(toc_chunk.size(), chunk_alignment)), 0);
     }
 
@@ -356,7 +380,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
         itoc_payload = emit_toc
             ? generate_itoc_mode2(prepared_entries, toc_order)
             : generate_itoc_mode0(prepared_entries, data_order);
-        itoc_chunk = wrap_chunk("ITOC", itoc_payload);
+        itoc_chunk = wrap_chunk("ITOC", itoc_payload, encrypt_utf_chunks);
         itoc_chunk.resize(static_cast<size_t>(align_up(itoc_chunk.size(), chunk_alignment)), 0);
     }
 
@@ -364,7 +388,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
     std::vector<uint8_t> gtoc_payload;
     if (emit_gtoc) {
         gtoc_payload = generate_gtoc(prepared_entries, enabled_packed_size);
-        gtoc_chunk = wrap_chunk("GTOC", gtoc_payload);
+        gtoc_chunk = wrap_chunk("GTOC", gtoc_payload, encrypt_utf_chunks);
         gtoc_chunk.resize(static_cast<size_t>(align_up(gtoc_chunk.size(), chunk_alignment)), 0);
     }
 
@@ -374,7 +398,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
         if (!etoc_data) {
             return std::unexpected(etoc_data.error());
         }
-        etoc_chunk = wrap_chunk("ETOC", *etoc_data);
+        etoc_chunk = wrap_chunk("ETOC", *etoc_data, encrypt_utf_chunks);
         etoc_chunk.resize(static_cast<size_t>(align_up(etoc_chunk.size(), chunk_alignment)), 0);
     }
 
@@ -393,7 +417,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
                 return std::unexpected(toc_data.error());
             }
             auto updated_toc_payload = std::move(*toc_data);
-            auto updated_toc_chunk = wrap_chunk("TOC ", updated_toc_payload);
+            auto updated_toc_chunk = wrap_chunk("TOC ", updated_toc_payload, encrypt_utf_chunks);
             updated_toc_chunk.resize(static_cast<size_t>(align_up(updated_toc_chunk.size(), chunk_alignment)), 0);
             if (updated_toc_chunk.size() == toc_chunk.size()) {
                 toc_payload = std::move(updated_toc_payload);
@@ -425,7 +449,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
             return std::unexpected(toc_data.error());
         }
         toc_payload = std::move(*toc_data);
-        toc_chunk = wrap_chunk("TOC ", toc_payload);
+        toc_chunk = wrap_chunk("TOC ", toc_payload, encrypt_utf_chunks);
         toc_chunk.resize(static_cast<size_t>(align_up(toc_chunk.size(), chunk_alignment)), 0);
     }
 
@@ -477,7 +501,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(std::vector<
         itoc_crc,
         gtoc_crc
     );
-    auto cpk_chunk = wrap_chunk("CPK ", cpk_utf);
+    auto cpk_chunk = wrap_chunk("CPK ", cpk_utf, encrypt_utf_chunks);
     cpk_chunk.resize(static_cast<size_t>(align_up(cpk_chunk.size(), chunk_alignment)), 0);
     if (cpk_chunk.size() != root_chunk_size) {
         return std::unexpected("CPK build failed: generated header chunk has an unexpected size");
@@ -877,14 +901,21 @@ std::vector<uint8_t> Cpk::generate_cpk_header(
     return table.build();
 }
 
-std::vector<uint8_t> Cpk::wrap_chunk(std::string_view magic, std::span<const uint8_t> table_data) const {
+std::vector<uint8_t> Cpk::wrap_chunk(
+    std::string_view magic,
+    std::span<const uint8_t> table_data,
+    bool encrypt_payload
+) const {
     constexpr size_t header_size = 0x10;
     std::vector<uint8_t> chunk(header_size + table_data.size(), 0);
     std::copy(magic.begin(), magic.end(), chunk.begin());
-    io::write_le<uint32_t>(chunk.data() + 0x04, 0xFFu);
+    io::write_le<uint32_t>(chunk.data() + 0x04, encrypt_payload ? 0u : 0xFFu);
     io::write_le<uint32_t>(chunk.data() + 0x08, static_cast<uint32_t>(table_data.size()));
     io::write_le<uint32_t>(chunk.data() + 0x0C, 0u);
     std::copy(table_data.begin(), table_data.end(), chunk.begin() + header_size);
+    if (encrypt_payload) {
+        crypt_utf_payload_in_place(std::span<uint8_t>(chunk.data() + header_size, table_data.size()));
+    }
     return chunk;
 }
 

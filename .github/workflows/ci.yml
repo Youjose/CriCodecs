@@ -31,6 +31,69 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
+  cli-zip:
+    name: CLI zip (${{ matrix.artifact_name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            generator: Ninja
+            platform: ""
+            artifact_name: linux-x86_64
+          - os: macos-26
+            generator: Ninja
+            platform: ""
+            artifact_name: macos-arm64
+          - os: macos-26-intel
+            generator: Ninja
+            platform: ""
+            artifact_name: macos-x86_64
+          - os: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            platform: "-A x64"
+            artifact_name: windows-x86_64
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja
+
+      - name: Configure CLI
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+
+      - name: Build CLI
+        run: cmake --build build --config Release --target cricodecs_cli --parallel
+
+      - name: Install CLI
+        run: cmake --install build --config Release --prefix stage
+
+      - name: Smoke test CLI (Unix)
+        if: runner.os != 'Windows'
+        run: ./stage/cricodecs --help >/dev/null
+
+      - name: Smoke test CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\stage\cricodecs.exe --help | Out-Null
+
+      - name: Archive CLI zip
+        run: cmake -E tar cf "cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip stage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.artifact_name }}
+          path: cricodecs-cli-${{ matrix.artifact_name }}.zip
+
   source-build:
     name: Source build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -65,7 +128,7 @@ jobs:
         run: cmake --version
 
       - name: Configure core library
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF
 
       - name: Build core library
         run: cmake --build build --config Release --parallel
@@ -83,7 +146,7 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work \
             gcc:16.1 \
-            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel"
+            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel"
 
   pip-install:
     name: Pip install (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -91,7 +154,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-26, macos-26-intel, windows-2025-vs2026]
+        os: [ubuntu-latest, macos-26, macos-26-intel, windows-2025-vs2026]
         python-version: ["3.9", "3.14"]
 
     env:
@@ -109,3 +172,6 @@ jobs:
 
       - name: Import smoke
         run: python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert 'sample_rate=' in text; print(text)"
+
+      - name: CLI entry-point smoke
+        run: cricodecs --help

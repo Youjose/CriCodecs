@@ -145,6 +145,8 @@ public:
 
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> save();
     [[nodiscard]] std::expected<void, std::string> save_to_file(const std::filesystem::path& output_path);
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> decrypt();
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> encrypt();
 
     void add_file(
         const std::filesystem::path& local_path,
@@ -280,8 +282,12 @@ private:
     std::expected<void, std::string> populate_file_entries();
     void normalize_entry_path(CpkEntry& entry, const std::string& cpk_path) const;
     std::expected<std::vector<uint8_t>, std::string> raw_entry_bytes(size_t index) const;
+    std::expected<std::vector<uint8_t>, std::string> save_impl(bool encrypt_utf_chunks);
     std::expected<std::vector<PreparedEntry>, std::string> prepare_entries_for_save();
-    std::expected<std::vector<uint8_t>, std::string> build_archive(std::vector<PreparedEntry>& prepared_entries);
+    std::expected<std::vector<uint8_t>, std::string> build_archive(
+        std::vector<PreparedEntry>& prepared_entries,
+        bool encrypt_utf_chunks = false
+    );
     std::expected<std::vector<uint8_t>, std::string> generate_toc(
         const std::vector<PreparedEntry>& prepared_entries,
         const std::vector<size_t>& toc_order,
@@ -321,7 +327,11 @@ private:
         uint32_t itoc_crc,
         uint32_t gtoc_crc
     ) const;
-    std::vector<uint8_t> wrap_chunk(std::string_view magic, std::span<const uint8_t> table_data) const;
+    std::vector<uint8_t> wrap_chunk(
+        std::string_view magic,
+        std::span<const uint8_t> table_data,
+        bool encrypt_payload = false
+    ) const;
 
     static std::string default_tver(CpkPreset preset);
     static int compare_archive_paths(std::string_view lhs, std::string_view rhs);

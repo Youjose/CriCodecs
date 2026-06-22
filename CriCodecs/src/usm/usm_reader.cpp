@@ -600,6 +600,69 @@ std::expected<std::vector<uint8_t>, std::string> UsmReader::extract_stream(uint3
     return output;
 }
 
+std::expected<std::vector<uint8_t>, std::string> UsmReader::decrypt() const {
+    return transform_container(false);
+}
+
+std::expected<std::vector<uint8_t>, std::string> UsmReader::encrypt() const {
+    return transform_container(true);
+}
+
+std::expected<std::vector<uint8_t>, std::string> UsmReader::transform_container(bool encrypt) const {
+    if (!m_crypto.has_key()) {
+        return std::unexpected("USM " + std::string(encrypt ? "encrypt" : "decrypt") + " requires a key");
+    }
+
+    const auto audio_codecs = collect_audio_codecs();
+
+    std::vector<uint8_t> output;
+    if (m_reader.is_open()) {
+        output.reserve(m_reader.size());
+    }
+
+    for (const auto& chunk : m_chunks) {
+        const bool should_transform =
+            chunk.payload_type() == UsmPayloadType::Stream &&
+            ((chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFV) ||
+              chunk.header.magic == static_cast<uint32_t>(UsmChunkType::ALP)) ||
+             (chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA) &&
+              [&]() {
+                  const auto codec = audio_codecs.find(chunk.header.channel_no);
+                  return codec != audio_codecs.end() &&
+                      codec->second != static_cast<uint8_t>(UsmAudioCodec::Hca);
+              }()));
+
+        if (!should_transform) {
+            const auto packed = chunk.pack();
+            output.insert(output.end(), packed.begin(), packed.end());
+            continue;
+        }
+
+        std::vector<uint8_t> padded_payload(chunk.payload.begin(), chunk.payload.end());
+        padded_payload.insert(padded_payload.end(), chunk.padding.begin(), chunk.padding.end());
+
+        auto transformed =
+            chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA)
+                ? (encrypt ? m_crypto.encrypt_audio(padded_payload) : m_crypto.decrypt_audio(padded_payload))
+                : (encrypt ? m_crypto.encrypt_video(padded_payload) : m_crypto.decrypt_video(padded_payload));
+
+        UsmChunk rewritten = chunk;
+        rewritten.payload = std::vector<uint8_t>(
+            transformed.begin(),
+            transformed.begin() + static_cast<std::ptrdiff_t>(chunk.payload.size())
+        );
+        rewritten.padding = std::vector<uint8_t>(
+            transformed.begin() + static_cast<std::ptrdiff_t>(chunk.payload.size()),
+            transformed.end()
+        );
+
+        const auto packed = rewritten.pack();
+        output.insert(output.end(), packed.begin(), packed.end());
+    }
+
+    return output;
+}
+
 std::expected<void, std::string> UsmReader::extract_file(
     uint32_t index,
     const std::filesystem::path& output_path

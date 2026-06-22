@@ -1,10 +1,12 @@
 #include "binding_helpers.hpp"
 
+#include "../../CriCodecs/src/cli/cli.hpp"
+
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,128 +34,6 @@ struct PreparedLoadSource {
     bool is_path = false;
     uintmax_t path_size = 0;
 };
-
-[[nodiscard]] bool starts_with(std::span<const uint8_t> data, std::string_view magic) noexcept {
-    if (data.size() < magic.size()) {
-        return false;
-    }
-    return std::equal(magic.begin(), magic.end(), data.begin(), [](char lhs, uint8_t rhs) {
-        return static_cast<uint8_t>(lhs) == rhs;
-    });
-}
-
-[[nodiscard]] bool looks_like_acx(std::span<const uint8_t> prefix) noexcept {
-    if (prefix.size() < 8 || prefix[0] != 0 || prefix[1] != 0 || prefix[2] != 0 || prefix[3] != 0) {
-        return false;
-    }
-    const uint32_t entry_count =
-        (static_cast<uint32_t>(prefix[4]) << 24u) |
-        (static_cast<uint32_t>(prefix[5]) << 16u) |
-        (static_cast<uint32_t>(prefix[6]) << 8u) |
-        static_cast<uint32_t>(prefix[7]);
-    return entry_count > 0 && entry_count <= 0x10000u;
-}
-
-[[nodiscard]] int error_suspicion(std::string_view message) {
-    std::string lowered(message);
-    std::ranges::transform(lowered, lowered.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-
-    const auto contains = [&](std::string_view text) {
-        return lowered.find(text) != std::string::npos;
-    };
-    const auto contains_any = [&](std::initializer_list<std::string_view> texts) {
-        return std::ranges::any_of(texts, contains);
-    };
-
-    if (contains("invalid ") && contains_any({"magic", "signature", "header marker"})) {
-        return 0;
-    }
-
-    if (contains_any({
-            "too small",
-            "too short",
-            "invalid magic",
-            "invalid signature",
-            "invalid riff/wave header",
-            "expected utf table name",
-            "expected root table name",
-            "expected sound_element table name",
-            "expected table name",
-            "invalid table name",
-            "unexpected chunk magic",
-            "expected chunk magic",
-            "chunk declares an invalid size",
-            "chunk declares an invalid payload offset",
-            "not a valid utf",
-            "invalid utf",
-            "missing adx signature",
-            "not an acb header",
-            "expected aax",
-            "expected acb",
-            "does not start with",
-            "could not find mpeg pack header",
-            "source is not",
-        })) {
-        return 0;
-    }
-
-    const bool high_action = contains_any({
-        "parse failed:",
-        "frame read failed:",
-        "decompress failed:",
-        "decrypt failed:",
-        "read failed:",
-        "decode failed:",
-        "demux failed:",
-    });
-    const bool deep_parse = contains_any({
-        "chunk",
-        "payload",
-        "section",
-        "subtable",
-        "waveformtable",
-        "table has no columns",
-        "missing or invalid",
-        "out of bounds",
-        "out of range",
-        "truncated",
-        "extends past",
-        "checksum",
-        "malformed",
-        "unexpected end",
-        "unsupported header",
-        "unsupported version",
-        "unsupported filesystem",
-        "unsupported logical block",
-        "vbr",
-        "fmt",
-        "comp",
-        "dec",
-        "loop",
-        "cipher",
-    });
-    if (high_action && deep_parse) {
-        return 3;
-    }
-    if (contains("load failed:") && contains("could not parse") && deep_parse) {
-        return 3;
-    }
-    if (contains_any({
-            "index is out of range",
-            "file is not open",
-            "could not open input",
-            "could not open memory buffer",
-            "could not read input file",
-        })) {
-        return 0;
-    }
-    if (deep_parse || contains("could not inspect") || contains("could not map")) {
-        return 2;
-    }
-    return 1;
-}
 
 [[nodiscard]] PreparedLoadSource prepare_load_source(const nb::handle& source) {
     PreparedLoadSource prepared;
@@ -217,10 +97,10 @@ struct PreparedLoadSource {
 }
 
 [[nodiscard]] std::vector<Candidate> load_order(
-    const nb::module_& module,
     const nb::module_& wav,
     const nb::module_& hca,
     const nb::module_& adx,
+    const nb::module_& aix,
     const nb::module_& aax,
     const nb::module_& acb,
     const nb::module_& utf,
@@ -234,11 +114,11 @@ struct PreparedLoadSource {
     const nb::module_& csb,
     const nb::module_& cvm)
 {
-    (void) module;
     return {
         {"wav", nb::borrow<nb::object>(wav)},
         {"hca", nb::borrow<nb::object>(hca)},
         {"adx", nb::borrow<nb::object>(adx)},
+        {"aix", nb::borrow<nb::object>(aix)},
         {"aax", nb::borrow<nb::object>(aax)},
         {"acb", nb::borrow<nb::object>(acb)},
         {"utf", nb::borrow<nb::object>(utf)},
@@ -263,59 +143,21 @@ struct PreparedLoadSource {
         return it == order.end() ? Candidate{} : *it;
     };
 
-    if (prefix.size() >= 12 && starts_with(prefix, "RIFF") && prefix[8] == 'W' && prefix[9] == 'A' && prefix[10] == 'V' && prefix[11] == 'E') {
-        return {find("wav")};
+    std::vector<Candidate> candidates;
+    for (const auto format : cricodecs::cli::sniff_format_order(prefix, true)) {
+        const auto candidate = find(cricodecs::cli::format_key(format));
+        if (!candidate.name.empty()) {
+            candidates.push_back(candidate);
+        }
     }
-    if (starts_with(prefix, "HCA\0") || starts_with(prefix, std::string_view("\xC8\xC3\xC1\0", 4))) {
-        return {find("hca")};
-    }
-    if (!prefix.empty() && prefix[0] == 0x80) {
-        return {find("adx")};
-    }
-    if (starts_with(prefix, "AIXF")) {
-        return {find("aix")};
-    }
-    if (starts_with(prefix, "@UTF")) {
-        return {find("aax"), find("acb"), find("utf"), find("csb")};
-    }
-    if (starts_with(prefix, "AFS\0")) {
-        return {find("afs")};
-    }
-    if (starts_with(prefix, "AFS2")) {
-        return {find("awb")};
-    }
-    if (starts_with(prefix, "CPK ")) {
-        return {find("cpk")};
-    }
-    if (starts_with(prefix, "CRID") || starts_with(prefix, "SFSH")) {
-        return {find("usm")};
-    }
-    if (starts_with(prefix, "CVMH")) {
-        return {find("cvm")};
-    }
-    if (starts_with(prefix, std::string_view("\x00\x00\x01\xBA", 4))) {
-        return {find("sfd")};
-    }
-    if (
-        starts_with(prefix, "DKIF") ||
-        starts_with(prefix, std::string_view("\x00\x00\x01\xB3", 4)) ||
-        starts_with(prefix, std::string_view("\x00\x00\x00\x01\x09", 5)) ||
-        starts_with(prefix, std::string_view("\x00\x00\x00\x01\x67", 5)) ||
-        starts_with(prefix, std::string_view("\x00\x00\x01\x09", 4)) ||
-        starts_with(prefix, std::string_view("\x00\x00\x01\x67", 4))
-    ) {
-        return {find("video")};
-    }
-    if (looks_like_acx(prefix)) {
-        return {find("acx")};
-    }
-    return {};
+    return candidates;
 }
 
 [[nodiscard]] nb::object loaded_types_tuple(
     const nb::module_& wav,
     const nb::module_& hca,
     const nb::module_& adx,
+    const nb::module_& aix,
     const nb::module_& aax,
     const nb::module_& acb,
     const nb::module_& utf,
@@ -333,6 +175,7 @@ struct PreparedLoadSource {
         wav.attr("Wav"),
         hca.attr("Hca"),
         adx.attr("Adx"),
+        aix.attr("Aix"),
         aax.attr("Aax"),
         acb.attr("Acb"),
         utf.attr("Utf"),
@@ -401,7 +244,7 @@ struct PreparedLoadSource {
             failures.push_back(Failure{
                 std::string(candidate.name),
                 message,
-                error_suspicion(message),
+                cricodecs::cli::error_suspicion(message),
             });
         }
     }
@@ -419,6 +262,37 @@ struct PreparedLoadSource {
         message += best->message;
     }
     raise_value_error(message);
+}
+
+[[nodiscard]] std::vector<std::string> python_cli_args() {
+    PyObject* argv = PySys_GetObject("argv");
+    if (argv == nullptr) {
+        return {};
+    }
+
+    const Py_ssize_t count = PySequence_Size(argv);
+    if (count < 0) {
+        throw nb::python_error();
+    }
+
+    std::vector<std::string> args;
+    args.reserve(count > 0 ? static_cast<size_t>(count - 1) : 0u);
+    for (Py_ssize_t index = 1; index < count; ++index) {
+        nb::object item = nb::steal<nb::object>(PySequence_GetItem(argv, index));
+        if (!item.is_valid()) {
+            throw nb::python_error();
+        }
+        if (!PyUnicode_Check(item.ptr())) {
+            raise_type_error("sys.argv entries must be strings");
+        }
+        Py_ssize_t size = 0;
+        const char* text = PyUnicode_AsUTF8AndSize(item.ptr(), &size);
+        if (text == nullptr) {
+            throw nb::python_error();
+        }
+        args.emplace_back(text, static_cast<size_t>(size));
+    }
+    return args;
 }
 
 } // namespace
@@ -479,10 +353,10 @@ NB_MODULE(cricodecs, module) {
     cricodecs::python::bind_video_module(video_module);
 
     auto order = cricodecs::python::load_order(
-        module,
         wav_module,
         hca_module,
         adx_module,
+        aix_module,
         aax_module,
         acb_module,
         utf_module,
@@ -500,6 +374,7 @@ NB_MODULE(cricodecs, module) {
         wav_module,
         hca_module,
         adx_module,
+        aix_module,
         aax_module,
         acb_module,
         utf_module,
@@ -526,8 +401,23 @@ NB_MODULE(cricodecs, module) {
     module.def(
         "_error_suspicion",
         [](const std::string& message) {
-            return cricodecs::python::error_suspicion(message);
+            return cricodecs::cli::error_suspicion(message);
         },
         nb::arg("message")
+    );
+
+    module.def(
+        "_run_cli",
+        [](const std::vector<std::string>& argv) {
+            return cricodecs::cli::run(argv, std::cout, std::cerr);
+        },
+        nb::arg("argv")
+    );
+
+    module.def(
+        "_main",
+        [] {
+            return cricodecs::cli::run(cricodecs::python::python_cli_args(), std::cout, std::cerr);
+        }
     );
 }

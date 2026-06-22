@@ -1,249 +1,108 @@
-# CriCodecs
+# Python Bindings
 
-CriCodecs is a modern C++23 implementation of CRI codec and container formats
-with Python bindings built on nanobind.
+This subtree hosts the experimental `cricodecs` Python package.
 
-The public branch ships the core C++ source tree and the Python binding package.
+## Current binding rules
 
-## Installation
+- `load(source)` is the standard entry point for inspectable objects.
+- `source` accepts bytes-like values, path-like values, and binary file-like objects.
+- `cricodecs.load(source)` performs ordered loader probing and returns the
+  first supported loaded object.
+- Public module-level functions are reserved for whole-format one-shot operations.
+- Detailed inspection lives on loaded objects.
+- Single-entry extraction lives on loaded objects as `extract_file(...)` when the format has addressable entries.
+- `extract(source, ...)` means whole-format extraction for the module in question.
+- HCA header inspection is object-based through `cricodecs.hca.load(source).header()`.
 
-### Requirements
+## Public package shape
 
-- CMake 4.2 or newer
-- A recent C++23 compiler
-  - GCC 16.1 or newer on Linux
-  - Visual Studio 2026 / MSVC v145 or newer on Windows
-  - A current Apple Clang/Xcode toolchain on macOS
-- Python 3.9 or newer for Python bindings
+- `cricodecs.adx`
+  - `load`, `decode`, `encode`
+  - `Adx`, `AdxInfo`, `AdxHeader`, `AdxLoop`, `AdxEncodeConfig`
+- `cricodecs.aax`
+  - `load`, `extract`, `build`
+  - `Aax`, `AaxInfo`, `AaxSegmentInfo`, `AaxBuildEntry`
+- `cricodecs.aix`
+  - `load`, `extract`
+  - `Aix`, `AixInfo`, `AixSegment`, `AixLayer`, `AixLoopInfo`
+- `cricodecs.acx`
+  - `load`, `extract`, `build`
+  - `Acx`, `AcxInfo`, `AcxEntry`, `AcxEntryType`
+- `cricodecs.hca`
+  - `load`, `decode`, `encode`, `encrypt`, `decrypt`
+  - `Hca`, `HcaHeader`, `HcaEncodeConfig`, `HcaQuality`
+- `cricodecs.utf`
+  - `load`
+  - `Utf`, `UtfInfo`, `Column`, `ColumnFlag`, `ColumnType`, `DataRef`, `Guid`
+- `cricodecs.acb`
+  - `load`
+  - `Acb`, `AcbInfo`, `AcbWaveformInfo`
+- `cricodecs.afs`
+  - `load`, `extract`
+  - `Afs`, `AfsInfo`, `AfsEntry`, `AfsEntryType`, `AfsDirectoryTimestamp`
+- `cricodecs.awb`
+  - `load`, `extract`
+  - `Awb`, `AwbInfo`, `AwbEntry`, `AwbEntryInfo`, `AacEncryptionState`
+- `cricodecs.cpk`
+  - `load`, `extract`
+  - `Cpk`, `CpkInfo`, `CpkFileInfo`, `CpkEntry`, `CpkMode`, `CpkPreset`
+- `cricodecs.csb`
+  - `load`, `build`, `extract`
+  - `Csb`, `CsbInfo`, `CsbSection`, `CsbStreamInfo`, `CsbBuildEntry`
+- `cricodecs.cvm`
+  - `load`, `extract`, `build`, `export_script`, `load_script`, `parse_script`
+  - `Cvm`, `CvmInfo`, `CvmHeader`, `CvmZoneLayout`, `CvmPrimaryVolume`, `CvmEntry`, `CvmDirectoryEntry`, `CvmDirectoryRecord`, `CvmBuildConfig`, `CvmBuildFile`, `CvmBuildScript`, `CvmBuildScriptInfo`
+- `cricodecs.sfd`
+  - `load`, `mux`, `demux`, `extract`
+  - `Sfd`, `SfdInfo`, `SfdMuxConfig`, `SfdStream`, `SfdHeaderSummary`, `SfdElementRecord`, `SfdChunkSpan`, `SfdVideoSequenceHeader`, `SfdStreamType`, `SfdAudioType`, `SfdVideoType`, `SfdHeaderVariant`, `SfdBuildProfile`
+- `cricodecs.usm`
+  - `load`, `demux`, `extract`
+  - `Usm`, `UsmInfo`, `UsmStreamInfo`, `UsmChunkType`
+- `cricodecs.wav`
+  - `load`, `build`
+  - `Wav`, `WavInfo`, `WavFormat`, `SamplerChunk`, `SampleLoop`, `CuePoint`, `GUID`
 
-Use a fresh build directory for each generator and compiler. If you change
-compilers, generators, Python versions, or CMake versions, delete the old build
-directory first.
+## Deferred surface
 
-### Python From Source
+- `cricodecs.ahx` is intentionally not exposed yet.
+- The current native AHX API is config-driven encode/decode helpers rather than a self-describing loadable object, so binding it under the same package rules would require inventing a different user model.
+- `cricodecs.sfd` mux support is intentionally limited to the current fixed-pack builder surface; broader authoring behavior is still deferred.
+- `cricodecs.cvm` now exposes the mutable loaded `Cvm` object plus the current bounded Xbox-subset `.cvs` helpers and scrambled-image key flow, while `CvmVolumeSet` remains an advanced runtime helper and broader non-Xbox script/runtime behavior is still deferred.
 
-From the repository root:
+## CLI
 
-```sh
-python -m pip install .
+The shared CLI implementation lives in the native library and is exposed in two ways:
+
+- native release builds produce a standalone `cricodecs` executable
+- `pip install cricodecs` installs a `cricodecs` console script backed by the same native CLI implementation
+
+Default CLI behavior is input-driven:
+
+- `cricodecs <input>` extracts archive/container formats to a sibling directory
+- `cricodecs <input>` decodes `ADX`, `AHX`, `HCA`, and `AAX` to a sibling `.wav`
+- `UTF` defaults to metadata output only
+
+Focused flags:
+
+- `-e`, `--extract` explicitly requests the default write action
+- `-m` prints metadata
+- `-m --json` emits metadata as JSON
+- `-f`, `--force-type` forces the parser type when detection needs help
+- `-o`, `--output` overrides the default output path
+
+## Build and verification
+
+For normal local installation from the repo root:
+
+```bash
+uv pip install .
 ```
 
-For verbose build logs:
+Focused build-tree checks remain:
 
-```sh
-python -m pip install -v .
+```bash
+cmake -S Tests -B Tests/.build -G Ninja
+cmake --build Tests/.build --target AdxTests AaxTests AixTests AcxTests CsbTests CvmRofsTests SfdTests PcmTests
+cmake -S . -B .build-python-check -G Ninja -DCRICODECS_BUILD_TESTS=ON -DCRICODECS_BUILD_PYTHON=ON
+cmake --build .build-python-check --target cricodecs_python_contract_check cricodecs_python_native_smoke
 ```
-
-For local development with an already prepared build environment:
-
-```sh
-python -m pip install --no-build-isolation -ve .
-```
-
-### Python From A Wheel
-
-Download a wheel matching your Python version, operating system, and CPU
-architecture, then install it directly:
-
-```sh
-python -m pip install cricodecs-0.0.1b0-*.whl
-```
-
-### C++ Core Library
-
-Build only the C++ library:
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF
-cmake --build build --parallel
-```
-
-Build the C++ library and Python bindings with CMake:
-
-```sh
-cmake -S . -B build-python -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=ON
-cmake --build build-python --parallel
-```
-
-On Windows with Visual Studio 2026:
-
-```sh
-cmake -S . -B build-vs -G "Visual Studio 18 2026" -A x64 -DCRICODECS_BUILD_PYTHON=OFF
-cmake --build build-vs --config Release --parallel
-```
-
-If the Visual Studio generator is missing, update CMake first and run
-`cmake -G` to list the generators available on your machine.
-
-## Python Usage
-
-Import the package as `cricodecs`. The top-level `cricodecs.load()` helper
-detects supported formats from a path or bytes and returns the matching object.
-Individual modules also expose format-specific helpers such as `load()`,
-`decode()`, `encode()`, `extract()`, `demux()`, or `save_bytes()`.
-
-### Top-Level Load
-
-```python
-import cricodecs
-
-obj = cricodecs.load("input.cpk")
-print(type(obj))
-print(repr(obj))
-```
-
-### ADX Decode And Encode
-
-```python
-from pathlib import Path
-
-from cricodecs import adx
-
-wav_bytes = adx.decode("input.adx")
-Path("output.wav").write_bytes(wav_bytes)
-
-encoded = adx.encode(Path("source.wav").read_bytes())
-Path("output.adx").write_bytes(encoded)
-```
-
-### HCA Decode, Encode, Encrypt
-
-```python
-from pathlib import Path
-
-from cricodecs import hca
-
-wav_bytes = hca.decode("input.hca", keycode=0xCF222F1FE0748978)
-Path("decoded.wav").write_bytes(wav_bytes)
-
-config = hca.HcaEncodeConfig()
-config.sample_rate = 48000
-config.channel_count = 2
-config.quality = hca.HcaQuality.HIGH
-
-hca_bytes = hca.encode(Path("source.wav").read_bytes(), config)
-Path("encoded.hca").write_bytes(hca_bytes)
-
-encrypted = hca.encrypt(hca_bytes, cipher_type=56, keycode=0xCF222F1FE0748978)
-Path("encrypted.hca").write_bytes(encrypted)
-```
-
-### CPK Inspect, Extract, Build
-
-```python
-from pathlib import Path
-
-from cricodecs import cpk
-
-archive = cpk.load("input.cpk")
-print(archive.info())
-archive.extract("input_extracted")
-
-new_archive = cpk.create(cpk.CpkPreset.FILENAME)
-new_archive.add_file("data/voice.adx", "voice/voice.adx")
-new_archive.add_bytes(b"hello", "text/readme.txt")
-Path("output.cpk").write_bytes(new_archive.save_bytes())
-```
-
-### ACB/AWB And USM
-
-```python
-from cricodecs import acb, usm
-
-cue_sheet = acb.load("sound.acb")
-print(cue_sheet.info())
-cue_sheet.extract("sound")
-
-movie = usm.load("movie.usm")
-print(movie.info())
-movie.extract("movie_streams")
-```
-
-Objects and small data structs implement useful `repr()` output, so interactive
-inspection is intended to be practical:
-
-```python
-from cricodecs import adx
-
-print(repr(adx.AdxEncodeConfig()))
-```
-
-## C++ Usage
-
-The current public CMake target is:
-
-```cmake
-CriCodecs
-```
-
-The source tree is organized by CRI format under `CriCodecs/src`. Public APIs
-use value types and `std::expected<T, std::string>` for recoverable failures.
-
-### ADX
-
-```cpp
-#include <filesystem>
-#include <fstream>
-#include <vector>
-
-#include "adx_codec.hpp"
-
-int main() {
-    auto adx = cricodecs::adx::Adx::load("input.adx");
-    if (!adx) {
-        return 1;
-    }
-
-    auto decoded = adx->decode();
-    if (!decoded) {
-        return 1;
-    }
-
-    const auto& pcm = decoded->pcm_data;
-    (void)pcm;
-}
-```
-
-### HCA
-
-```cpp
-#include <cstdint>
-#include <vector>
-
-#include "hca_codec.hpp"
-
-std::vector<int16_t> decode_hca(std::span<const uint8_t> bytes) {
-    auto decoded = cricodecs::hca::decode(bytes, 0xCF222F1FE0748978ULL);
-    if (!decoded) {
-        return {};
-    }
-    return std::move(*decoded);
-}
-```
-
-### CPK
-
-```cpp
-#include "cpk_container.hpp"
-
-int main() {
-    auto archive = cricodecs::cpk::Cpk::load("input.cpk");
-    if (!archive) {
-        return 1;
-    }
-
-    return archive->files().empty() ? 1 : 0;
-}
-```
-
-## Credits
-
-CriCodecs builds on public knowledge and prior open-source work around CRI
-formats. Many thanks and credits to:
-
-- [vgmstream](https://github.com/vgmstream/vgmstream) for HCA and CRI audio
-  research.
-- [VGAudio](https://github.com/Thealexbarney/VGAudio) for ADX and HCA codec
-  behavior references.
-- [bnnm](https://github.com/bnnm) for CRI audio-format research and tooling.
-- [Nyagamon](https://github.com/Nyagamon) for CRI format research.

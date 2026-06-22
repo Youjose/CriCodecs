@@ -292,7 +292,9 @@ using io::append_be;
             }
 
             ahx::AhxKey ahx_key = config.ahx_key;
-            if (ahx_key.empty() && !config.key_string.empty()) {
+            if (ahx_key.empty() && config.encryption_type == 0x09) {
+                key9_derive(config.key64, config.subkey, ahx_key.start, ahx_key.mult, ahx_key.add);
+            } else if (ahx_key.empty() && !config.key_string.empty()) {
                 key8_derive(config.key_string, ahx_key.start, ahx_key.mult, ahx_key.add);
             }
 
@@ -319,10 +321,7 @@ using io::append_be;
         if (config.bit_depth != ADX_BIT_DEPTH) {
             return std::unexpected(AdxError("Unsupported ADX encode configuration: ADX samples must be 4-bit nibbles"));
         }
-        if (config.encryption_type == 9) {
-            return std::unexpected(AdxError("ADX type-9 encryption encoding is not implemented"));
-        }
-        if (config.encryption_type != 0 && config.encryption_type != 8) {
+        if (config.encryption_type != 0 && config.encryption_type != 8 && config.encryption_type != 9) {
             return std::unexpected(AdxError("Unsupported ADX encryption"));
         }
 
@@ -461,9 +460,13 @@ using io::append_be;
         }
 
         AdxKeyState current_key_state;
-        bool encrypted = (config.encryption_type == 8);
+        bool encrypted = (config.encryption_type == 8 || config.encryption_type == 9);
         if (encrypted) {
-            key8_derive(config.key_string, current_key_state.xor_value, current_key_state.mult, current_key_state.add);
+            if (config.encryption_type == 9) {
+                key9_derive(config.key64, config.subkey, current_key_state.xor_value, current_key_state.mult, current_key_state.add);
+            } else {
+                key8_derive(config.key_string, current_key_state.xor_value, current_key_state.mult, current_key_state.add);
+            }
         }
 
         int32_t coeffs[2];
