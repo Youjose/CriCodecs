@@ -225,10 +225,12 @@ jobs:
             bash -lc '
               set -euo pipefail
               apt-get update
-              apt-get install -y --no-install-recommends python3 python3-pip
-              python3 -m pip install --break-system-packages --upgrade pip
+              apt-get install -y --no-install-recommends python3 python3-venv
+              python3 -m venv /tmp/cricodecs-venv
+              . /tmp/cricodecs-venv/bin/activate
+              python -m pip install --upgrade pip
               c++ --version
-              python3 -m pip install --break-system-packages --verbose .
-              python3 -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert '\''sample_rate='\'' in text; print(text)"
+              python -m pip install --verbose .
+              python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert '\''sample_rate='\'' in text; print(text)"
               cricodecs --help
             '
