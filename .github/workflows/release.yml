@@ -868,10 +868,13 @@ jobs:
           $targets = @(
               (Join-Path $env:SLIM_ROOT 'CriStudio.exe'),
               (Join-Path $env:PORTABLE_ROOT 'CriStudio.exe'),
-              (Join-Path $env:PORTABLE_ROOT '_internal/CriStudio.exe'),
+              (Join-Path $env:PORTABLE_ROOT '_internal/bin/CriStudio.exe'),
               (Join-Path $env:PORTABLE_ROOT '_internal/ffmpeg.exe')
           )
           foreach ($target in $targets) {
+              if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+                  throw "Missing staged executable: $target"
+              }
               & $strip --strip-all $target
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -892,10 +895,10 @@ jobs:
           if sys.platform == "win32":
               assert children == {"CriStudio.exe", "_internal"}, children
               internal = root / "_internal"
-              assert (internal / "CriStudio.exe").is_file()
+              assert (internal / "bin" / "CriStudio.exe").is_file()
               assert (internal / "ffmpeg.exe").is_file()
-              assert (internal / "Qt6Core.dll").is_file()
-              assert (internal / "share" / "qt6" / "plugins" / "platforms" / "qwindows.dll").is_file()
+              assert (internal / "bin" / "Qt6Core.dll").is_file()
+              assert (internal / "plugins" / "platforms" / "qwindows.dll").is_file()
               license_dir = internal / "licenses"
           elif sys.platform == "darwin":
               assert children == {"CriStudio.app"}, children
@@ -928,7 +931,7 @@ jobs:
               Where-Object { $_.ParentProcessId -eq $launcher.Id -and $_.Name -eq 'CriStudio.exe' } |
               Select-Object -First 1
           if ($null -eq $child) {
-              throw 'Portable launcher did not start _internal\\CriStudio.exe'
+              throw 'Portable launcher did not start _internal\\bin\\CriStudio.exe'
           }
           $window = $null
           for ($attempt = 0; $attempt -lt 30; ++$attempt) {
