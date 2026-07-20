@@ -668,13 +668,32 @@ jobs:
           sudo apt-get install --yes software-properties-common
           sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install --yes gcc-15 g++-15 libgstreamer-plugins-bad1.0-0
+          sudo apt-get install --yes \
+            gcc-15 \
+            g++-15 \
+            libegl1 \
+            libgl1 \
+            libglib2.0-0t64 \
+            libgstreamer1.0-0 \
+            libgstreamer-gl1.0-0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 \
+            libgstreamer-plugins-good1.0-0 \
+            libpulse0
           echo 'CC=/usr/bin/gcc-15' >> "$GITHUB_ENV"
           echo 'CXX=/usr/bin/g++-15' >> "$GITHUB_ENV"
           /usr/bin/g++-15 --version
           printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
             | /usr/bin/g++-15 -std=c++23 -O3 -flto -x c++ - -o "$RUNNER_TEMP/flat-map-smoke"
           "$RUNNER_TEMP/flat-map-smoke"
+          gstreamer_plugin="${QT_ROOT_DIR}/plugins/multimedia/libgstreamermediaplugin.so"
+          if [[ -f "$gstreamer_plugin" ]]; then
+            missing="$(ldd "$gstreamer_plugin" | awk '/not found/ { print }')"
+            if [[ -n "$missing" ]]; then
+              printf 'Unresolved Qt GStreamer dependencies:\n%s\n' "$missing" >&2
+              exit 1
+            fi
+          fi
 
       - name: Configure CriStudio
         run: >-
