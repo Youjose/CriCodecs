@@ -91,13 +91,6 @@ install(
     LIBRARY DESTINATION cricodecs
     RUNTIME DESTINATION cricodecs
 )
-if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
-    install(
-        FILES $<TARGET_RUNTIME_DLLS:cricodecs>
-        DESTINATION cricodecs
-        OPTIONAL
-    )
-endif()
 if(MINGW)
     get_filename_component(cricodecs_mingw_runtime_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
     install(

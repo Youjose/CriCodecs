@@ -815,7 +815,8 @@ std::expected<KeyRecoveryResult, std::string> recover_key(const UsmReader& sourc
     const auto weights = make_weights(evidence);
     auto candidates = initial_candidates(evidence, weights);
     uint8_t known = 0x06;
-    for (const uint8_t seed_index : {0u, 3u, 4u, 6u, 5u}) {
+    constexpr std::array<uint8_t, 5> seed_indices{0, 3, 4, 6, 5};
+    for (const uint8_t seed_index : seed_indices) {
         extend_candidates(candidates, evidence, weights, seed_index, known);
         known = static_cast<uint8_t>(known | (1u << seed_index));
     }
