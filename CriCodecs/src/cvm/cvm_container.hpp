@@ -4,9 +4,10 @@
  * @brief CVM / ROFS volume reader for classic CRI disc images.
  *
  * This pass is cross-checked against official CRI ROFS samples and tool
- * evidence. It supports unscrambled images and explicit-key scrambled TOC
- * images for the reviewed ROFS/CVM shape, where the payload is a standard
- * ISO9660 tree embedded after the `CVMH` / `ZONE` headers.
+ * evidence. It supports unscrambled images and transparently recovers the
+ * effective key for scrambled TOC images in the reviewed ROFS/CVM shape,
+ * where the payload is a standard ISO9660 tree embedded after the `CVMH` /
+ * `ZONE` headers.
  */
 
 #include <array>
@@ -19,6 +20,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "cvm_key_recovery.hpp"
 
 namespace cricodecs::cvm {
 
@@ -95,6 +98,18 @@ public:
     [[nodiscard]] static std::expected<CvmContainer, std::string> load(
         const std::filesystem::path& path,
         std::string_view key = {}
+    );
+    [[nodiscard]] static std::expected<CvmContainer, std::string> load(
+        std::span<const uint8_t> data,
+        const CvmKey& key
+    );
+    [[nodiscard]] static std::expected<CvmContainer, std::string> load(
+        std::vector<uint8_t>&& data,
+        const CvmKey& key
+    );
+    [[nodiscard]] static std::expected<CvmContainer, std::string> load(
+        const std::filesystem::path& path,
+        const CvmKey& key
     );
 
     [[nodiscard]] const std::filesystem::path& source_path() const noexcept { return m_source_path; }
@@ -240,7 +255,7 @@ private:
     bool m_contents_accessible = true;
     bool m_layout_is_current = true;
 
-    [[nodiscard]] std::expected<void, std::string> parse(std::string_view key);
+    [[nodiscard]] std::expected<void, std::string> parse(std::optional<CvmKey> key);
     [[nodiscard]] std::expected<uint32_t, std::string> index_of(const std::filesystem::path& archive_path) const;
     [[nodiscard]] std::expected<void, std::string> ensure_contents_accessible() const;
     [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> file_data_from_index(uint32_t index) const;

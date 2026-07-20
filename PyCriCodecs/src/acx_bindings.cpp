@@ -111,10 +111,27 @@ void bind_acx_module(nb::module_& module) {
             "Load an ACX archive from a buffer-backed Python object."
         )
         .def_prop_ro("source_path", [](const cricodecs::acx::AcxContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("entry_count", [](const cricodecs::acx::AcxContainer& self) {
             return self.entry_count();
+        })
+        .def_prop_ro("table_size", [](const cricodecs::acx::AcxContainer& self) {
+            return self.table_size();
+        })
+        .def_prop_ro("first_payload_offset", [](const cricodecs::acx::AcxContainer& self) -> nb::object {
+            const auto offset = self.first_payload_offset();
+            if (!offset.has_value()) {
+                return nb::none();
+            }
+            return nb::cast(*offset);
+        })
+        .def_prop_ro("payload_end_offset", [](const cricodecs::acx::AcxContainer& self) -> nb::object {
+            const auto offset = self.payload_end_offset();
+            if (!offset.has_value()) {
+                return nb::none();
+            }
+            return nb::cast(*offset);
         })
         .def_prop_ro("entries", [](const cricodecs::acx::AcxContainer& self) {
             nb::list entries;
@@ -127,6 +144,9 @@ void bind_acx_module(nb::module_& module) {
             nb::object info = simple_namespace();
             info.attr("source_path") = self.source_path().empty() ? nb::none() : nb::cast(self.source_path().generic_string());
             info.attr("entry_count") = self.entry_count();
+            info.attr("table_size") = self.table_size();
+            info.attr("first_payload_offset") = self.first_payload_offset().has_value() ? nb::cast(*self.first_payload_offset()) : nb::none();
+            info.attr("payload_end_offset") = self.payload_end_offset().has_value() ? nb::cast(*self.payload_end_offset()) : nb::none();
             nb::list entries;
             for (const auto& entry : self.entries()) {
                 entries.append(entry);
@@ -141,6 +161,7 @@ void bind_acx_module(nb::module_& module) {
             }
             return entries[index];
         }, nb::arg("index"))
+        .def("type_count", &cricodecs::acx::AcxContainer::type_count, nb::arg("type"))
         .def(
             "file_bytes",
             [](const cricodecs::acx::AcxContainer& self, uint32_t index) {
@@ -206,11 +227,19 @@ void bind_acx_module(nb::module_& module) {
                 unwrap_expected(self.remove_file(index));
             },
             nb::arg("index")
+        )
+        .def(
+            "move_file",
+            [](cricodecs::acx::AcxContainer& self, uint32_t from_index, uint32_t to_index) {
+                unwrap_expected(self.move_file(from_index, to_index));
+            },
+            nb::arg("from_index"),
+            nb::arg("to_index")
         );
 
     install_attr_repr(module, "AcxEntry", {"index", "offset", "size", "type"});
     install_attr_repr(module, "AcxBuildEntry", {"source_path", "data"});
-    install_attr_repr(module, "Acx", {"source_path", "entry_count", "entries"});
+    install_attr_repr(module, "Acx", {"source_path", "entry_count", "table_size", "first_payload_offset", "payload_end_offset", "entries"});
 
     module.def(
         "build",

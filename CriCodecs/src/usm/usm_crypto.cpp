@@ -22,22 +22,21 @@ constexpr size_t video_first_mask_words = 32;
 constexpr size_t mask_size = 0x20;
 constexpr size_t word_size = 8;
 
-std::vector<uint8_t> mask_video_common(
-    std::span<const uint8_t> data,
+void mask_video_common(
+    std::span<uint8_t> data,
     std::span<const uint8_t> mask1_bytes,
     std::span<const uint8_t> mask2_bytes,
     bool inverse
 ) {
-    std::vector<uint8_t> result(data.begin(), data.end());
-    if (result.size() <= video_min_masked_size) {
-        return result;
+    if (data.size() <= video_min_masked_size) {
+        return;
     }
 
-    auto* payload = result.data() + video_plain_prefix_size;
-    const size_t payload_size = result.size() - video_plain_prefix_size;
+    auto* payload = data.data() + video_plain_prefix_size;
+    const size_t payload_size = data.size() - video_plain_prefix_size;
     const size_t word_count = payload_size / word_size;
     if (word_count <= video_first_mask_words) {
-        return result;
+        return;
     }
     const size_t masked_size = word_count * word_size;
 
@@ -59,7 +58,7 @@ std::vector<uint8_t> mask_video_common(
             payload[offset] ^= mask2[mask_offset];
             mask2[mask_offset] = static_cast<uint8_t>(plain ^ mask2_bytes[mask_offset]);
         }
-        return result;
+        return;
     }
 
     for (size_t offset = video_first_mask_words * word_size; offset < masked_size; ++offset) {
@@ -74,7 +73,6 @@ std::vector<uint8_t> mask_video_common(
         payload[offset] ^= mask1[mask_offset];
     }
 
-    return result;
 }
 
 } // namespace
@@ -149,39 +147,73 @@ void UsmCrypto::init_key(uint64_t key) {
     }
 }
 
-std::vector<uint8_t> UsmCrypto::decrypt_video(std::span<const uint8_t> data) const {
-    if (!m_has_key) {
-        return std::vector<uint8_t>(data.begin(), data.end());
-    }
-    return mask_video_common(data, m_video_mask1, m_video_mask2, false);
+void UsmCrypto::clear_key() noexcept {
+    m_key = 0;
+    m_has_key = false;
+    m_video_mask1 = {};
+    m_video_mask2 = {};
+    m_audio_mask = {};
 }
 
-std::vector<uint8_t> UsmCrypto::encrypt_video(std::span<const uint8_t> data) const {
+void UsmCrypto::decrypt_video(std::span<uint8_t> data) const {
     if (!m_has_key) {
-        return std::vector<uint8_t>(data.begin(), data.end());
+        return;
     }
-    return mask_video_common(data, m_video_mask1, m_video_mask2, true);
+    mask_video_common(data, m_video_mask1, m_video_mask2, false);
 }
 
-std::vector<uint8_t> UsmCrypto::decrypt_audio(std::span<const uint8_t> data) const {
+void UsmCrypto::encrypt_video(std::span<uint8_t> data) const {
     if (!m_has_key) {
-        return std::vector<uint8_t>(data.begin(), data.end());
+        return;
+    }
+    mask_video_common(data, m_video_mask1, m_video_mask2, true);
+}
+
+void UsmCrypto::decrypt_audio(std::span<uint8_t> data) const {
+    if (!m_has_key) {
+        return;
     }
 
-    std::vector<uint8_t> result(data.begin(), data.end());
     constexpr size_t audio_plain_prefix_size = 0x140;
 
-    if (result.size() <= audio_plain_prefix_size) {
-        return result;
+    if (data.size() <= audio_plain_prefix_size) {
+        return;
     }
 
-    auto* payload = result.data() + audio_plain_prefix_size;
-    const size_t masked_size = ((result.size() - audio_plain_prefix_size) / word_size) * word_size;
+    auto* payload = data.data() + audio_plain_prefix_size;
+    const size_t masked_size = ((data.size() - audio_plain_prefix_size) / word_size) * word_size;
     for (size_t offset = 0; offset < masked_size; ++offset) {
         payload[offset] ^= m_audio_mask[offset % mask_size];
     }
+}
 
-    return result;
+uint64_t UsmCrypto::recover_key_from_audio_mask(
+    std::span<const uint8_t, 0x20> mask
+) noexcept {
+    const auto table = [&](size_t index) {
+        return static_cast<uint8_t>(mask[index] ^ 0xFFu);
+    };
+
+    const uint8_t seed0 = table(0x00);
+    const uint8_t seed2 = table(0x02);
+    const uint8_t seed4 = table(0x04);
+    const uint8_t seed6 = table(0x06);
+    const uint8_t seed1 = static_cast<uint8_t>(table(0x08) - seed2);
+    const uint8_t seed3 = static_cast<uint8_t>(
+        table(0x08) - static_cast<uint8_t>(table(0x0E) ^ 0xFFu)
+    );
+    const uint8_t seed5 = static_cast<uint8_t>(table(0x1E) + table(0x16));
+
+    const uint32_t lower =
+        static_cast<uint32_t>(seed0) |
+        (static_cast<uint32_t>(seed1) << 8u) |
+        (static_cast<uint32_t>(seed2) << 16u) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(seed3 + 0x34u)) << 24u);
+    const uint32_t upper =
+        static_cast<uint32_t>(static_cast<uint8_t>(seed4 - 0xF9u)) |
+        (static_cast<uint32_t>(seed5 ^ 0x13u) << 8u) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(seed6 - 0x61u)) << 16u);
+    return static_cast<uint64_t>(lower) | (static_cast<uint64_t>(upper) << 32u);
 }
 
 } // namespace cricodecs::usm

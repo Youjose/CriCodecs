@@ -146,12 +146,11 @@ namespace cricodecs::adx {
         [[nodiscard]] std::expected<AdxDecodeResult, AdxError> decode();
         [[nodiscard]] std::expected<void, AdxError> decode_into(std::span<int16_t> pcm_output);
         [[nodiscard]] std::expected<std::vector<uint8_t>, AdxError> decrypt() const;
-        [[nodiscard]] std::vector<uint8_t> encode() const;
+        [[nodiscard]] std::expected<std::vector<uint8_t>, AdxError> rebuild() const;
         [[nodiscard]] std::expected<std::vector<uint8_t>, AdxError> encode(
             const AdxEncodeConfig& config,
             std::span<const AdxLoop> loops = {}
         );
-        [[nodiscard]] std::vector<uint8_t> rebuild() const { return encode(); }
 
     private:
         std::vector<uint8_t> m_source_bytes;

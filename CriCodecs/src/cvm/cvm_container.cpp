@@ -424,15 +424,7 @@ std::expected<void, std::string> CvmContainer::extract(
         }
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("CVM extract failed: could not open output: " + output_path.string());
-    }
-    file.write(reinterpret_cast<const char*>(data->data()), static_cast<std::streamsize>(data->size()));
-    if (!file) {
-        return std::unexpected("CVM extract failed: could not write output: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, *data, "CVM extract failed");
 }
 
 std::expected<void, std::string> CvmContainer::extract_file(
@@ -452,15 +444,7 @@ std::expected<void, std::string> CvmContainer::extract_file(
         }
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("CVM extract failed: could not open output: " + output_path.string());
-    }
-    file.write(reinterpret_cast<const char*>(data->data()), static_cast<std::streamsize>(data->size()));
-    if (!file) {
-        return std::unexpected("CVM extract failed: could not write output: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, *data, "CVM extract failed");
 }
 
 std::expected<void, std::string> CvmContainer::extract_all(const std::filesystem::path& output_root) const {
@@ -529,15 +513,7 @@ std::expected<void, std::string> CvmContainer::save_to_file(
         }
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("CVM save failed: could not open output: " + output_path.string());
-    }
-    file.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
-    if (!file) {
-        return std::unexpected("CVM save failed: could not write output: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, *bytes, "CVM save failed");
 }
 
 std::expected<std::string, std::string> CvmContainer::export_script_text() const {

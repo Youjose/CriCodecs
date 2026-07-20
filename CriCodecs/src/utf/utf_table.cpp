@@ -11,6 +11,7 @@
 
 #include "../utilities/io_endian.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <utility>
@@ -31,19 +32,18 @@ std::string_view UtfTable::string_at(uint32_t offset) const {
 }
 
 int UtfTable::find_column(std::string_view name) const {
-    std::string key(name);
-    auto it = m_column_cache.find(key);
+    auto it = m_column_cache.find(name);
     if (it != m_column_cache.end()) {
         return it->second;
     }
 
     for (size_t i = 0; i < m_columns.size(); ++i) {
         if (m_columns[i].name == name) {
-            m_column_cache[key] = static_cast<int>(i);
+            m_column_cache.emplace(std::string(name), static_cast<int>(i));
             return static_cast<int>(i);
         }
     }
-    m_column_cache[key] = -1;
+    m_column_cache.emplace(std::string(name), -1);
     return -1;
 }
 
@@ -104,6 +104,27 @@ bool UtfTable::remove_row(uint32_t row) {
         m_values.erase(m_values.begin() + row);
     }
     --m_num_rows;
+    return true;
+}
+
+bool UtfTable::move_row(uint32_t from_row, uint32_t to_row) {
+    if (from_row >= m_num_rows || to_row >= m_num_rows) {
+        return false;
+    }
+    if (m_values.empty() && m_num_rows > 0) {
+        *this = editable_copy();
+    }
+    if (from_row < to_row) {
+        std::rotate(
+            m_values.begin() + from_row,
+            m_values.begin() + from_row + 1,
+            m_values.begin() + to_row + 1);
+    } else if (from_row > to_row) {
+        std::rotate(
+            m_values.begin() + to_row,
+            m_values.begin() + from_row,
+            m_values.begin() + from_row + 1);
+    }
     return true;
 }
 

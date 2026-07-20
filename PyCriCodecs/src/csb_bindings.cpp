@@ -90,12 +90,12 @@ void bind_csb_module(nb::module_& module) {
         });
 
     nb::class_<cricodecs::csb::CsbContainer>(module, "Csb")
-        .def_static("load", [](const std::string& path, nb::object encoding) {
-            return unwrap_expected(cricodecs::csb::CsbContainer::load(
-                std::filesystem::path(path),
-                python_encoding_options_from_object(encoding)
-            ));
-        }, nb::arg("path"), nb::arg("encoding") = nb::none())
+        .def_static(
+            "load",
+            &load_csb_any,
+            nb::arg("source"),
+            nb::arg("encoding") = nb::none()
+        )
         .def_static("load_bytes", [](const nb::bytes& data, nb::object encoding) {
             auto owned = copy_python_bytes(data);
             return unwrap_expected(cricodecs::csb::CsbContainer::load(
@@ -107,7 +107,7 @@ void bind_csb_module(nb::module_& module) {
             return std::string(self.name());
         })
         .def_prop_ro("source_path", [](const cricodecs::csb::CsbContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("section_count", &cricodecs::csb::CsbContainer::section_count)
         .def_prop_ro("element_count", &cricodecs::csb::CsbContainer::element_count)
@@ -168,6 +168,29 @@ void bind_csb_module(nb::module_& module) {
         .def("extract", [](const cricodecs::csb::CsbContainer& self, const std::string& output_dir) {
             unwrap_expected(self.extract(std::filesystem::path(output_dir)));
         }, nb::arg("output_dir"))
+        .def("add_file", [](cricodecs::csb::CsbContainer& self, const nb::bytes& data, const nb::object& archive_path) {
+            const auto view = borrow_python_bytes(data);
+            unwrap_expected(self.add_file(as_byte_span(view), require_python_path(archive_path, "archive_path")));
+        }, nb::arg("data"), nb::arg("archive_path"))
+        .def("replace_file", [](cricodecs::csb::CsbContainer& self, uint32_t index, const nb::bytes& data) {
+            const auto view = borrow_python_bytes(data);
+            unwrap_expected(self.replace_file(index, as_byte_span(view)));
+        }, nb::arg("index"), nb::arg("data"))
+        .def("remove_file", [](cricodecs::csb::CsbContainer& self, uint32_t index) {
+            unwrap_expected(self.remove_file(index));
+        }, nb::arg("index"))
+        .def("move_file", [](cricodecs::csb::CsbContainer& self, uint32_t from_index, uint32_t to_index) {
+            unwrap_expected(self.move_file(from_index, to_index));
+        }, nb::arg("from_index"), nb::arg("to_index"))
+        .def("rename_file", [](cricodecs::csb::CsbContainer& self, uint32_t index, const nb::object& archive_path) {
+            unwrap_expected(self.rename_file(index, require_python_path(archive_path, "archive_path")));
+        }, nb::arg("index"), nb::arg("archive_path"))
+        .def("set_streamed", [](cricodecs::csb::CsbContainer& self, uint32_t index, bool streamed) {
+            unwrap_expected(self.set_streamed(index, streamed));
+        }, nb::arg("index"), nb::arg("streamed"))
+        .def("set_element_streamed", [](cricodecs::csb::CsbContainer& self, uint32_t index, bool streamed) {
+            unwrap_expected(self.set_element_streamed(index, streamed));
+        }, nb::arg("index"), nb::arg("streamed"))
         .def("save", [](const cricodecs::csb::CsbContainer& self) {
             return to_python_bytes(unwrap_expected(self.save()));
         })

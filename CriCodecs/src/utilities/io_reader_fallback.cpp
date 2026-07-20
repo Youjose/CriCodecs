@@ -68,8 +68,12 @@ reader& reader::operator=(reader&& other) noexcept {
 }
 
 std::expected<void, const char*> reader::open(const std::filesystem::path& path) noexcept {
+    return open(path, access_pattern::sequential);
+}
+
+std::expected<void, const char*> reader::open(const std::filesystem::path& path, access_pattern pattern) noexcept {
     if (is_open()) return std::unexpected("I/O reader failed: already open");
-    return open_file_impl(path);
+    return open_file_impl(path, pattern);
 }
 
 std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) noexcept {
@@ -78,6 +82,7 @@ std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) 
     m_data_ptr = data;
     m_data_size = size;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = true;
     return {};
@@ -88,6 +93,7 @@ void reader::close() noexcept {
     m_data_ptr = nullptr;
     m_data_size = 0;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = false;
 }
@@ -104,7 +110,7 @@ size_t reader::size() const noexcept {
     return m_data_size;
 }
 
-std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path) noexcept {
+std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept {
 #if defined(_WIN32)
     std::FILE* fp = _wfopen(path.c_str(), L"rb");
 #else
@@ -129,6 +135,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
     if (m_data_size == 0) {
         std::fclose(fp);
         m_data_ptr = nullptr;
+        m_pattern = pattern;
         m_owns_mapping = false;
         m_cursor = 0;
         m_has_external_source = false;
@@ -164,6 +171,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
     std::fclose(fp);
     m_fallback->allocated_size = m_data_size;
     m_data_ptr = m_fallback->allocated_data;
+    m_pattern = pattern;
     m_owns_mapping = true;
     m_cursor = 0;
     m_has_external_source = false;

@@ -59,6 +59,29 @@ public:
         const std::filesystem::path& output_path
     );
 
+    [[nodiscard]] std::expected<std::vector<uint8_t>, AixError> save() const;
+    [[nodiscard]] std::expected<void, AixError> save_to_file(
+        const std::filesystem::path& output_path
+    ) const;
+
+    [[nodiscard]] std::expected<void, AixError> add_segment(AixBuildSegment segment);
+    [[nodiscard]] std::expected<void, AixError> replace_segment(
+        size_t segment_index,
+        AixBuildSegment segment
+    );
+    [[nodiscard]] std::expected<void, AixError> remove_segment(size_t segment_index);
+    [[nodiscard]] std::expected<void, AixError> move_segment(size_t from_index, size_t to_index);
+    [[nodiscard]] std::expected<void, AixError> add_layer(
+        std::vector<std::vector<uint8_t>> segment_adx_data
+    );
+    [[nodiscard]] std::expected<void, AixError> replace_layer(
+        size_t segment_index,
+        size_t layer_index,
+        std::span<const uint8_t> adx_data
+    );
+    [[nodiscard]] std::expected<void, AixError> remove_layer(size_t layer_index);
+    [[nodiscard]] std::expected<void, AixError> move_layer(size_t from_index, size_t to_index);
+
     std::expected<std::vector<uint8_t>, AixError> segment_bytes(
         size_t segment_index,
         size_t layer_index
@@ -113,6 +136,8 @@ private:
 
     std::expected<void, AixError> parse();
     std::expected<LayerPayloads, AixError> layer_payloads(size_t segment_index, size_t layer_index) const;
+    [[nodiscard]] std::expected<std::vector<AixBuildSegment>, AixError> build_segments() const;
+    [[nodiscard]] std::expected<void, AixError> replace_segments(std::vector<AixBuildSegment> segments);
 };
 
 using AixReader = Aix;

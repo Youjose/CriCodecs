@@ -1,6 +1,7 @@
 #pragma once
 #include "hca_header.hpp"
 
+#include <cstdint>
 #include <expected>
 #include <span>
 #include <string>

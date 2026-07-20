@@ -45,9 +45,11 @@ std::string_view command_payload_kind_name(AcbCommandPayloadKind kind) noexcept 
         case AcbCommandPayloadKind::be_u16_pair:         return "be_u16_pair";
         case AcbCommandPayloadKind::be_u16_pair_u8:      return "be_u16_pair_u8";
         case AcbCommandPayloadKind::be_f32:              return "be_f32";
+        case AcbCommandPayloadKind::be_f32_pair:         return "be_f32_pair";
         case AcbCommandPayloadKind::u8_pair:             return "u8_pair";
         case AcbCommandPayloadKind::parameter_curve_7:   return "parameter_curve_7";
         case AcbCommandPayloadKind::parameter_curve_11:  return "parameter_curve_11";
+        case AcbCommandPayloadKind::parameter_record_12: return "parameter_record_12";
         case AcbCommandPayloadKind::category_id_list:    return "category_id_list";
         case AcbCommandPayloadKind::bus_name_send:       return "bus_name_send";
         case AcbCommandPayloadKind::sequence_wait_timer: return "sequence_wait_timer";

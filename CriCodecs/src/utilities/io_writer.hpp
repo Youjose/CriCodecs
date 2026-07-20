@@ -9,10 +9,12 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <array>
 #include <expected>
 #include <filesystem>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 #include "io_endian.hpp"
@@ -49,26 +51,16 @@ public:
 
     template<EndianSwappable T>
     void write_le(T value) noexcept {
-        if constexpr (sizeof(T) > 1 && std::endian::native == std::endian::big) {
-            if constexpr (std::is_same_v<T, Int24>) {
-                std::swap(value.val[0], value.val[2]);
-            } else {
-                value = std::byteswap(value);
-            }
-        }
-        write_to_buffer(reinterpret_cast<const uint8_t*>(&value), sizeof(T));
+        std::array<uint8_t, sizeof(T)> bytes;
+        io::write_le<T>(bytes.data(), value);
+        write_to_buffer(bytes.data(), bytes.size());
     }
 
     template<EndianSwappable T>
     void write_be(T value) noexcept {
-        if constexpr (sizeof(T) > 1 && std::endian::native == std::endian::little) {
-            if constexpr (std::is_same_v<T, Int24>) {
-                std::swap(value.val[0], value.val[2]);
-            } else {
-                value = std::byteswap(value);
-            }
-        }
-        write_to_buffer(reinterpret_cast<const uint8_t*>(&value), sizeof(T));
+        std::array<uint8_t, sizeof(T)> bytes;
+        io::write_be<T>(bytes.data(), value);
+        write_to_buffer(bytes.data(), bytes.size());
     }
 
     void write_bytes(std::span<const uint8_t> data) noexcept {
@@ -90,10 +82,32 @@ private:
     std::vector<uint8_t> m_buffer;
     size_t m_buffer_pos = 0;
     size_t m_total_written = 0;
+    bool m_buffer_zeroed = false;
     bool m_write_failed = false;
 
     void write_to_buffer(const uint8_t* data, size_t size) noexcept;
     std::expected<void, const char*> flush_buffer();
 };
+
+[[nodiscard]] inline std::expected<void, std::string> write_file_bytes(
+    const std::filesystem::path& path,
+    std::span<const uint8_t> bytes,
+    std::string_view context = "Failed to write file")
+{
+    writer file_writer;
+    if (auto result = file_writer.open(path); !result) {
+        return std::unexpected(
+            std::string(context) + ": failed to open " + path.string() + " (" + result.error() + ")");
+    }
+    if (auto result = file_writer.write(bytes); !result) {
+        return std::unexpected(
+            std::string(context) + ": failed to write " + path.string() + " (" + result.error() + ")");
+    }
+    if (auto result = file_writer.close(); !result) {
+        return std::unexpected(
+            std::string(context) + ": failed to close " + path.string() + " (" + result.error() + ")");
+    }
+    return {};
+}
 
 } // namespace cricodecs::io

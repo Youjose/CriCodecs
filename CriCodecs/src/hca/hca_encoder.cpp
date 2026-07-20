@@ -286,8 +286,7 @@ void calculate_loop_info(HcaHeader& info, uint32_t loop_start, uint32_t loop_end
 }
 
 void calculate_header_size(HcaHeader& info) {
-    // HCA headers in this format are serialized on a 32-byte boundary,
-    // as called out in `ref/docs/hca_porting_notes.md`.
+    // HCA headers in this format are serialized on a 32-byte boundary.
     info.file.header_size = static_cast<uint16_t>(align_up(BASE_HEADER_SIZE, BASE_HEADER_ALIGNMENT));
     if (!info.loop.enabled()) {
         return;
@@ -296,8 +295,7 @@ void calculate_header_size(HcaHeader& info) {
     const uint32_t loop_frame_offset = info.file.header_size + info.codec.frame_size * info.loop.start_frame;
     // Loop start metadata is written on 2048-byte boundaries in encoder outputs,
     // so align forward before attaching loop frame offsets.
-    // This keeps loop metadata placement consistent with the legacy behavior
-    // described in `ref/docs/hca_porting_notes.md`.
+    // This keeps loop metadata placement consistent with observed writers.
     const uint32_t padded_offset = align_up(loop_frame_offset, LOOP_FRAME_ALIGNMENT);
     const uint32_t padding_bytes = padded_offset - loop_frame_offset;
     const uint32_t padding_frames = padding_bytes / info.codec.frame_size;
@@ -322,7 +320,6 @@ std::expected<std::vector<int16_t>, std::string> build_looping_pcm(
     const uint32_t loop_length = loop_end - config.loop_start;
     // CRI loop metadata is frame-based; align loop-start to frame boundaries
     // to avoid invalid loop sample offsets in generated headers.
-    // (See `ref/docs/hca_porting_notes.md` loop examples.)
     info.fmt.encoder_delay = static_cast<uint16_t>(
         info.fmt.encoder_delay + align_up(config.loop_start, HCA_SAMPLES_PER_FRAME) - config.loop_start);
     calculate_loop_info(info, config.loop_start, loop_end);
@@ -330,7 +327,7 @@ std::expected<std::vector<int16_t>, std::string> build_looping_pcm(
     const uint32_t aligned_main_samples = std::min(
     // Loop end is aligned to sub-frame boundaries so trailing carry can be
     // emitted as valid full encoder frames, matching observed HCA writer
-    // patterns in `ref/docs/hca_porting_notes.md`.
+    // patterns produced by CRI-compatible writers.
     align_up(loop_end, HCA_SAMPLES_PER_SUBFRAME),
         sample_count
     );

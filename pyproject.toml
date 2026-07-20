@@ -1,13 +1,13 @@
 [build-system]
 requires = [
-    "scikit-build-core>=0.10",
+    "scikit-build-core>=1.0",
     "nanobind>=2.12.0",
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "cricodecs"
-version = "0.0.1b1"
+version = "1.0.0"
 description = "CriWare codec and container library with Python bindings."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -22,15 +22,30 @@ cmake.build-type = "Release"
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 wheel.packages = []
+sdist.inclusion-mode = "explicit"
+sdist.include = [
+    "CMakeLists.txt",
+    "cricodecs_library.cmake",
+    "pyproject.toml",
+    "README.md",
+    "USAGE.md",
+    "CriCodecs/",
+    "PyCriCodecs/",
+]
+sdist.exclude = [
+    "**/__pycache__/",
+    "**/*.pyc",
+    "**/*.pyo",
+]
 
 [tool.scikit-build.cmake.define]
 CRICODECS_BUILD_PYTHON = "ON"
-CRICODECS_BUILD_TESTS = "OFF"
 CRICODECS_BUILD_CLI = "OFF"
+CRICODECS_INSTALL_CPP = "OFF"
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "pp* *-musllinux_* *-win32 *-manylinux_i686"
 build-verbosity = 1
-manylinux-x86_64-image = "manylinux_2_34"
-manylinux-aarch64-image = "manylinux_2_34"
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"

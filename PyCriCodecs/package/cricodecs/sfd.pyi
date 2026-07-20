@@ -45,13 +45,13 @@ class SfdElementRecord:
     stream_id: int
     source_type: int
     short_name: str
-    timestamp: int
-    width: int
-    height: int
-    frame_rate_code: int
-    picture_rate: float
-    audio_channels: int
-    audio_sample_rate: int
+    timestamp: str
+    width: int | None
+    height: int | None
+    frame_rate_code: int | None
+    picture_rate: int | None
+    audio_channels: int | None
+    audio_sample_rate: int | None
     detail_bytes: bytes
     footer_bytes: bytes
 
@@ -60,8 +60,8 @@ class SfdHeaderSummary:
     header_label: str
     output_name: str
     short_output_name: str
-    output_timestamp: int
-    builder_version: int
+    output_timestamp: str
+    builder_version: str
     version_tag_bytes: bytes
     version_tag_size: int
     pack_size: int
@@ -90,12 +90,6 @@ class SfdStream:
     element_record: SfdElementRecord | None
     def suggested_path(self, include_index_prefix: bool = True) -> str: ...
 
-class SfdMuxConfig:
-    profile: SfdBuildProfile
-    video_path: str
-    audio_paths: list[str]
-    output_name: str
-
 class SfdInfo:
     source_path: str | None
     stream_count: int
@@ -123,8 +117,34 @@ class Sfd:
     def save_to_file(self, output_path: Any) -> None: ...
 
 def load(source: Any) -> Sfd: ...
-def demux(source: Any) -> dict[str, bytes]: ...
+def demux(source: Any, include_index_prefix: bool = True) -> dict[str, bytes]: ...
 def extract(source: Any, output_dir: Any) -> None: ...
-def mux(output_path: Any, config: SfdMuxConfig) -> None: ...
+def mux(
+    video_path: str,
+    audio_path: str | None = None,
+    video_source_name: str = "",
+    audio_source_name: str = "",
+    video_stream_name: str = "",
+    audio_stream_name: str = "",
+    output_name: str = "",
+    build_profile: SfdBuildProfile | None = None,
+    header_builder_version: str = "",
+    mux_profile: SfdBuildProfile | None = None,
+    header_builder_version_override: str = "",
+) -> bytes: ...
+def mux_to_file(
+    output_path: str,
+    video_path: str,
+    audio_path: str | None = None,
+    video_source_name: str = "",
+    audio_source_name: str = "",
+    video_stream_name: str = "",
+    audio_stream_name: str = "",
+    output_name: str = "",
+    build_profile: SfdBuildProfile | None = None,
+    header_builder_version: str = "",
+    mux_profile: SfdBuildProfile | None = None,
+    header_builder_version_override: str = "",
+) -> None: ...
 
 __all__: list[str]

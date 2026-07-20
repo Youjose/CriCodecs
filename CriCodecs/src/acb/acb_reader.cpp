@@ -85,14 +85,17 @@ std::expected<std::string, std::string> decode_cri_string(
 
 } // namespace
 
-bool AcbContainer::load_subtable(const char* col_name, std::optional<UtfTable>& out) const {
+std::optional<std::reference_wrapper<const UtfTable>> AcbContainer::load_subtable(
+    const SubtableDescriptor& descriptor
+) const {
+    auto& out = m_sub.*descriptor.table;
     if (out.has_value()) {
-        return true;
+        return std::cref(*out);
     }
 
-    auto data_result = m_header.get_data(0, col_name);
+    auto data_result = m_header.get_data(0, descriptor.name);
     if (!data_result || data_result->empty()) {
-        return false;
+        return std::nullopt;
     }
 
     m_sub.table_data.emplace_back(data_result->begin(), data_result->end());
@@ -101,23 +104,32 @@ bool AcbContainer::load_subtable(const char* col_name, std::optional<UtfTable>& 
     auto table = UtfTable::load(std::span<const uint8_t>(owned));
     if (!table) {
         m_sub.table_data.pop_back();
-        return false;
+        return std::nullopt;
     }
 
     out = std::move(*table);
-    return true;
+    return std::cref(*out);
+}
+
+std::optional<std::reference_wrapper<const UtfTable>> AcbContainer::load_subtable(std::string_view name) const {
+    for (const auto& descriptor : subtable_descriptors()) {
+        if (name == descriptor.name) {
+            return load_subtable(descriptor);
+        }
+    }
+    return std::nullopt;
 }
 
 std::vector<AcbSubtableInfo> AcbContainer::subtable_info() const {
-    auto make_info = [this](const char* name, std::optional<UtfTable>& table) {
+    auto make_info = [this](const SubtableDescriptor& descriptor) {
         AcbSubtableInfo info;
-        info.name = name;
-        if (auto data = m_header.get_data(0, name); data && !data->empty()) {
+        info.name = descriptor.name;
+        if (auto data = m_header.get_data(0, descriptor.name); data && !data->empty()) {
             info.present = true;
             info.data_size = static_cast<uint32_t>(data->size());
-            if (load_subtable(name, table) && table) {
-                info.row_count = table->row_count();
-                info.column_count = table->column_count();
+            if (auto table = load_subtable(descriptor)) {
+                info.row_count = table->get().row_count();
+                info.column_count = table->get().column_count();
             }
         }
         return info;
@@ -125,42 +137,14 @@ std::vector<AcbSubtableInfo> AcbContainer::subtable_info() const {
 
     std::vector<AcbSubtableInfo> info;
     info.reserve(10);
-    info.push_back(make_info("CueNameTable", m_sub.cue_name_table));
-    info.push_back(make_info("CueTable", m_sub.cue_table));
-    info.push_back(make_info("SynthTable", m_sub.synth_table));
-    info.push_back(make_info("SequenceTable", m_sub.sequence_table));
-    info.push_back(make_info("TrackTable", m_sub.track_table));
-    info.push_back(make_info("TrackEventTable", m_sub.track_event_table));
-    info.push_back(make_info("CommandTable", m_sub.command_table));
-    info.push_back(make_info("WaveformTable", m_sub.waveform_table));
-    info.push_back(make_info("BlockTable", m_sub.block_table));
-    info.push_back(make_info("BlockSequenceTable", m_sub.block_sequence_table));
+    for (const auto& descriptor : subtable_descriptors()) {
+        info.push_back(make_info(descriptor));
+    }
     return info;
 }
 
 std::optional<std::reference_wrapper<const UtfTable>> AcbContainer::subtable(std::string_view name) const {
-    auto select = [this, name](std::string_view expected, const char* column_name, std::optional<UtfTable>& table)
-        -> std::optional<std::reference_wrapper<const UtfTable>> {
-        if (name != expected) {
-            return std::nullopt;
-        }
-        if (!load_subtable(column_name, table) || !table) {
-            return std::nullopt;
-        }
-        return std::cref(*table);
-    };
-
-    if (auto found = select("CueNameTable", "CueNameTable", m_sub.cue_name_table)) return found;
-    if (auto found = select("CueTable", "CueTable", m_sub.cue_table)) return found;
-    if (auto found = select("SynthTable", "SynthTable", m_sub.synth_table)) return found;
-    if (auto found = select("SequenceTable", "SequenceTable", m_sub.sequence_table)) return found;
-    if (auto found = select("TrackTable", "TrackTable", m_sub.track_table)) return found;
-    if (auto found = select("TrackEventTable", "TrackEventTable", m_sub.track_event_table)) return found;
-    if (auto found = select("CommandTable", "CommandTable", m_sub.command_table)) return found;
-    if (auto found = select("WaveformTable", "WaveformTable", m_sub.waveform_table)) return found;
-    if (auto found = select("BlockTable", "BlockTable", m_sub.block_table)) return found;
-    if (auto found = select("BlockSequenceTable", "BlockSequenceTable", m_sub.block_sequence_table)) return found;
-    return std::nullopt;
+    return load_subtable(name);
 }
 
 std::expected<AcbContainer, std::string> AcbContainer::load(
@@ -173,21 +157,9 @@ std::expected<AcbContainer, std::string> AcbContainer::load(
     acb.m_source_path.clear();
     acb.m_source = acb.m_owned_source;
 
-    auto header = UtfTable::load(acb.m_source);
-    if (!header) {
-        return std::unexpected("ACB load failed: source is not a valid UTF table");
+    if (auto result = acb.finish_load_from_source(); !result) {
+        return std::unexpected(result.error());
     }
-
-    acb.m_header = std::move(*header);
-    if (acb.m_header.row_count() == 0) {
-        return std::unexpected("ACB load failed: header table has no rows");
-    }
-    if (!looks_like_acb_header(acb.m_header)) {
-        return std::unexpected("ACB load failed: UTF table is not an ACB header");
-    }
-    acb.preload_waveforms();
-    acb.preload_cue_names();
-    acb.resolve_all_names();
     return acb;
 }
 
@@ -201,21 +173,9 @@ std::expected<AcbContainer, std::string> AcbContainer::load(
     acb.m_source_path.clear();
     acb.m_source = acb.m_owned_source;
 
-    auto header = UtfTable::load(acb.m_source);
-    if (!header) {
-        return std::unexpected("ACB load failed: source is not a valid UTF table");
+    if (auto result = acb.finish_load_from_source(); !result) {
+        return std::unexpected(result.error());
     }
-
-    acb.m_header = std::move(*header);
-    if (acb.m_header.row_count() == 0) {
-        return std::unexpected("ACB load failed: header table has no rows");
-    }
-    if (!looks_like_acb_header(acb.m_header)) {
-        return std::unexpected("ACB load failed: UTF table is not an ACB header");
-    }
-    acb.preload_waveforms();
-    acb.preload_cue_names();
-    acb.resolve_all_names();
     return acb;
 }
 
@@ -234,26 +194,33 @@ std::expected<AcbContainer, std::string> AcbContainer::load(
     acb.m_source_path = path;
     acb.m_source = acb.m_owned_source;
 
-    auto header = UtfTable::load(acb.m_source);
+    if (auto result = acb.finish_load_from_source(); !result) {
+        return std::unexpected(result.error());
+    }
+    return acb;
+}
+
+std::expected<void, std::string> AcbContainer::finish_load_from_source() {
+    auto header = UtfTable::load(m_source);
     if (!header) {
         return std::unexpected("ACB load failed: source is not a valid UTF table");
     }
 
-    acb.m_header = std::move(*header);
-    if (acb.m_header.row_count() == 0) {
+    m_header = std::move(*header);
+    if (m_header.row_count() == 0) {
         return std::unexpected("ACB load failed: header table has no rows");
     }
-    if (!looks_like_acb_header(acb.m_header)) {
+    if (!looks_like_acb_header(m_header)) {
         return std::unexpected("ACB load failed: UTF table is not an ACB header");
     }
-    acb.preload_waveforms();
-    acb.preload_cue_names();
-    acb.resolve_all_names();
-    return acb;
+    preload_waveforms();
+    preload_cue_names();
+    resolve_all_names();
+    return {};
 }
 
 bool AcbContainer::preload_waveforms() {
-    if (!load_subtable("WaveformTable", m_sub.waveform_table)) {
+    if (!load_subtable("WaveformTable")) {
         return false;
     }
 
@@ -328,7 +295,7 @@ bool AcbContainer::preload_waveforms() {
             }
         }
 
-        const bool is_memory_bank = waveform.streaming != 1;
+        const bool is_memory_bank = uses_memory_bank_for_associated_awb(waveform);
         waveform.id = waveform_id_for_bank(waveform, is_memory_bank);
     }
 
@@ -336,7 +303,7 @@ bool AcbContainer::preload_waveforms() {
 }
 
 bool AcbContainer::preload_cue_names() {
-    return load_subtable("CueNameTable", m_sub.cue_name_table);
+    return load_subtable("CueNameTable").has_value();
 }
 
 void AcbContainer::resolve_waveform_name(uint32_t waveform_index,
@@ -415,7 +382,7 @@ void AcbContainer::resolve_all_names() {
 
     for (uint32_t waveform_index = 0; waveform_index < m_waveforms.size(); ++waveform_index) {
         const auto& waveform = m_waveforms[waveform_index];
-        const bool is_memory_target = waveform.streaming != 1;
+        const bool is_memory_target = uses_memory_bank_for_associated_awb(waveform);
         const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_target);
         const int target_port = is_memory_target || waveform.port_no == 0xFFFF
             ? -1
@@ -449,7 +416,7 @@ void AcbContainer::resolve_all_names() {
 }
 
 bool AcbContainer::load_cue(uint16_t index) {
-    if (!load_subtable("CueTable", m_sub.cue_table)) {
+    if (!load_subtable("CueTable")) {
         return false;
     }
     auto& cue_table = *m_sub.cue_table;
@@ -487,7 +454,7 @@ bool AcbContainer::load_cue(uint16_t index) {
 }
 
 bool AcbContainer::load_synth(uint16_t index) {
-    if (!load_subtable("SynthTable", m_sub.synth_table)) {
+    if (!load_subtable("SynthTable")) {
         return false;
     }
     auto& synth_table = *m_sub.synth_table;
@@ -546,7 +513,7 @@ bool AcbContainer::load_synth(uint16_t index) {
 }
 
 bool AcbContainer::load_sequence(uint16_t index) {
-    if (!load_subtable("SequenceTable", m_sub.sequence_table)) {
+    if (!load_subtable("SequenceTable")) {
         return false;
     }
     auto& sequence_table = *m_sub.sequence_table;
@@ -581,7 +548,7 @@ bool AcbContainer::load_sequence(uint16_t index) {
 }
 
 bool AcbContainer::load_track(uint16_t index) {
-    if (!load_subtable("TrackTable", m_sub.track_table)) {
+    if (!load_subtable("TrackTable")) {
         return false;
     }
     auto& track_table = *m_sub.track_table;
@@ -606,8 +573,8 @@ bool AcbContainer::load_track(uint16_t index) {
 }
 
 bool AcbContainer::load_track_command(uint16_t index) {
-    if (!load_subtable("TrackEventTable", m_sub.track_event_table)) {
-        if (!load_subtable("CommandTable", m_sub.command_table)) {
+    if (!load_subtable("TrackEventTable")) {
+        if (!load_subtable("CommandTable")) {
             return false;
         }
     }
@@ -690,7 +657,7 @@ bool AcbContainer::load_waveform_check(uint16_t index) {
 }
 
 bool AcbContainer::load_block(uint16_t index) {
-    if (!load_subtable("BlockTable", m_sub.block_table)) {
+    if (!load_subtable("BlockTable")) {
         return false;
     }
     auto& block_table = *m_sub.block_table;
@@ -718,7 +685,7 @@ bool AcbContainer::load_block(uint16_t index) {
 }
 
 bool AcbContainer::load_block_sequence(uint16_t index) {
-    if (!load_subtable("BlockSequenceTable", m_sub.block_sequence_table)) {
+    if (!load_subtable("BlockSequenceTable")) {
         return false;
     }
     auto& block_sequence_table = *m_sub.block_sequence_table;

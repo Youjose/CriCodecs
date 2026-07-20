@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file awb_aac_encryption.hpp
- * @brief CRI AWB AAC decryption helpers.
+ * @brief CRI AWB AAC encryption and decryption helpers.
  *
  * Ported from vgmstream's awb_aac_encryption_streamfile.h and cross-checked
  * against cri_ware_unity's _criAacCodec_SetDecryptionKey,
@@ -105,7 +105,8 @@ inline void apply_aac_keystream(std::span<uint8_t> data, AacCipherState& state) 
             add_value = static_cast<uint16_t>(next_add | 1u);
         }
 
-        xor_value = static_cast<uint16_t>((xor_value * mul_value) + add_value);
+        xor_value = static_cast<uint16_t>(
+            (static_cast<uint32_t>(xor_value) * mul_value) + add_value);
         data[i] ^= static_cast<uint8_t>(xor_value >> 8u);
     }
 
@@ -130,6 +131,13 @@ inline void apply_aac_keystream(std::span<uint8_t> data, uint64_t keycode) noexc
     std::vector<uint8_t> output(data.begin(), data.end());
     apply_aac_keystream(output, keycode);
     return output;
+}
+
+/// Encrypt a clear AAC/M4A payload for insertion into an AWB. The CRI stream
+/// transform is symmetric, so this intentionally uses the same keystream path
+/// as decryption.
+[[nodiscard]] inline std::vector<uint8_t> encrypt_aac(std::span<const uint8_t> data, uint64_t keycode) {
+    return decrypt_aac(data, keycode);
 }
 
 [[nodiscard]] inline AacEncryptionState probe_aac_encryption(std::span<const uint8_t> data,

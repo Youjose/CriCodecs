@@ -168,7 +168,7 @@ void bind_afs_module(nb::module_& module) {
             "Create an editable AFS container from an ALS build script."
         )
         .def_prop_ro("source_path", [](const cricodecs::afs::AfsContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("entry_count", [](const cricodecs::afs::AfsContainer& self) {
             return self.entry_count();
@@ -352,6 +352,21 @@ void bind_afs_module(nb::module_& module) {
                 self.reserve_file_id(file_id);
             },
             nb::arg("file_id")
+        )
+        .def(
+            "remove_file",
+            [](cricodecs::afs::AfsContainer& self, uint32_t index) {
+                unwrap_expected(self.remove_file(index));
+            },
+            nb::arg("index")
+        )
+        .def(
+            "move_file",
+            [](cricodecs::afs::AfsContainer& self, uint32_t from_index, uint32_t to_index) {
+                unwrap_expected(self.move_file(from_index, to_index));
+            },
+            nb::arg("from_index"),
+            nb::arg("to_index")
         )
         .def(
             "materialize",

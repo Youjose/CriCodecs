@@ -9,6 +9,23 @@ class HcaQuality:
     HIGH: ClassVar["HcaQuality"]
     HIGHEST: ClassVar["HcaQuality"]
 
+class KeyRecoveryMode:
+    INDEPENDENT: ClassVar["KeyRecoveryMode"]
+    SHARED_BASE_KEY: ClassVar["KeyRecoveryMode"]
+
+class KeyCandidate:
+    key: int
+    score: float
+    source_count: int
+    evidence_count: int
+    unknown_high_bits: int
+    equivalent_count: int
+
+class KeyRecoveryResult:
+    candidates: list[KeyCandidate]
+    source_count: int
+    evidence_count: int
+
 class HcaCodecChunkType:
     UNKNOWN: ClassVar["HcaCodecChunkType"]
     COMP: ClassVar["HcaCodecChunkType"]
@@ -89,6 +106,7 @@ class HcaEncodeConfig:
     loop_enabled: bool
     loop_start: int
     loop_end: int
+    ms_stereo: bool
     keycode: int
     subkey: int
 
@@ -104,6 +122,7 @@ class Hca:
     def encrypt(self, cipher_type: int, keycode: int = 0, subkey: int = 0) -> bytes: ...
     def decrypt(self, keycode: int = 0, subkey: int = 0) -> bytes: ...
     def rebuild(self) -> bytes: ...
+    def recover_key(self, subkey: int = 0) -> KeyRecoveryResult: ...
 
 NativeHca = Hca
 
@@ -112,5 +131,10 @@ def decode(source: Any, keycode: int = 0, subkey: int = 0) -> bytes: ...
 def encode(wav: Wav | Any, config: HcaEncodeConfig | None = None) -> bytes: ...
 def encrypt(source: Any, cipher_type: int, keycode: int = 0, subkey: int = 0) -> bytes: ...
 def decrypt(source: Any, keycode: int = 0, subkey: int = 0) -> bytes: ...
+def recover_key(
+    source: Any | list[Any] | tuple[Any, ...],
+    subkeys: int | list[int] | tuple[int, ...] | None = None,
+    same_base_key: bool = True,
+) -> KeyRecoveryResult: ...
 
 __all__: list[str]

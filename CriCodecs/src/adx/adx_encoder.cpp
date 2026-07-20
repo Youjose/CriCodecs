@@ -32,6 +32,7 @@ using io::append_be;
     static constexpr uint8_t ADX_NIBBLE_BYTES = ADX_FRAME_BYTES - ADX_SCALE_BYTES;
     static constexpr uint8_t ADX_BIT_DEPTH = 4;
     static constexpr uint8_t ADX_SAMPLES_PER_BLOCK = ADX_NIBBLE_BYTES * 2;
+    static constexpr uint32_t ADX_LOOP_BOUNDARY = 0x800;
     static constexpr double PI = 3.141592653589793;
     static constexpr double SQRT2 = 1.414213562373095;
 
@@ -90,7 +91,7 @@ using io::append_be;
         // `adx_porting_notes.md` captures this writer formula as
         // align_up(header_base + pre_loop_bytes + 4, 0x800).
         const uint32_t loop_start_target = cricodecs::util::align_up(
-            header_struct_size + pre_loop_bytes + 4, 0x800);
+            header_struct_size + pre_loop_bytes + 4, ADX_LOOP_BOUNDARY);
 
         return AdxLoopLayout{
             .alignment_samples = alignment_samples,
@@ -166,9 +167,6 @@ using io::append_be;
         if (minimum == 0 && maximum == 0) {
             scale = 0;
             uint16_t scale_val = scale;
-            if (key_state) {
-                scale_val = (scale_val ^ key_state->xor_value) & 0x7FFF;
-            }
             const size_t frame_offset = buffer.size();
             buffer.resize(frame_offset + ADX_FRAME_BYTES, 0);
             io::write_be<uint16_t>(buffer.data() + frame_offset, scale_val);
@@ -214,9 +212,17 @@ using io::append_be;
                 break;
         }
 
+        // Type-9 reserves bit 0x1000 for key validation. CRI writes the
+        // encoder's maximum scale (0x1000) as 0x0fff before masking it.
+        if (config.encryption_type == 9 && config.encoding_mode == 3 &&
+            scale_written == 0x1000u) {
+            scale_written = 0x0FFFu;
+        }
+
         uint16_t output_scale = scale_written;
         if (key_state) {
-            output_scale = (output_scale ^ key_state->xor_value) & 0x7FFF;
+            const uint16_t mask = config.encryption_type == 9 ? 0x1FFFu : 0x7FFFu;
+            output_scale = static_cast<uint16_t>((output_scale ^ key_state->xor_value) & mask);
         }
 
         int32_t decode_scale;
@@ -293,9 +299,19 @@ using io::append_be;
 
             ahx::AhxKey ahx_key = config.ahx_key;
             if (ahx_key.empty() && config.encryption_type == 0x09) {
-                key9_derive(config.key64, config.subkey, ahx_key.start, ahx_key.mult, ahx_key.add);
+                const AdxKeyState derived_key = key9_derive(config.key64, config.subkey);
+                ahx_key = {
+                    .start = derived_key.xor_value,
+                    .mult = derived_key.mult,
+                    .add = derived_key.add,
+                };
             } else if (ahx_key.empty() && !config.key_string.empty()) {
-                key8_derive(config.key_string, ahx_key.start, ahx_key.mult, ahx_key.add);
+                const AdxKeyState derived_key = key8_derive(config.key_string);
+                ahx_key = {
+                    .start = derived_key.xor_value,
+                    .mult = derived_key.mult,
+                    .add = derived_key.add,
+                };
             }
 
             ahx::AhxEncodeConfig ahx_config{
@@ -397,7 +413,10 @@ using io::append_be;
             : audio_offset - 4;
 
         const size_t encoded_audio_bytes = static_cast<size_t>(frames) * frame_bytes;
-        buffer.reserve(static_cast<size_t>(audio_offset) + encoded_audio_bytes + config.block_size);
+        const size_t maximum_end_code_size = has_loops
+            ? static_cast<size_t>(ADX_LOOP_BOUNDARY) + config.block_size - 1
+            : config.block_size;
+        buffer.reserve(static_cast<size_t>(audio_offset) + encoded_audio_bytes + maximum_end_code_size);
 
         append_be<uint16_t>(buffer, static_cast<uint16_t>(0x8000));
         append_be<uint16_t>(buffer, static_cast<uint16_t>(stored_data_offset));
@@ -463,9 +482,9 @@ using io::append_be;
         bool encrypted = (config.encryption_type == 8 || config.encryption_type == 9);
         if (encrypted) {
             if (config.encryption_type == 9) {
-                key9_derive(config.key64, config.subkey, current_key_state.xor_value, current_key_state.mult, current_key_state.add);
+                current_key_state = key9_derive(config.key64, config.subkey);
             } else {
-                key8_derive(config.key_string, current_key_state.xor_value, current_key_state.mult, current_key_state.add);
+                current_key_state = key8_derive(config.key_string);
             }
         }
 
@@ -508,11 +527,15 @@ using io::append_be;
             }
         }
         
+        const size_t end_code_size = has_loops
+            ? cricodecs::util::align_up(
+                  buffer.size() + config.block_size,
+                  static_cast<size_t>(ADX_LOOP_BOUNDARY)) - buffer.size()
+            : config.block_size;
+
         append_be<uint16_t>(buffer, ADX_EOF_SCALE);
-        append_be<uint16_t>(buffer, static_cast<uint16_t>(config.block_size - 4));
-        for (uint32_t i = 0; i < static_cast<uint32_t>(config.block_size - 4); ++i) {
-            buffer.push_back(0);
-        }
+        append_be<uint16_t>(buffer, static_cast<uint16_t>(end_code_size - 4));
+        buffer.resize(buffer.size() + end_code_size - 4, 0);
         
         return buffer;
     }

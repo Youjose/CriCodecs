@@ -38,15 +38,9 @@ void bind_acb_module(nb::module_& module) {
     nb::class_<cricodecs::acb::AcbContainer>(module, "Acb")
         .def_static(
             "load",
-            [](const std::string& path, nb::object encoding) {
-                return unwrap_expected(cricodecs::acb::AcbContainer::load(
-                    std::filesystem::path(path),
-                    python_encoding_options_from_object(encoding)
-                ));
-            },
-            nb::arg("path"),
-            nb::arg("encoding") = nb::none(),
-            "Load an ACB from a filesystem path."
+            &load_acb_any,
+            nb::arg("source"),
+            nb::arg("encoding") = nb::none()
         )
         .def_static(
             "load_bytes",
@@ -62,18 +56,24 @@ void bind_acb_module(nb::module_& module) {
             "Load an ACB from raw bytes."
         )
         .def_prop_ro("source_path", [](const cricodecs::acb::AcbContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("name", [](const cricodecs::acb::AcbContainer& self) {
             return std::string(self.name());
         })
         .def_prop_ro("waveform_count", &cricodecs::acb::AcbContainer::waveform_count)
+        .def_prop_ro("has_embedded_awb", &cricodecs::acb::AcbContainer::has_embedded_awb)
+        .def_prop_ro("companion_awb_path", [](const cricodecs::acb::AcbContainer& self) -> nb::object {
+            const auto path = self.companion_awb_path();
+            return path ? nb::cast(path->generic_string()) : nb::none();
+        })
+        .def_prop_ro("has_aac_waveforms", &cricodecs::acb::AcbContainer::has_aac_waveforms)
         .def("info", [](const cricodecs::acb::AcbContainer& self) {
             nb::object info = simple_namespace();
-            info.attr("table_name") = "Header";
-            info.attr("row_count") = 1;
-            info.attr("column_count") = 64;
-            info.attr("source_path") = self.source_path().empty() ? nb::none() : nb::cast(self.source_path().generic_string());
+            info.attr("table_name") = std::string(self.header_table().table_name());
+            info.attr("row_count") = self.header_table().row_count();
+            info.attr("column_count") = self.header_table().column_count();
+            info.attr("source_path") = path_or_none(self.source_path());
             info.attr("name") = std::string(self.name());
             info.attr("waveform_count") = self.waveform_count();
             nb::list waveforms;
@@ -89,16 +89,21 @@ void bind_acb_module(nb::module_& module) {
             info.attr("has_embedded_awb") = self.has_embedded_awb();
             const auto companion = self.companion_awb_path();
             info.attr("companion_awb_path") = companion.has_value() ? nb::cast(companion->generic_string()) : nb::none();
-            auto awb = unwrap_expected(self.load_awb());
-            nb::object awb_info = simple_namespace();
-            awb_info.attr("source_path") = awb.source_path().empty() ? nb::none() : nb::cast(awb.source_path().generic_string());
-            awb_info.attr("file_count") = awb.file_count();
-            awb_info.attr("version") = awb.version();
-            awb_info.attr("offset_size") = awb.offset_size();
-            awb_info.attr("id_size") = awb.id_size();
-            awb_info.attr("alignment") = awb.alignment();
-            awb_info.attr("subkey") = awb.subkey();
-            info.attr("awb_info") = awb_info;
+            info.attr("has_aac_waveforms") = self.has_aac_waveforms();
+            if (self.has_embedded_awb() || companion) {
+                auto awb = unwrap_expected(self.load_awb());
+                nb::object awb_info = simple_namespace();
+                awb_info.attr("source_path") = path_or_none(awb.source_path());
+                awb_info.attr("file_count") = awb.file_count();
+                awb_info.attr("version") = awb.version();
+                awb_info.attr("offset_size") = awb.offset_size();
+                awb_info.attr("id_size") = awb.id_size();
+                awb_info.attr("alignment") = awb.alignment();
+                awb_info.attr("subkey") = awb.subkey();
+                info.attr("awb_info") = awb_info;
+            } else {
+                info.attr("awb_info") = nb::none();
+            }
             return info;
         })
         .def("waveform", [](const cricodecs::acb::AcbContainer& self, uint32_t index) {
@@ -151,12 +156,37 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("index"),
             nb::arg("aac_keycode") = 0
         )
-        .def("embedded_awb_bytes", [](const cricodecs::acb::AcbContainer& self) {
-            auto awb = unwrap_expected(self.load_awb());
-            return to_python_bytes(unwrap_expected(awb.save()));
+        .def(
+            "extract_waveform_stream_data",
+            [](const cricodecs::acb::AcbContainer& self, uint32_t index, uint64_t aac_keycode) {
+                return to_python_bytes(unwrap_expected(self.extract_waveform_stream_data(index, aac_keycode)));
+            },
+            nb::arg("index"),
+            nb::arg("aac_keycode") = 0
+        )
+        .def(
+            "probe_waveform_aac_encryption",
+            [](const cricodecs::acb::AcbContainer& self, uint32_t index, uint64_t keycode) {
+                return unwrap_expected(self.probe_waveform_aac_encryption(index, keycode));
+            },
+            nb::arg("index"),
+            nb::arg("keycode")
+        )
+        .def("recover_aac_key", [](const cricodecs::acb::AcbContainer& self) {
+            return unwrap_expected(self.recover_aac_key());
         })
-        .def("load_awb", [](const cricodecs::acb::AcbContainer& self) {
-            return unwrap_expected(self.load_awb());
+        .def("embedded_awb_bytes", [](const cricodecs::acb::AcbContainer& self) -> nb::object {
+            const auto bytes = self.embedded_awb();
+            if (!bytes) {
+                return nb::none();
+            }
+            return to_python_bytes(*bytes);
+        })
+        .def("load_awb", [](const cricodecs::acb::AcbContainer& self) -> nb::object {
+            if (!self.has_embedded_awb() && !self.companion_awb_path()) {
+                return nb::none();
+            }
+            return nb::cast(unwrap_expected(self.load_awb()));
         })
         .def(
             "extract_file",
@@ -176,7 +206,7 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("aac_keycode") = 0
         );
 
-    install_attr_repr(module, "Acb", {"source_path", "name", "waveform_count"});
+    install_attr_repr(module, "Acb", {"source_path", "name", "waveform_count", "has_embedded_awb", "companion_awb_path", "has_aac_waveforms"});
 
     module.def(
         "load",

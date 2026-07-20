@@ -15,6 +15,7 @@
 
 #include "../utilities/io_endian.hpp"
 #include "../utilities/string.hpp"
+#include "../video/mpeg.hpp"
 
 namespace cricodecs::sfd {
 
@@ -35,7 +36,6 @@ constexpr std::array<uint8_t, 24> sofdec_stream2_label = {
 };
 constexpr std::array<uint8_t, 4> aix_signature = {'A', 'I', 'X', 'F'};
 constexpr std::array<uint8_t, 2> ac3_signature = {0x0B, 0x77};
-constexpr std::array<uint8_t, 4> mpeg_sequence_header_code = {0x00, 0x00, 0x01, 0xB3};
 constexpr uint8_t packet_stream_audio_min = 0xC0;
 constexpr uint8_t packet_stream_audio_max = 0xDF;
 constexpr uint8_t packet_stream_video_min = 0xE0;
@@ -136,47 +136,25 @@ struct VideoPayloadInfo {
     std::optional<SfdVideoSequenceHeader> header;
 };
 
-[[nodiscard]] VideoPayloadInfo inspect_video_payload(std::span<const uint8_t> payload) noexcept {
-    const size_t sequence_offset = find_start_code(payload, mpeg_sequence_header_code);
-    if (sequence_offset == payload.size()) {
+[[nodiscard]] VideoPayloadInfo inspect_video_payload(std::span<const uint8_t> payload) {
+    const auto sequence_header = video::parse_mpeg_sequence_header(payload);
+    if (!sequence_header) {
         return {};
     }
 
-    VideoPayloadInfo info;
-    if (sequence_offset + 12 <= payload.size()) {
-        const auto* header = payload.data() + sequence_offset;
-        info.header = SfdVideoSequenceHeader{
-            .width = static_cast<uint16_t>((static_cast<uint16_t>(header[4]) << 4u) | (header[5] >> 4u)),
-            .height = static_cast<uint16_t>((static_cast<uint16_t>(header[5] & 0x0Fu) << 8u) | header[6]),
-            .aspect_ratio_code = static_cast<uint8_t>((header[7] >> 4u) & 0x0Fu),
-            .frame_rate_code = static_cast<uint8_t>(header[7] & 0x0Fu),
-            .bit_rate_value = static_cast<uint32_t>((static_cast<uint32_t>(header[8]) << 10u) |
-                (static_cast<uint32_t>(header[9]) << 2u) |
-                (static_cast<uint32_t>(header[10]) >> 6u)),
-        };
-    }
-
-    size_t cursor = sequence_offset + mpeg_sequence_header_code.size();
-    while (cursor + 4 <= payload.size()) {
-        if (payload[cursor + 0] == 0x00 &&
-            payload[cursor + 1] == 0x00 &&
-            payload[cursor + 2] == 0x01) {
-            if (payload[cursor + 3] == 0xB5 && cursor + 5 <= payload.size()) {
-                const uint8_t extension_id = static_cast<uint8_t>((payload[cursor + 4] >> 4u) & 0x0Fu);
-                if (extension_id == 0x01) {
-                    info.type = SfdVideoType::mpeg2;
-                    return info;
-                }
-            }
-            if (payload[cursor + 3] == 0x00 || payload[cursor + 3] == 0xB8) {
-                break;
-            }
-        }
-        ++cursor;
-    }
-
-    info.type = SfdVideoType::mpeg1;
-    return info;
+    const auto video_type = video::detect_mpeg_video_type(payload);
+    return VideoPayloadInfo{
+        .type = video_type == video::MpegVideoType::mpeg2
+            ? SfdVideoType::mpeg2
+            : SfdVideoType::mpeg1,
+        .header = SfdVideoSequenceHeader{
+            .width = sequence_header->width,
+            .height = sequence_header->height,
+            .aspect_ratio_code = sequence_header->aspect_ratio_code,
+            .frame_rate_code = sequence_header->frame_rate_code,
+            .bit_rate_value = sequence_header->bit_rate_value,
+        },
+    };
 }
 
 [[nodiscard]] std::optional<size_t> parse_pes_payload_data_offset(std::span<const uint8_t> packet_payload) noexcept {

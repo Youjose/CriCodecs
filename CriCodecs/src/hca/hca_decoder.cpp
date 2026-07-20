@@ -22,7 +22,8 @@
 
 #include <array>
 
-#include "../utilities/io.hpp"
+#include "../utilities/io_endian.hpp"
+#include "../utilities/io_reader.hpp"
 #include "../utilities/numeric.hpp"
 
 namespace cricodecs::hca {
@@ -53,68 +54,10 @@ using io::read_be;
 
 void assign_channel_types(HcaFrame& frame) {
     const auto& info = frame.info;
-    const uint32_t channels_per_track = info.codec.track_count == 0 ? 0u : info.fmt.channel_count / info.codec.track_count;
-
+    const auto types = detail::channel_types(info);
     for (uint32_t i = 0; i < info.fmt.channel_count; ++i) {
         frame.channels[i] = {};
-    }
-
-    if (info.codec.stereo_band_count > 0 && channels_per_track > 1) {
-        for (uint32_t track = 0; track < info.codec.track_count; ++track) {
-            auto* types = &frame.channels[track * channels_per_track];
-            switch (channels_per_track) {
-                case 2:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    break;
-                case 3:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    types[2].type = ChannelType::Discrete;
-                    break;
-                case 4:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    if (info.codec.channel_config == 0) {
-                        types[2].type = ChannelType::StereoPrimary;
-                        types[3].type = ChannelType::StereoSecondary;
-                    }
-                    break;
-                case 5:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    if (info.codec.channel_config <= 2) {
-                        types[3].type = ChannelType::StereoPrimary;
-                        types[4].type = ChannelType::StereoSecondary;
-                    }
-                    break;
-                case 6:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    types[4].type = ChannelType::StereoPrimary;
-                    types[5].type = ChannelType::StereoSecondary;
-                    break;
-                case 7:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    types[4].type = ChannelType::StereoPrimary;
-                    types[5].type = ChannelType::StereoSecondary;
-                    break;
-                case 8:
-                    types[0].type = ChannelType::StereoPrimary;
-                    types[1].type = ChannelType::StereoSecondary;
-                    types[4].type = ChannelType::StereoPrimary;
-                    types[5].type = ChannelType::StereoSecondary;
-                    types[6].type = ChannelType::StereoPrimary;
-                    types[7].type = ChannelType::StereoSecondary;
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-
-    for (uint32_t i = 0; i < info.fmt.channel_count; ++i) {
+        frame.channels[i].type = types[i];
         frame.channels[i].coded_count = frame.channels[i].type == ChannelType::StereoSecondary
             ? info.codec.base_band_count
             : static_cast<uint8_t>(info.codec.base_band_count + info.codec.stereo_band_count);
@@ -494,16 +437,28 @@ std::expected<std::vector<int16_t>, std::string> decode(
     std::array<uint8_t, 256> cipher_table{};
     cipher::init_cipher(cipher_table, info.cipher.type, keycode, subkey);
 
-    const uint32_t sample_count = info.sample_count();
-    std::vector<int16_t> output(sample_count * info.fmt.channel_count);
+    const uint32_t available_frames = info.available_frame_count(hca_data.size());
+    if (available_frames == 0) {
+        return std::unexpected(std::string("HCA decode failed: no complete frames are available"));
+    }
+
+    const uint32_t sample_count = info.sample_count_for_frames(available_frames);
+    const size_t output_sample_count =
+        static_cast<size_t>(sample_count) * info.fmt.channel_count;
+    std::vector<int16_t> output(output_sample_count);
     std::vector<uint8_t> frame_buffer(info.codec.frame_size);
 
     const uint8_t* frame_data = hca_data.data() + info.file.header_size;
     uint32_t samples_written = 0;
     uint32_t samples_to_skip = info.fmt.encoder_delay;
 
-    for (uint32_t frame_index = 0; frame_index < info.fmt.frame_count; ++frame_index) {
-        std::memcpy(frame_buffer.data(), frame_data + frame_index * info.codec.frame_size, info.codec.frame_size);
+    for (uint32_t frame_index = 0; frame_index < available_frames; ++frame_index) {
+        if (samples_written >= sample_count) {
+            break;
+        }
+        const size_t frame_byte_offset =
+            static_cast<size_t>(frame_index) * info.codec.frame_size;
+        std::memcpy(frame_buffer.data(), frame_data + frame_byte_offset, info.codec.frame_size);
         if (tables::crc16_checksum(frame_buffer.data(), info.codec.frame_size - 2) !=
             read_be<uint16_t>(frame_buffer.data() + info.codec.frame_size - 2)) {
             return std::unexpected(std::string("HCA decode failed: frame checksum mismatch"));
@@ -529,7 +484,7 @@ std::expected<std::vector<int16_t>, std::string> decode(
             frame,
             frame_offset,
             samples_to_copy,
-            output.data() + samples_written * info.fmt.channel_count
+            output.data() + static_cast<size_t>(samples_written) * info.fmt.channel_count
         );
         samples_written += samples_to_copy;
     }

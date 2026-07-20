@@ -24,11 +24,11 @@ namespace cricodecs::afs::detail {
 using io::read_be;
 using io::read_le;
 
-constexpr std::array<uint8_t, 4> afs_magic = {'A', 'F', 'S', '\0'};
+constexpr io::FourCC afs_magic{"AFS\0"};
 constexpr uint32_t adx_signature_mask = 0xFFFF0000u;
 constexpr uint32_t adx_signature_value = 0x80000000u;
-constexpr uint32_t ogg_magic = 0x4F676753u;
-constexpr uint32_t hca_magic = 0x48434100u;
+constexpr uint32_t ogg_magic = io::FourCC{"OggS"}.be_value();
+constexpr uint32_t hca_magic = io::FourCC{"HCA\0"}.be_value();
 constexpr size_t directory_entry_size = 0x30;
 constexpr size_t directory_name_size = 0x20;
 

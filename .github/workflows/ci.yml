@@ -5,15 +5,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+  CMAKE_INSTALL_PARALLEL_LEVEL: "4"
+
 jobs:
   sdist:
     name: Source distribution
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -26,10 +30,12 @@ jobs:
       - name: Check package metadata
         run: python -m twine check dist/*
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
+          overwrite: true
 
   cli-zip:
     name: CLI zip (${{ matrix.artifact_name }})
@@ -55,9 +61,9 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -65,10 +71,10 @@ jobs:
         run: python -m pip install --upgrade pip cmake ninja
 
       - name: Configure CLI
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
 
       - name: Build CLI
-        run: cmake --build build --config Release --target cricodecs_cli --parallel
+        run: cmake --build build --config Release --target cricodecs_cli --parallel 4
 
       - name: Install CLI
         run: cmake --install build --config Release --prefix stage
@@ -85,17 +91,19 @@ jobs:
       - name: Archive CLI zip
         run: cmake -E chdir stage cmake -E tar cf "../cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.artifact_name }}
           path: cricodecs-cli-${{ matrix.artifact_name }}.zip
+          if-no-files-found: error
+          overwrite: true
 
   cli-zip-linux:
     name: CLI zip (linux-x86_64)
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build Linux CLI with GCC 16.1
         run: |
@@ -111,17 +119,19 @@ jobs:
               apt-get install -y --no-install-recommends python3 python3-pip
               python3 -m pip install --break-system-packages cmake ninja
               c++ --version
-              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
-              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel
+              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel 4
               python3 -m cmake --install build-cli-linux --prefix stage-cli-linux
               ./stage-cli-linux/cricodecs --help >/dev/null
               python3 -m cmake -E chdir stage-cli-linux python3 -m cmake -E tar cf ../cricodecs-cli-linux-x86_64.zip --format=zip .
             '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-linux-x86_64
           path: cricodecs-cli-linux-x86_64.zip
+          if-no-files-found: error
+          overwrite: true
 
   source-build:
     name: Source build (${{ matrix.os }})
@@ -144,9 +154,9 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -157,17 +167,17 @@ jobs:
         run: cmake --version
 
       - name: Configure core library
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF
 
       - name: Build core library
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
   gcc16-source-build:
     name: Source build (GCC 16.1)
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build core library with GCC 16.1
         run: |
@@ -177,7 +187,7 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work \
             gcc:16.1 \
-            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel"
+            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel 4"
 
   pip-install:
     name: Pip install (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -192,9 +202,9 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -212,7 +222,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install package with GCC 16.1
         run: |

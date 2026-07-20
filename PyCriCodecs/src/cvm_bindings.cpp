@@ -337,15 +337,13 @@ void bind_cvm_module(nb::module_& module) {
         .def_ro("entries", &cricodecs::cvm::CvmDirectoryRecord::entries);
 
     nb::class_<cricodecs::cvm::CvmContainer>(module, "Cvm")
-        .def_static("load", [](const std::string& path, const std::string& key) {
-            return unwrap_expected(cricodecs::cvm::CvmContainer::load(std::filesystem::path(path), key));
-        }, nb::arg("path"), nb::arg("key") = "")
+        .def_static("load", &load_cvm_any, nb::arg("source"), nb::arg("key") = "")
         .def_static("load_bytes", [](const nb::bytes& data, const std::string& key) {
             auto owned = copy_python_bytes(data);
             return unwrap_expected(cricodecs::cvm::CvmContainer::load(std::move(owned), key));
         }, nb::arg("data"), nb::arg("key") = "")
         .def_prop_ro("source_path", [](const cricodecs::cvm::CvmContainer& self) {
-            return self.source_path().generic_string();
+            return path_or_none(self.source_path());
         })
         .def_prop_rw("disc_name", &cricodecs::cvm::CvmContainer::disc_name, &cricodecs::cvm::CvmContainer::set_disc_name)
         .def_prop_rw("recording_date", &cricodecs::cvm::CvmContainer::recording_date_text, &cricodecs::cvm::CvmContainer::set_recording_date)
@@ -442,18 +440,18 @@ void bind_cvm_module(nb::module_& module) {
         .def("export_script", [](const cricodecs::cvm::CvmContainer& self, const nb::object& output_path) {
             unwrap_expected(self.export_script_file(require_python_path(output_path, "output_path")));
         }, nb::arg("output_path"))
-        .def("add_file", [](cricodecs::cvm::CvmContainer& self, const std::string& source_path, const std::string& archive_path) {
-            return unwrap_expected(self.add_file(std::filesystem::path(source_path), std::filesystem::path(archive_path)));
+        .def("add_file", [](cricodecs::cvm::CvmContainer& self, const nb::object& source_path, const std::string& archive_path) {
+            return unwrap_expected(self.add_file(require_python_path(source_path, "source_path"), std::filesystem::path(archive_path)));
         }, nb::arg("source_path"), nb::arg("archive_path"))
         .def("add_bytes", [](cricodecs::cvm::CvmContainer& self, const nb::bytes& data, const std::string& archive_path) {
             const auto bytes = copy_python_bytes(data);
             return unwrap_expected(self.add_bytes(std::span<const uint8_t>(bytes.data(), bytes.size()), std::filesystem::path(archive_path)));
         }, nb::arg("data"), nb::arg("archive_path"))
-        .def("replace_file", [](cricodecs::cvm::CvmContainer& self, uint32_t index, const std::string& source_path) {
-            unwrap_expected(self.replace_file(entry_at_for_update(self, index).index, std::filesystem::path(source_path)));
+        .def("replace_file", [](cricodecs::cvm::CvmContainer& self, uint32_t index, const nb::object& source_path) {
+            unwrap_expected(self.replace_file(entry_at_for_update(self, index).index, require_python_path(source_path, "source_path")));
         }, nb::arg("index"), nb::arg("source_path"))
-        .def("replace_file_at", [](cricodecs::cvm::CvmContainer& self, const std::string& archive_path, const std::string& source_path) {
-            unwrap_expected(self.replace_file(std::filesystem::path(archive_path), std::filesystem::path(source_path)));
+        .def("replace_file_at", [](cricodecs::cvm::CvmContainer& self, const std::string& archive_path, const nb::object& source_path) {
+            unwrap_expected(self.replace_file(std::filesystem::path(archive_path), require_python_path(source_path, "source_path")));
         }, nb::arg("archive_path"), nb::arg("source_path"))
         .def("replace_bytes", [](cricodecs::cvm::CvmContainer& self, uint32_t index, const nb::bytes& data) {
             const auto bytes = copy_python_bytes(data);
@@ -476,6 +474,9 @@ void bind_cvm_module(nb::module_& module) {
         .def("remove_at", [](cricodecs::cvm::CvmContainer& self, const std::string& archive_path) {
             unwrap_expected(self.remove(std::filesystem::path(archive_path)));
         }, nb::arg("archive_path"))
+        .def("move_file", [](cricodecs::cvm::CvmContainer& self, uint32_t from_index, uint32_t to_index) {
+            unwrap_expected(self.move_file(from_index, to_index));
+        }, nb::arg("from_index"), nb::arg("to_index"))
         .def("rename", [](cricodecs::cvm::CvmContainer& self, uint32_t index, const std::string& archive_path) {
             unwrap_expected(self.rename(entry_at_for_update(self, index).index, std::filesystem::path(archive_path)));
         }, nb::arg("index"), nb::arg("archive_path"))
@@ -499,7 +500,7 @@ void bind_cvm_module(nb::module_& module) {
             auto owned = copy_python_bytes(data);
             unwrap_expected(self.mount(
                 volume_name,
-                unwrap_expected(cricodecs::cvm::CvmContainer::load(std::span<const uint8_t>(owned.data(), owned.size())))
+                unwrap_expected(cricodecs::cvm::CvmContainer::load(std::move(owned)))
             ));
         }, nb::arg("volume_name"), nb::arg("data"))
         .def("mount", [](cricodecs::cvm::CvmVolumeSet& self, const std::string& volume_name, const nb::object& source) {
@@ -518,7 +519,7 @@ void bind_cvm_module(nb::module_& module) {
             auto owned = copy_python_bytes(data);
             unwrap_expected(self.switch_image(
                 volume_name,
-                unwrap_expected(cricodecs::cvm::CvmContainer::load(std::span<const uint8_t>(owned.data(), owned.size())))
+                unwrap_expected(cricodecs::cvm::CvmContainer::load(std::move(owned)))
             ));
         }, nb::arg("volume_name"), nb::arg("data"))
         .def("unmount", [](cricodecs::cvm::CvmVolumeSet& self, const std::string& volume_name) {

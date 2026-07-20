@@ -69,13 +69,12 @@ std::string_view AcbContainer::name() const {
 }
 
 uint16_t AcbContainer::waveform_id_for_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept {
-    if (waveform.id != invalid_wave_id) {
-        return waveform.id;
-    }
-
     if (is_memory_bank) {
         if (waveform.memory_awb_id != invalid_wave_id) {
             return waveform.memory_awb_id;
+        }
+        if (waveform.id != invalid_wave_id) {
+            return waveform.id;
         }
         return waveform.stream_awb_id;
     }
@@ -83,7 +82,14 @@ uint16_t AcbContainer::waveform_id_for_bank(const WaveformInfo& waveform, bool i
     if (waveform.stream_awb_id != invalid_wave_id) {
         return waveform.stream_awb_id;
     }
+    if (waveform.id != invalid_wave_id) {
+        return waveform.id;
+    }
     return waveform.memory_awb_id;
+}
+
+bool AcbContainer::prefers_memory_bank(const WaveformInfo& waveform) noexcept {
+    return waveform.streaming == 0 || waveform.stream_awb_id == invalid_wave_id;
 }
 
 bool AcbContainer::waveform_matches_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept {
@@ -91,6 +97,13 @@ bool AcbContainer::waveform_matches_bank(const WaveformInfo& waveform, bool is_m
         return waveform.streaming != 1;
     }
     return waveform.streaming != 0;
+}
+
+bool AcbContainer::uses_memory_bank_for_associated_awb(const WaveformInfo& waveform) const {
+    if (has_embedded_awb()) {
+        return waveform.streaming != 1;
+    }
+    return prefers_memory_bank(waveform);
 }
 
 } // namespace cricodecs::acb

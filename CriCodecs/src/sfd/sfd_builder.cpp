@@ -10,10 +10,12 @@
 #include "sfd_container.hpp"
 
 #include "../adx/adx_codec.hpp"
-#include "../utilities/io.hpp"
 #include "../utilities/io_endian.hpp"
+#include "../utilities/io_reader.hpp"
+#include "../utilities/io_writer.hpp"
 #include "../utilities/numeric.hpp"
 #include "../utilities/string.hpp"
+#include "../video/mpeg.hpp"
 
 #include <algorithm>
 #include <array>
@@ -35,7 +37,6 @@ using util::uppercase_ascii;
 
 constexpr uint8_t packet_program_end = 0xB9;
 constexpr uint8_t packet_system_header = 0xBB;
-constexpr uint8_t packet_private_stream_1 = 0xBD;
 constexpr uint8_t packet_padding_stream = 0xBE;
 constexpr uint8_t packet_private_stream_2 = 0xBF;
 constexpr uint8_t packet_audio_stream_0 = 0xC0;
@@ -358,57 +359,6 @@ void append_bytes(std::vector<uint8_t>& bytes, std::span<const uint8_t> more) {
     bytes.insert(bytes.end(), more.begin(), more.end());
 }
 
-[[nodiscard]] std::pair<uint32_t, uint32_t> frame_rate_ratio(uint8_t frame_rate_code) {
-    switch (frame_rate_code) {
-        case 1: return {24000, 1001};
-        case 2: return {24, 1};
-        case 3: return {25, 1};
-        case 4: return {30000, 1001};
-        case 5: return {30, 1};
-        case 6: return {50, 1};
-        case 7: return {60000, 1001};
-        case 8: return {60, 1};
-        default: return {30000, 1001};
-    }
-}
-
-[[nodiscard]] std::optional<SfdVideoSequenceHeader> parse_video_sequence_header(std::span<const uint8_t> bytes) {
-    for (size_t offset = 0; offset + 12 <= bytes.size(); ++offset) {
-        if (bytes[offset + 0] != 0x00 || bytes[offset + 1] != 0x00 || bytes[offset + 2] != 0x01 || bytes[offset + 3] != 0xB3) {
-            continue;
-        }
-
-        return SfdVideoSequenceHeader{
-            .width = static_cast<uint16_t>((static_cast<uint16_t>(bytes[offset + 4]) << 4u) | (bytes[offset + 5] >> 4u)),
-            .height = static_cast<uint16_t>((static_cast<uint16_t>(bytes[offset + 5] & 0x0Fu) << 8u) | bytes[offset + 6]),
-            .aspect_ratio_code = static_cast<uint8_t>((bytes[offset + 7] >> 4u) & 0x0Fu),
-            .frame_rate_code = static_cast<uint8_t>(bytes[offset + 7] & 0x0Fu),
-            .bit_rate_value = static_cast<uint32_t>((static_cast<uint32_t>(bytes[offset + 8]) << 10u) |
-                (static_cast<uint32_t>(bytes[offset + 9]) << 2u) |
-                (static_cast<uint32_t>(bytes[offset + 10]) >> 6u)),
-        };
-    }
-    return std::nullopt;
-}
-
-[[nodiscard]] SfdVideoType detect_video_type(std::span<const uint8_t> bytes) {
-    bool saw_sequence = false;
-    for (size_t offset = 0; offset + 5 <= bytes.size(); ++offset) {
-        if (bytes[offset + 0] != 0x00 || bytes[offset + 1] != 0x00 || bytes[offset + 2] != 0x01) {
-            continue;
-        }
-        if (bytes[offset + 3] == 0xB3) {
-            saw_sequence = true;
-        } else if (bytes[offset + 3] == 0xB5 && saw_sequence) {
-            const uint8_t extension_id = static_cast<uint8_t>((bytes[offset + 4] >> 4u) & 0x0Fu);
-            if (extension_id == 0x01) {
-                return SfdVideoType::mpeg2;
-            }
-        }
-    }
-    return saw_sequence ? SfdVideoType::mpeg1 : SfdVideoType::unknown;
-}
-
 [[nodiscard]] std::vector<TimedUnit> split_video_units(
     std::span<const uint8_t> bytes,
     double frame_duration_seconds
@@ -531,16 +481,25 @@ struct VideoSourceDescriptor {
         return std::unexpected(bytes_result.error());
     }
 
-    auto sequence_header = parse_video_sequence_header(*bytes_result);
+    auto sequence_header = video::parse_mpeg_sequence_header(*bytes_result);
     if (!sequence_header) {
         return std::unexpected("SFD builder requires MPEG video input with a sequence header");
     }
 
     VideoSource video;
     video.bytes = std::move(*bytes_result);
-    video.sequence_header = *sequence_header;
-    video.video_type = detect_video_type(video.bytes);
-    const auto [fps_n, fps_d] = frame_rate_ratio(video.sequence_header.frame_rate_code);
+    video.sequence_header = SfdVideoSequenceHeader{
+        .width = sequence_header->width,
+        .height = sequence_header->height,
+        .aspect_ratio_code = sequence_header->aspect_ratio_code,
+        .frame_rate_code = sequence_header->frame_rate_code,
+        .bit_rate_value = sequence_header->bit_rate_value,
+    };
+    const auto mpeg_type = cricodecs::video::detect_mpeg_video_type(video.bytes);
+    video.video_type = mpeg_type == cricodecs::video::MpegVideoType::mpeg2
+        ? SfdVideoType::mpeg2
+        : SfdVideoType::mpeg1;
+    const auto [fps_n, fps_d] = cricodecs::video::mpeg_frame_rate_ratio(video.sequence_header.frame_rate_code);
     video.fps_n = fps_n;
     video.fps_d = fps_d;
     const auto source_descriptor = resolve_video_source_descriptor(input.video_path, video.video_type);
@@ -618,8 +577,8 @@ struct VideoSourceDescriptor {
     }
     audio.source_name = std::string(*source_name);
 
-    // `ref/docs/sfd_porting_notes.md` indicates the fixed-pack builder keeps
-    // chunk timing in-frame and rounds up to include any partial sample span.
+    // The fixed-pack builder keeps chunk timing in-frame and rounds up to
+    // include any partial sample span.
     const uint32_t target_samples = std::max<uint32_t>(1u,
         static_cast<uint32_t>(cricodecs::util::divide_round_up(
             static_cast<uint64_t>(audio.header.sample_rate) * static_cast<uint64_t>(video.fps_d),
@@ -733,8 +692,7 @@ void write_system_header(std::vector<uint8_t>& sector, size_t offset, uint32_t m
 
     // Build the final sector-padding packet for the first sector exactly as
     // SofDec does: close the sector with stream-id 0xBE when bytes remain.
-    // This mirrors the sector-constrained packet layout in
-    // `ref/docs/sfd_porting_notes.md`.
+    // This mirrors the observed sector-constrained packet layout.
     const size_t padding_offset = pack_header_size + 15u;
     sector[padding_offset + 0] = 0x00;
     sector[padding_offset + 1] = 0x00;
@@ -818,7 +776,7 @@ void write_record_common(
     size_t record_offset = layout.element_table_offset;
     write_record_common(payload, record_offset, video.source_name, packet_video_stream_0);
     payload[record_offset + 25] = video.source_type;
-    const auto [fps_n, fps_d] = frame_rate_ratio(video.sequence_header.frame_rate_code);
+    const auto [fps_n, fps_d] = cricodecs::video::mpeg_frame_rate_ratio(video.sequence_header.frame_rate_code);
     write_le<uint16_t>(payload.data() + record_offset + 26, static_cast<uint16_t>(std::lround(
         (static_cast<double>(fps_n) / static_cast<double>(fps_d)) * 900.0)));
     payload[record_offset + 28] = static_cast<uint8_t>(video.sequence_header.width >> 4u);
@@ -865,7 +823,6 @@ void write_record_common(
         const size_t adjustment = packet_header_size - remaining;
         if (adjustment <= payload_size) {
             payload_size -= adjustment;
-            remaining += adjustment;
         }
     }
 
@@ -890,8 +847,7 @@ void write_record_common(
     if (remaining >= packet_header_size) {
         // Packet padding keeps each sector closed to 0x000001BE when the next
         // payload would otherwise leave unused bytes in the transport sector.
-        // This follows the same sector-boundary closure behavior in
-        // `ref/docs/sfd_porting_notes.md`.
+        // This follows the same observed sector-boundary closure behavior.
         sector.push_back(0x00);
         sector.push_back(0x00);
         sector.push_back(0x01);
@@ -988,9 +944,13 @@ std::expected<std::vector<uint8_t>, std::string> SfdBuilder::build(const SfdBuil
     std::vector<uint8_t> sofdec_header_payload =
         build_sofdec_header_payload(profile, input, *header_builder_version, video, audio);
     std::vector<uint8_t> output;
-    output.reserve(sector_size * 4u + video.bytes.size() + (audio ? audio->bytes.size() : 0u));
+    output.reserve(
+        static_cast<size_t>(sector_size) * 4u +
+        video.bytes.size() +
+        (audio ? audio->bytes.size() : 0u));
 
     std::vector<SectorPatch> sector_patches;
+    sector_patches.reserve(2u + video.units.size() + (audio ? audio->units.size() : 0u));
     sector_patches.push_back(SectorPatch{
         .offset = output.size(),
         .scr = 0,
@@ -1077,7 +1037,7 @@ std::expected<void, std::string> SfdBuilder::build_to_file(
         return std::unexpected("SFD build failed: could not open output: " + output_path.string());
     }
     if (auto result = writer.write(*bytes); !result) {
-        (void)writer.close();
+        [[maybe_unused]] const auto close_result = writer.close();
         return std::unexpected("SFD build failed: could not write output: " + output_path.string());
     }
     if (auto result = writer.close(); !result) {

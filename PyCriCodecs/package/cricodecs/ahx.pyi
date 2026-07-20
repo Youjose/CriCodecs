@@ -15,6 +15,20 @@ class AhxKey:
     add: int
     def empty(self) -> bool: ...
 
+class KeyCandidate:
+    key: AhxKey
+    score: float
+    source_count: int
+    evidence_count: int
+    evidence_frames: int
+    candidate_counts: tuple[int, int, int]
+    canonical_type9_code: int
+
+class KeyRecoveryResult:
+    candidates: list[KeyCandidate]
+    source_count: int
+    evidence_count: int
+
 class AhxDecodeConfig:
     encoding_mode: int
     sample_rate: int
@@ -38,6 +52,7 @@ def default_bit_allocation_pattern() -> tuple[int, ...]: ...
 def preset_bit_allocation_pattern(preset: AhxBitAllocationPreset) -> tuple[int, ...]: ...
 def clamp_bit_allocation_pattern(pattern: Iterable[int]) -> tuple[int, ...]: ...
 def decode(source: Any, config: AhxDecodeConfig | None = None, key: AhxKeyLike = None, subkey: int = 0) -> bytes: ...
+def recover_key(source: Any | Sequence[Any], same_base_key: bool = True) -> KeyRecoveryResult: ...
 def encode(wav: Wav | Any, config: AhxEncodeConfig | None = None) -> bytes: ...
 
 __all__: list[str]

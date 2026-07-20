@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
-#include <fstream>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -822,9 +821,26 @@ std::expected<CvmBuildInput, std::string> CvmBuildInput::from_directory(
         });
     }
 
-    std::sort(input.files.begin(), input.files.end(), [](const CvmBuildFile& lhs, const CvmBuildFile& rhs) {
-        return uppercase_ascii(lhs.archive_path.generic_string()) < uppercase_ascii(rhs.archive_path.generic_string());
+    struct KeyedFile {
+        std::string key;
+        CvmBuildFile file;
+    };
+    std::vector<KeyedFile> keyed_files;
+    keyed_files.reserve(input.files.size());
+    for (auto& file : input.files) {
+        keyed_files.push_back({
+            .key = uppercase_ascii(file.archive_path.generic_string()),
+            .file = std::move(file),
+        });
+    }
+    std::sort(keyed_files.begin(), keyed_files.end(), [](const KeyedFile& lhs, const KeyedFile& rhs) {
+        return lhs.key < rhs.key;
     });
+    input.files.clear();
+    input.files.reserve(keyed_files.size());
+    for (auto& keyed_file : keyed_files) {
+        input.files.push_back(std::move(keyed_file.file));
+    }
     return input;
 }
 
@@ -856,15 +872,7 @@ std::expected<void, std::string> CvmBuilder::build_to_file(
         }
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("CVM build failed: could not open output: " + output_path.string());
-    }
-    file.write(reinterpret_cast<const char*>(image->data()), static_cast<std::streamsize>(image->size()));
-    if (!file) {
-        return std::unexpected("CVM build failed: could not write output: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, *image, "CVM build failed");
 }
 
 std::expected<std::vector<uint8_t>, std::string> CvmBuilder::build(

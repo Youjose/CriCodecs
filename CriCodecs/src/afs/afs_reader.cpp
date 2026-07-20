@@ -9,7 +9,6 @@
 #include "afs_container.hpp"
 
 #include <algorithm>
-#include <fstream>
 
 #include "afs_format.hpp"
 #include "../utilities/io.hpp"
@@ -188,17 +187,7 @@ std::expected<void, std::string> AfsContainer::export_stream(
         return std::unexpected(data.error());
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("AFS export failed: could not open output: " + output_path.string());
-    }
-
-    file.write(reinterpret_cast<const char*>(data->data()), static_cast<std::streamsize>(data->size()));
-    if (!file) {
-        return std::unexpected("AFS export failed: could not write output: " + output_path.string());
-    }
-
-    return {};
+    return io::write_file_bytes(output_path, *data, "AFS export failed");
 }
 
 std::expected<void, std::string> AfsContainer::extract(const std::filesystem::path& output_dir) const {

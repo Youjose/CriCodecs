@@ -42,6 +42,16 @@ struct H264VideoFrame {
     std::span<const uint8_t> record_bytes;
 };
 
+struct H264Structure {
+    uint32_t nal_units = 0;
+    uint32_t valid_nal_headers = 0;
+    uint32_t valid_slice_headers = 0;
+    uint32_t emulation_prevention_bytes = 0;
+    uint32_t ebsp_violations = 0;
+};
+
+[[nodiscard]] H264Structure inspect_h264_structure(std::span<const uint8_t> bytes) noexcept;
+
 [[nodiscard]] std::expected<H264SequenceParameterSet, std::string> parse_h264_sequence_parameter_set(
     std::span<const uint8_t> bytes
 );

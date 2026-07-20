@@ -89,4 +89,8 @@ consteval auto generate_primes_in_range() {
     return primes;
 }
 
+inline constexpr auto cri_key_primes =
+    generate_primes_in_range<uint16_t, 0x401B, 0x683A>();
+static_assert(cri_key_primes.size() == 0x400);
+
 } // namespace cricodecs::util

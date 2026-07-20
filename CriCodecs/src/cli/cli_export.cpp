@@ -377,7 +377,7 @@ namespace cricodecs::cli::detail {
                 const auto& stream = current.streams()[index];
                 auto relative_path = std::filesystem::path(current.describe_stream(stream.id()));
                 if (!options.raw) {
-                    auto payload = current.extract_stream(static_cast<uint32_t>(index));
+                    auto payload = current.extract_stream_sample(static_cast<uint32_t>(index), 4096);
                     if (!payload) {
                         return std::unexpected(payload.error());
                     }
@@ -485,6 +485,9 @@ namespace cricodecs::cli::detail {
             }
             return write_bytes_file(output_path, *payload);
         } else if constexpr (std::same_as<T, usm::UsmReader>) {
+            if (options.raw) {
+                return current.extract_file(static_cast<uint32_t>(item.index), output_path);
+            }
             auto payload = current.extract_stream(static_cast<uint32_t>(item.index));
             if (!payload) {
                 return std::unexpected(payload.error());
@@ -514,7 +517,11 @@ namespace cricodecs::cli::detail {
         return std::visit([&](auto& current) -> std::expected<void, std::string> {
             using T = std::decay_t<decltype(current)>;
             if constexpr (std::same_as<T, adx::Adx> || std::same_as<T, hca::Hca>) {
-                return write_bytes_file(output_path, current.rebuild());
+                auto bytes = current.rebuild();
+                if (!bytes) {
+                    return std::unexpected(bytes.error());
+                }
+                return write_bytes_file(output_path, *bytes);
             } else if constexpr (std::same_as<T, aax::AaxContainer>) {
                 auto adx_bytes = current.adx_data();
                 if (!adx_bytes) {

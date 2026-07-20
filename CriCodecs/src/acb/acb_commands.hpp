@@ -49,9 +49,11 @@ enum class AcbCommandPayloadKind : uint8_t {
     be_u16_pair,
     be_u16_pair_u8,
     be_f32,
+    be_f32_pair,
     u8_pair,
     parameter_curve_7,
     parameter_curve_11,
+    parameter_record_12,
     category_id_list,
     bus_name_send,
     sequence_wait_timer,
@@ -110,10 +112,13 @@ enum class AcbCommandCode : uint16_t {
     compact_curve_parameter_0_range = 89,
     compact_set_parameter_160 = 90,
     compact_runtime_flag_93 = 93,
+    compact_parameter_pair_100 = 100,
+    compact_parameter_pair_101 = 101,
     compact_set_parameter_96 = 108,
     compact_runtime_flag_110 = 110,
     bus_send_by_name = 111,
     compact_skip_112 = 112,
+    compact_parameter_pair_113 = 113,
     compact_runtime_flag_114 = 114,
     compact_reset_parameter_152 = 117,
     compact_runtime_flag_118 = 118,
@@ -121,8 +126,13 @@ enum class AcbCommandCode : uint16_t {
     compact_set_parameter_4 = 121,
     compact_set_parameter_102 = 122,
     stop_at_loop_end = 124,
+    compact_parameter_pair_125 = 125,
     compact_set_parameter_95 = 127,
     compact_set_parameter_97 = 128,
+    compact_parameter_record_136 = 136,
+    compact_float_parameter_146 = 146,
+    compact_float_parameter_147 = 147,
+    compact_float_pair_148 = 148,
 
     sequence_start_random = 998,
     sequence_start = 999,
@@ -271,6 +281,10 @@ struct AcbCommand {
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_160", 2};
         case 93:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_runtime_flag_93", 1};
+        case 100:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_100", 4};
+        case 101:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_101", 4};
         case 108:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_96", 2};
         case 110:
@@ -279,6 +293,8 @@ struct AcbCommand {
             return {code, AcbCommandFamily::bus_send, AcbCommandPayloadKind::bus_name_send, "bus_send_by_name", 4};
         case 112:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::raw, "compact_skip_112", 4};
+        case 113:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_113", 4};
         case 114:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_runtime_flag_114", 1};
         case 117:
@@ -293,10 +309,20 @@ struct AcbCommand {
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::u8, "compact_set_parameter_102", 1};
         case 124:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "stop_at_loop_end", 1};
+        case 125:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_125", 4};
         case 127:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_95", 2};
         case 128:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_97", 2};
+        case 136:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::parameter_record_12, "compact_parameter_record_136", 12};
+        case 146:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_f32, "compact_float_parameter_146", 4};
+        case 147:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_f32, "compact_float_parameter_147", 4};
+        case 148:
+            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_f32_pair, "compact_float_pair_148", 8};
         case 0x03E4:
             return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::variable, "note_off", std::nullopt};
         case 0x03E5:

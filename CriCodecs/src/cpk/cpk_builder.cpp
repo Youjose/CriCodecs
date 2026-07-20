@@ -134,6 +134,13 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::encrypt() {
 }
 
 std::expected<std::vector<uint8_t>, std::string> Cpk::save_impl(bool encrypt_utf_chunks) {
+    if (auto result = rebuild_state(encrypt_utf_chunks); !result) {
+        return std::unexpected(result.error());
+    }
+    return m_owned_archive_bytes;
+}
+
+std::expected<void, std::string> Cpk::rebuild_state(bool encrypt_utf_chunks) {
     if (m_files.empty()) {
         return std::unexpected("CPK build failed: archive has no entries");
     }
@@ -151,7 +158,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::save_impl(bool encrypt_utf
         return std::unexpected(archive.error());
     }
 
-    m_owned_archive_bytes = *archive;
+    m_owned_archive_bytes = std::move(*archive);
     m_source_path.clear();
     m_reader = io::reader{};
     if (auto result = m_reader.open(std::span<const uint8_t>(m_owned_archive_bytes)); !result) {
@@ -161,27 +168,23 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::save_impl(bool encrypt_utf
         return std::unexpected(result.error());
     }
 
-    return m_owned_archive_bytes;
+    return {};
 }
 
 std::expected<void, std::string> Cpk::save_to_file(const std::filesystem::path& output_path) {
+    if (m_dirty || !m_reader.is_open()) {
+        if (auto result = rebuild_state(false); !result) {
+            return std::unexpected(result.error());
+        }
+    }
+
     io::writer writer;
     if (auto result = writer.open(output_path); !result) {
         return std::unexpected("CPK build failed: could not open output file: " + std::string(result.error()));
     }
 
-    if (!m_dirty && m_reader.is_open()) {
-        if (auto result = writer.write(m_reader.data()); !result) {
-            return std::unexpected("CPK build failed: could not write output file: " + std::string(result.error()));
-        }
-    } else {
-        auto buffer = save();
-        if (!buffer) {
-            return std::unexpected(buffer.error());
-        }
-        if (auto result = writer.write(*buffer); !result) {
-            return std::unexpected("CPK build failed: could not write output file: " + std::string(result.error()));
-        }
+    if (auto result = writer.write(m_reader.data()); !result) {
+        return std::unexpected("CPK build failed: could not write output file: " + std::string(result.error()));
     }
 
     if (auto result = writer.close(); !result) {
@@ -345,21 +348,26 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(
 
     std::vector<size_t> toc_order;
     if (emit_toc) {
-        toc_order = sorted_indices(prepared_entries.size(), [this](size_t lhs, size_t rhs) {
-            const auto lhs_path = m_files[lhs].full_path().generic_string();
-            const auto rhs_path = m_files[rhs].full_path().generic_string();
-            return compare_archive_paths(lhs_path, rhs_path) < 0;
+        std::vector<std::string> toc_sort_keys;
+        toc_sort_keys.reserve(prepared_entries.size());
+        for (size_t index = 0; index < prepared_entries.size(); ++index) {
+            toc_sort_keys.push_back(m_files[index].full_path().generic_string());
+        }
+        toc_order = sorted_indices(prepared_entries.size(), [&toc_sort_keys](size_t lhs, size_t rhs) {
+            return compare_archive_paths(toc_sort_keys[lhs], toc_sort_keys[rhs]) < 0;
         });
     }
 
-    const std::vector<size_t> data_order = emit_itoc
-        ? sorted_indices(prepared_entries.size(), [&prepared_entries](size_t lhs, size_t rhs) {
+    std::vector<size_t> generated_data_order;
+    if (emit_itoc) {
+        generated_data_order = sorted_indices(prepared_entries.size(), [&prepared_entries](size_t lhs, size_t rhs) {
             if (prepared_entries[lhs].effective_id != prepared_entries[rhs].effective_id) {
                 return prepared_entries[lhs].effective_id < prepared_entries[rhs].effective_id;
             }
             return lhs < rhs;
-        })
-        : toc_order;
+        });
+    }
+    const std::vector<size_t>& data_order = emit_itoc ? generated_data_order : toc_order;
 
     std::vector<uint8_t> toc_chunk;
     std::vector<uint8_t> toc_payload;
@@ -458,6 +466,7 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::build_archive(
 
     std::vector<std::string> unique_directories;
     if (emit_toc) {
+        unique_directories.reserve(m_files.size());
         for (const auto& entry : m_files) {
             if (!entry.dirname.empty()) {
                 unique_directories.push_back(entry.dirname);
@@ -566,15 +575,15 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::generate_toc(
             return std::unexpected(filename.error());
         }
 
-        table.set(row, "DirName", *dirname);
-        table.set(row, "FileName", *filename);
-        table.set(row, "FileSize", static_cast<uint32_t>(prepared.packed_size));
-        table.set(row, "ExtractSize", static_cast<uint32_t>(prepared.unpacked_size));
-        table.set(row, "FileOffset", entry_offsets[index]);
-        table.set(row, "ID", prepared.effective_id);
-        table.set(row, "UserString", entry.user_string);
+        table.set(row, "DirName", *dirname).value();
+        table.set(row, "FileName", *filename).value();
+        table.set(row, "FileSize", static_cast<uint32_t>(prepared.packed_size)).value();
+        table.set(row, "ExtractSize", static_cast<uint32_t>(prepared.unpacked_size)).value();
+        table.set(row, "FileOffset", entry_offsets[index]).value();
+        table.set(row, "ID", prepared.effective_id).value();
+        table.set(row, "UserString", entry.user_string).value();
         if (m_options.enable_crc) {
-            table.set(row, "CRC", prepared.crc32);
+            table.set(row, "CRC", prepared.crc32).value();
         }
     }
 
@@ -610,20 +619,20 @@ std::vector<uint8_t> Cpk::generate_itoc_mode0(
 
         if (fits_l) {
             const auto row = data_l.add_row();
-            data_l.set(row, "ID", static_cast<uint16_t>(prepared.effective_id));
-            data_l.set(row, "FileSize", static_cast<uint16_t>(prepared.packed_size));
-            data_l.set(row, "ExtractSize", static_cast<uint16_t>(prepared.unpacked_size));
+            data_l.set(row, "ID", static_cast<uint16_t>(prepared.effective_id)).value();
+            data_l.set(row, "FileSize", static_cast<uint16_t>(prepared.packed_size)).value();
+            data_l.set(row, "ExtractSize", static_cast<uint16_t>(prepared.unpacked_size)).value();
             if (m_options.enable_crc) {
-                data_l.set(row, "CRC", prepared.crc32);
+                data_l.set(row, "CRC", prepared.crc32).value();
             }
             ++files_l;
         } else {
             const auto row = data_h.add_row();
-            data_h.set(row, "ID", static_cast<uint16_t>(prepared.effective_id));
-            data_h.set(row, "FileSize", static_cast<uint32_t>(prepared.packed_size));
-            data_h.set(row, "ExtractSize", static_cast<uint32_t>(prepared.unpacked_size));
+            data_h.set(row, "ID", static_cast<uint16_t>(prepared.effective_id)).value();
+            data_h.set(row, "FileSize", static_cast<uint32_t>(prepared.packed_size)).value();
+            data_h.set(row, "ExtractSize", static_cast<uint32_t>(prepared.unpacked_size)).value();
             if (m_options.enable_crc) {
-                data_h.set(row, "CRC", prepared.crc32);
+                data_h.set(row, "CRC", prepared.crc32).value();
             }
             ++files_h;
         }
@@ -631,20 +640,20 @@ std::vector<uint8_t> Cpk::generate_itoc_mode0(
 
     if (files_l == 0) {
         const auto row = data_l.add_row();
-        data_l.set(row, "ID", static_cast<uint16_t>(0));
-        data_l.set(row, "FileSize", static_cast<uint16_t>(0));
-        data_l.set(row, "ExtractSize", static_cast<uint16_t>(0));
+        data_l.set(row, "ID", static_cast<uint16_t>(0)).value();
+        data_l.set(row, "FileSize", static_cast<uint16_t>(0)).value();
+        data_l.set(row, "ExtractSize", static_cast<uint16_t>(0)).value();
         if (m_options.enable_crc) {
-            data_l.set(row, "CRC", 0u);
+            data_l.set(row, "CRC", 0u).value();
         }
     }
     if (files_h == 0) {
         const auto row = data_h.add_row();
-        data_h.set(row, "ID", static_cast<uint16_t>(0));
-        data_h.set(row, "FileSize", static_cast<uint32_t>(0));
-        data_h.set(row, "ExtractSize", static_cast<uint32_t>(0));
+        data_h.set(row, "ID", static_cast<uint16_t>(0)).value();
+        data_h.set(row, "FileSize", static_cast<uint32_t>(0)).value();
+        data_h.set(row, "ExtractSize", static_cast<uint32_t>(0)).value();
         if (m_options.enable_crc) {
-            data_h.set(row, "CRC", 0u);
+            data_h.set(row, "CRC", 0u).value();
         }
     }
 
@@ -655,11 +664,10 @@ std::vector<uint8_t> Cpk::generate_itoc_mode0(
     table.add_column("DataH", utf::ColumnType::VLData);
 
     const auto row = table.add_row();
-    table.set(row, "FilesL", files_l);
-    table.set(row, "FilesH", files_h);
-    table.set(row, "DataL", data_l.build());
-    table.set(row, "DataH", data_h.build());
-
+    table.set(row, "FilesL", files_l).value();
+    table.set(row, "FilesH", files_h).value();
+    table.set(row, "DataL", data_l.build()).value();
+    table.set(row, "DataH", data_h.build()).value();
     return table.build();
 }
 
@@ -685,8 +693,8 @@ std::vector<uint8_t> Cpk::generate_itoc_mode2(
 
     for (const size_t index : data_order) {
         const auto row = table.add_row();
-        table.set(row, "ID", prepared_entries[index].effective_id);
-        table.set(row, "TocIndex", toc_index_by_entry[index]);
+        table.set(row, "ID", prepared_entries[index].effective_id).value();
+        table.set(row, "TocIndex", toc_index_by_entry[index]).value();
     }
 
     return table.build();
@@ -698,8 +706,8 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::generate_etoc() const {
     table.add_column("LocalDir", utf::ColumnType::String);
 
     const auto row = table.add_row();
-    table.set(row, "UpdateDateTime", 0ull);
-    table.set(row, "LocalDir", m_options.etoc_local_dir);
+    table.set(row, "UpdateDateTime", 0ull).value();
+    table.set(row, "LocalDir", m_options.etoc_local_dir).value();
     return table.build();
 }
 
@@ -714,15 +722,15 @@ std::vector<uint8_t> Cpk::generate_gtoc(
 
     {
         const auto row = gdata.add_row();
-        gdata.set(row, "Gname", std::string(""));
-        gdata.set(row, "Child", static_cast<int32_t>(-1));
-        gdata.set(row, "Next", static_cast<int32_t>(0));
+        gdata.set(row, "Gname", std::string("")).value();
+        gdata.set(row, "Child", static_cast<int32_t>(-1)).value();
+        gdata.set(row, "Next", static_cast<int32_t>(0)).value();
     }
     {
         const auto row = gdata.add_row();
-        gdata.set(row, "Gname", std::string("(none)"));
-        gdata.set(row, "Child", static_cast<int32_t>(0));
-        gdata.set(row, "Next", static_cast<int32_t>(0));
+        gdata.set(row, "Gname", std::string("(none)")).value();
+        gdata.set(row, "Child", static_cast<int32_t>(0)).value();
+        gdata.set(row, "Next", static_cast<int32_t>(0)).value();
     }
 
     utf::UtfTable fdata = utf::UtfTable::create("CpkGtocFlink");
@@ -733,24 +741,24 @@ std::vector<uint8_t> Cpk::generate_gtoc(
 
     {
         const auto row = fdata.add_row();
-        fdata.set(row, "Next", static_cast<int32_t>(-1));
-        fdata.set(row, "Child", static_cast<int32_t>(-1));
-        fdata.set(row, "SortFlink", static_cast<int32_t>(2));
-        fdata.set(row, "Aindex", static_cast<uint16_t>(0));
+        fdata.set(row, "Next", static_cast<int32_t>(-1)).value();
+        fdata.set(row, "Child", static_cast<int32_t>(-1)).value();
+        fdata.set(row, "SortFlink", static_cast<int32_t>(2)).value();
+        fdata.set(row, "Aindex", static_cast<uint16_t>(0)).value();
     }
     {
         const auto row = fdata.add_row();
-        fdata.set(row, "Next", static_cast<int32_t>(2));
-        fdata.set(row, "Child", static_cast<int32_t>(0));
-        fdata.set(row, "SortFlink", static_cast<int32_t>(1));
-        fdata.set(row, "Aindex", static_cast<uint16_t>(0));
+        fdata.set(row, "Next", static_cast<int32_t>(2)).value();
+        fdata.set(row, "Child", static_cast<int32_t>(0)).value();
+        fdata.set(row, "SortFlink", static_cast<int32_t>(1)).value();
+        fdata.set(row, "Aindex", static_cast<uint16_t>(0)).value();
     }
     {
         const auto row = fdata.add_row();
-        fdata.set(row, "Next", static_cast<int32_t>(0));
-        fdata.set(row, "Child", static_cast<int32_t>(1));
-        fdata.set(row, "SortFlink", static_cast<int32_t>(2));
-        fdata.set(row, "Aindex", static_cast<uint16_t>(0));
+        fdata.set(row, "Next", static_cast<int32_t>(0)).value();
+        fdata.set(row, "Child", static_cast<int32_t>(1)).value();
+        fdata.set(row, "SortFlink", static_cast<int32_t>(2)).value();
+        fdata.set(row, "Aindex", static_cast<uint16_t>(0)).value();
     }
 
     utf::UtfTable attr_data = utf::UtfTable::create("CpkGtocAttr");
@@ -761,10 +769,10 @@ std::vector<uint8_t> Cpk::generate_gtoc(
 
     {
         const auto row = attr_data.add_row();
-        attr_data.set(row, "Aname", std::string(""));
-        attr_data.set(row, "Align", m_options.align);
-        attr_data.set(row, "Files", static_cast<uint32_t>(prepared_entries.size()));
-        attr_data.set(row, "FileSize", static_cast<uint32_t>(enabled_packed_size));
+        attr_data.set(row, "Aname", std::string("")).value();
+        attr_data.set(row, "Align", m_options.align).value();
+        attr_data.set(row, "Files", static_cast<uint32_t>(prepared_entries.size())).value();
+        attr_data.set(row, "FileSize", static_cast<uint32_t>(enabled_packed_size)).value();
     }
 
     utf::UtfTable table = utf::UtfTable::create("CpkGtocInfo");
@@ -776,12 +784,12 @@ std::vector<uint8_t> Cpk::generate_gtoc(
     table.add_column("AttrData", utf::ColumnType::VLData);
 
     const auto row = table.add_row();
-    table.set(row, "Glink", static_cast<uint32_t>(2));
-    table.set(row, "Flink", static_cast<uint32_t>(3));
-    table.set(row, "Attr", static_cast<uint32_t>(1));
-    table.set(row, "Gdata", gdata.build());
-    table.set(row, "Fdata", fdata.build());
-    table.set(row, "AttrData", attr_data.build());
+    table.set(row, "Glink", static_cast<uint32_t>(2)).value();
+    table.set(row, "Flink", static_cast<uint32_t>(3)).value();
+    table.set(row, "Attr", static_cast<uint32_t>(1)).value();
+    table.set(row, "Gdata", gdata.build()).value();
+    table.set(row, "Fdata", fdata.build()).value();
+    table.set(row, "AttrData", attr_data.build()).value();
     return table.build();
 }
 
@@ -853,51 +861,50 @@ std::vector<uint8_t> Cpk::generate_cpk_header(
     table.add_column("CrcTable", utf::ColumnType::VLData);
 
     const auto row = table.add_row();
-    table.set(row, "UpdateDateTime", 0ull);
-    table.set(row, "FileSize", file_size);
-    table.set(row, "ContentOffset", content_offset);
-    table.set(row, "ContentSize", content_size);
-    table.set(row, "TocOffset", has_toc ? root_chunk_size : 0ull);
-    table.set(row, "TocSize", has_toc ? toc_chunk_size : 0ull);
-    table.set(row, "TocCrc", toc_crc);
-    table.set(row, "HtocOffset", 0ull);
-    table.set(row, "HtocSize", 0ull);
-    table.set(row, "EtocOffset", etoc_chunk_offset);
-    table.set(row, "EtocSize", etoc_chunk_size);
-    table.set(row, "ItocOffset", has_itoc ? itoc_chunk_offset : 0ull);
-    table.set(row, "ItocSize", has_itoc ? itoc_chunk_size : 0ull);
-    table.set(row, "ItocCrc", itoc_crc);
-    table.set(row, "GtocOffset", has_gtoc ? gtoc_chunk_offset : 0ull);
-    table.set(row, "GtocSize", has_gtoc ? gtoc_chunk_size : 0ull);
-    table.set(row, "GtocCrc", gtoc_crc);
-    table.set(row, "HgtocOffset", 0ull);
-    table.set(row, "HgtocSize", 0ull);
-    table.set(row, "EnabledPackedSize", enabled_packed_size);
-    table.set(row, "EnabledDataSize", enabled_data_size);
-    table.set(row, "TotalDataSize", content_size);
-    table.set(row, "Tocs", has_toc ? 1u : 0u);
-    table.set(row, "Files", static_cast<uint32_t>(m_files.size()));
-    table.set(row, "Groups", has_gtoc ? 1u : 0u);
-    table.set(row, "Attrs", has_gtoc ? 1u : 0u);
-    table.set(row, "TotalFiles", static_cast<uint32_t>(m_files.size()));
-    table.set(row, "Directories", directory_count);
-    table.set(row, "Updates", 0u);
-    table.set(row, "Version", static_cast<uint16_t>(7));
-    table.set(row, "Revision", revision_for_preset(m_options.preset));
-    table.set(row, "Align", m_options.align);
-    table.set(row, "Sorted", static_cast<uint16_t>(has_toc ? 1 : 0));
-    table.set(row, "EnableFileName", static_cast<uint16_t>(has_toc ? 1 : 0));
-    table.set(row, "EID", static_cast<uint16_t>(0));
-    table.set(row, "CpkMode", header_mode_value(m_options.preset));
-    table.set(row, "Tvers", m_options.tver);
-    table.set(row, "Comment", m_options.comment);
-    table.set(row, "Codec", 0u);
-    table.set(row, "DpkItoc", 0u);
-    table.set(row, "EnableTocCrc", static_cast<uint16_t>(m_options.enable_crc ? 1 : 0));
-    table.set(row, "EnableFileCrc", static_cast<uint16_t>(m_options.enable_crc ? 1 : 0));
-    table.set(row, "CrcMode", 0u);
-    table.set(row, "CrcTable", std::vector<uint8_t>{});
-
+    table.set(row, "UpdateDateTime", 0ull).value();
+    table.set(row, "FileSize", file_size).value();
+    table.set(row, "ContentOffset", content_offset).value();
+    table.set(row, "ContentSize", content_size).value();
+    table.set(row, "TocOffset", has_toc ? root_chunk_size : 0ull).value();
+    table.set(row, "TocSize", has_toc ? toc_chunk_size : 0ull).value();
+    table.set(row, "TocCrc", toc_crc).value();
+    table.set(row, "HtocOffset", 0ull).value();
+    table.set(row, "HtocSize", 0ull).value();
+    table.set(row, "EtocOffset", etoc_chunk_offset).value();
+    table.set(row, "EtocSize", etoc_chunk_size).value();
+    table.set(row, "ItocOffset", has_itoc ? itoc_chunk_offset : 0ull).value();
+    table.set(row, "ItocSize", has_itoc ? itoc_chunk_size : 0ull).value();
+    table.set(row, "ItocCrc", itoc_crc).value();
+    table.set(row, "GtocOffset", has_gtoc ? gtoc_chunk_offset : 0ull).value();
+    table.set(row, "GtocSize", has_gtoc ? gtoc_chunk_size : 0ull).value();
+    table.set(row, "GtocCrc", gtoc_crc).value();
+    table.set(row, "HgtocOffset", 0ull).value();
+    table.set(row, "HgtocSize", 0ull).value();
+    table.set(row, "EnabledPackedSize", enabled_packed_size).value();
+    table.set(row, "EnabledDataSize", enabled_data_size).value();
+    table.set(row, "TotalDataSize", content_size).value();
+    table.set(row, "Tocs", has_toc ? 1u : 0u).value();
+    table.set(row, "Files", static_cast<uint32_t>(m_files.size())).value();
+    table.set(row, "Groups", has_gtoc ? 1u : 0u).value();
+    table.set(row, "Attrs", has_gtoc ? 1u : 0u).value();
+    table.set(row, "TotalFiles", static_cast<uint32_t>(m_files.size())).value();
+    table.set(row, "Directories", directory_count).value();
+    table.set(row, "Updates", 0u).value();
+    table.set(row, "Version", static_cast<uint16_t>(7)).value();
+    table.set(row, "Revision", revision_for_preset(m_options.preset)).value();
+    table.set(row, "Align", m_options.align).value();
+    table.set(row, "Sorted", static_cast<uint16_t>(has_toc ? 1 : 0)).value();
+    table.set(row, "EnableFileName", static_cast<uint16_t>(has_toc ? 1 : 0)).value();
+    table.set(row, "EID", static_cast<uint16_t>(0)).value();
+    table.set(row, "CpkMode", header_mode_value(m_options.preset)).value();
+    table.set(row, "Tvers", m_options.tver).value();
+    table.set(row, "Comment", m_options.comment).value();
+    table.set(row, "Codec", 0u).value();
+    table.set(row, "DpkItoc", 0u).value();
+    table.set(row, "EnableTocCrc", static_cast<uint16_t>(m_options.enable_crc ? 1 : 0)).value();
+    table.set(row, "EnableFileCrc", static_cast<uint16_t>(m_options.enable_crc ? 1 : 0)).value();
+    table.set(row, "CrcMode", 0u).value();
+    table.set(row, "CrcTable", std::vector<uint8_t>{}).value();
     return table.build();
 }
 

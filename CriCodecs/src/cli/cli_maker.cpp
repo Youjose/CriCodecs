@@ -166,6 +166,259 @@ namespace cricodecs::cli::detail {
     return static_cast<uint32_t>(*index);
 }
 
+[[nodiscard]] std::expected<bool, std::string> mutation_bool(
+    std::string_view text,
+    std::string_view context
+) {
+    const auto value = lower_ascii(text);
+    if (value == "1" || value == "true" || value == "yes" || value == "on" || value == "loop") {
+        return true;
+    }
+    if (value == "0" || value == "false" || value == "no" || value == "off" || value == "plain") {
+        return false;
+    }
+    return std::unexpected(std::string(context) + " expects true/false, on/off, loop/plain, or 1/0");
+}
+
+[[nodiscard]] std::expected<void, std::string> apply_aax_mutation(
+    aax::AaxContainer& archive,
+    const MutationSpec& mutation
+) {
+    switch (mutation.kind) {
+        case MutationKind::add: {
+            auto bytes = read_bytes_file(mutation.first);
+            if (!bytes) return std::unexpected(bytes.error());
+            bool loop = false;
+            if (mutation.second.has_value()) {
+                auto parsed = mutation_bool(*mutation.second, "AAX `--add` loop state");
+                if (!parsed) return std::unexpected(parsed.error());
+                loop = *parsed;
+            }
+            return archive.add_segment(*bytes, loop);
+        }
+        case MutationKind::replace: {
+            auto source = required_second(mutation, "--replace");
+            if (!source) return std::unexpected(source.error());
+            auto index = target_u32_index(mutation.first, "--replace");
+            if (!index) return std::unexpected(index.error());
+            auto bytes = read_bytes_file(*source);
+            if (!bytes) return std::unexpected(bytes.error());
+            return archive.replace_segment(*index, *bytes);
+        }
+        case MutationKind::remove: {
+            auto index = target_u32_index(mutation.first, "--remove");
+            if (!index) return std::unexpected(index.error());
+            return archive.remove_segment(*index);
+        }
+        case MutationKind::rename:
+            return std::unexpected("AAX does not support `--rename`");
+        case MutationKind::move: {
+            auto to = required_second(mutation, "--move");
+            if (!to) return std::unexpected(to.error());
+            auto from_index = target_u32_index(mutation.first, "--move");
+            if (!from_index) return std::unexpected(from_index.error());
+            auto to_index = target_u32_index(*to, "--move");
+            if (!to_index) return std::unexpected(to_index.error());
+            return archive.move_segment(*from_index, *to_index);
+        }
+    }
+    return std::unexpected("unsupported AAX mutation");
+}
+
+enum class AixMutationTargetKind : uint8_t {
+    Segment,
+    Layer,
+    Cell,
+};
+
+struct AixMutationTarget {
+    AixMutationTargetKind kind = AixMutationTargetKind::Segment;
+    size_t first = 0;
+    size_t second = 0;
+};
+
+[[nodiscard]] std::expected<size_t, std::string> aix_index(
+    std::string_view text,
+    std::string_view context
+) {
+    auto value = parse_u64(text, context);
+    if (!value) return std::unexpected(value.error());
+    if (*value > std::numeric_limits<size_t>::max()) {
+        return std::unexpected(std::string(context) + " is out of range");
+    }
+    return static_cast<size_t>(*value);
+}
+
+[[nodiscard]] std::expected<AixMutationTarget, std::string> parse_aix_target(
+    std::string_view text,
+    std::string_view context
+) {
+    const auto lowered = lower_ascii(text);
+    if (lowered.starts_with("segment:")) {
+        auto index = aix_index(text.substr(8), context);
+        if (!index) return std::unexpected(index.error());
+        return AixMutationTarget{.kind = AixMutationTargetKind::Segment, .first = *index};
+    }
+    if (lowered.starts_with("layer:")) {
+        auto index = aix_index(text.substr(6), context);
+        if (!index) return std::unexpected(index.error());
+        return AixMutationTarget{.kind = AixMutationTargetKind::Layer, .first = *index};
+    }
+    const auto split = text.find(':');
+    if (split != std::string_view::npos) {
+        auto segment = aix_index(text.substr(0, split), context);
+        if (!segment) return std::unexpected(segment.error());
+        auto layer = aix_index(text.substr(split + 1), context);
+        if (!layer) return std::unexpected(layer.error());
+        return AixMutationTarget{
+            .kind = AixMutationTargetKind::Cell,
+            .first = *segment,
+            .second = *layer,
+        };
+    }
+    auto index = aix_index(text, context);
+    if (!index) return std::unexpected(index.error());
+    return AixMutationTarget{.kind = AixMutationTargetKind::Segment, .first = *index};
+}
+
+[[nodiscard]] std::expected<std::vector<std::vector<uint8_t>>, std::string> read_aix_group(
+    const std::filesystem::path& source,
+    size_t expected_count,
+    std::string_view context
+) {
+    std::error_code error;
+    std::vector<std::vector<uint8_t>> result;
+    if (std::filesystem::is_directory(source, error) && !error) {
+        auto files = collect_directory_files(source);
+        if (!files) return std::unexpected(files.error());
+        result.reserve(files->size());
+        for (const auto& [path, relative] : *files) {
+            static_cast<void>(relative);
+            auto bytes = read_bytes_file(path);
+            if (!bytes) return std::unexpected(bytes.error());
+            result.push_back(std::move(*bytes));
+        }
+    } else {
+        auto bytes = read_bytes_file(source);
+        if (!bytes) return std::unexpected(bytes.error());
+        result.push_back(std::move(*bytes));
+    }
+    if (result.size() != expected_count) {
+        return std::unexpected(std::string(context) + " requires " + std::to_string(expected_count) +
+            " ordered ADX file(s), but the source provides " + std::to_string(result.size()));
+    }
+    return result;
+}
+
+[[nodiscard]] std::expected<void, std::string> apply_aix_mutation(
+    aix::Aix& archive,
+    const MutationSpec& mutation
+) {
+    switch (mutation.kind) {
+        case MutationKind::add: {
+            const auto mode = mutation.second.has_value() ? lower_ascii(*mutation.second) : "segment";
+            if (mode == "segment") {
+                auto layers = read_aix_group(mutation.first, archive.layers().size(), "AIX segment add");
+                if (!layers) return std::unexpected(layers.error());
+                return archive.add_segment(aix::AixBuildSegment{.layer_adx_data = std::move(*layers)});
+            }
+            if (mode == "layer") {
+                auto segments = read_aix_group(mutation.first, archive.segments().size(), "AIX layer add");
+                if (!segments) return std::unexpected(segments.error());
+                return archive.add_layer(std::move(*segments));
+            }
+            return std::unexpected("AIX `--add` expects SRC=segment or SRC=layer");
+        }
+        case MutationKind::replace: {
+            auto source = required_second(mutation, "--replace");
+            if (!source) return std::unexpected(source.error());
+            auto target = parse_aix_target(mutation.first, "AIX `--replace` target");
+            if (!target) return std::unexpected(target.error());
+            if (target->kind == AixMutationTargetKind::Cell) {
+                auto bytes = read_bytes_file(*source);
+                if (!bytes) return std::unexpected(bytes.error());
+                return archive.replace_layer(target->first, target->second, *bytes);
+            }
+            if (target->kind == AixMutationTargetKind::Segment) {
+                auto layers = read_aix_group(*source, archive.layers().size(), "AIX segment replacement");
+                if (!layers) return std::unexpected(layers.error());
+                return archive.replace_segment(target->first, aix::AixBuildSegment{.layer_adx_data = std::move(*layers)});
+            }
+            return std::unexpected("AIX whole-layer replacement is not supported; replace cells as SEGMENT:LAYER=SRC");
+        }
+        case MutationKind::remove: {
+            auto target = parse_aix_target(mutation.first, "AIX `--remove` target");
+            if (!target) return std::unexpected(target.error());
+            if (target->kind == AixMutationTargetKind::Segment) return archive.remove_segment(target->first);
+            if (target->kind == AixMutationTargetKind::Layer) return archive.remove_layer(target->first);
+            return std::unexpected("AIX `--remove` expects segment:N or layer:N");
+        }
+        case MutationKind::rename:
+            return std::unexpected("AIX does not support `--rename`");
+        case MutationKind::move: {
+            auto to = required_second(mutation, "--move");
+            if (!to) return std::unexpected(to.error());
+            auto from_target = parse_aix_target(mutation.first, "AIX `--move` source");
+            if (!from_target) return std::unexpected(from_target.error());
+            auto to_target = parse_aix_target(*to, "AIX `--move` destination");
+            if (!to_target) return std::unexpected(to_target.error());
+            if (from_target->kind != to_target->kind || from_target->kind == AixMutationTargetKind::Cell) {
+                return std::unexpected("AIX `--move` must use two segment:N targets or two layer:N targets");
+            }
+            return from_target->kind == AixMutationTargetKind::Segment
+                ? archive.move_segment(from_target->first, to_target->first)
+                : archive.move_layer(from_target->first, to_target->first);
+        }
+    }
+    return std::unexpected("unsupported AIX mutation");
+}
+
+[[nodiscard]] std::expected<void, std::string> apply_csb_mutation(
+    csb::CsbContainer& archive,
+    const MutationSpec& mutation
+) {
+    switch (mutation.kind) {
+        case MutationKind::add: {
+            auto destination = required_second(mutation, "--add");
+            if (!destination) return std::unexpected(destination.error());
+            auto bytes = read_bytes_file(mutation.first);
+            if (!bytes) return std::unexpected(bytes.error());
+            return archive.add_file(*bytes, *destination);
+        }
+        case MutationKind::replace: {
+            auto source = required_second(mutation, "--replace");
+            if (!source) return std::unexpected(source.error());
+            auto index = target_u32_index(mutation.first, "--replace");
+            if (!index) return std::unexpected(index.error());
+            auto bytes = read_bytes_file(*source);
+            if (!bytes) return std::unexpected(bytes.error());
+            return archive.replace_file(*index, *bytes);
+        }
+        case MutationKind::remove: {
+            auto index = target_u32_index(mutation.first, "--remove");
+            if (!index) return std::unexpected(index.error());
+            return archive.remove_file(*index);
+        }
+        case MutationKind::rename: {
+            auto destination = required_second(mutation, "--rename");
+            if (!destination) return std::unexpected(destination.error());
+            auto index = target_u32_index(mutation.first, "--rename");
+            if (!index) return std::unexpected(index.error());
+            return archive.rename_file(*index, *destination);
+        }
+        case MutationKind::move: {
+            auto to = required_second(mutation, "--move");
+            if (!to) return std::unexpected(to.error());
+            auto from_index = target_u32_index(mutation.first, "--move");
+            if (!from_index) return std::unexpected(from_index.error());
+            auto to_index = target_u32_index(*to, "--move");
+            if (!to_index) return std::unexpected(to_index.error());
+            return archive.move_file(*from_index, *to_index);
+        }
+    }
+    return std::unexpected("unsupported CSB mutation");
+}
+
 [[nodiscard]] std::expected<void, std::string> apply_afs_mutation(
     afs::AfsContainer& archive,
     const MutationSpec& mutation
@@ -407,6 +660,16 @@ namespace cricodecs::cli::detail {
                 if (auto result = apply_afs_mutation(current, mutation); !result) return result;
             }
             return current.build_to_file(output_path);
+        } else if constexpr (std::is_same_v<T, aax::AaxContainer>) {
+            for (const auto& mutation : options.mutations) {
+                if (auto result = apply_aax_mutation(current, mutation); !result) return result;
+            }
+            return current.save_to_file(output_path);
+        } else if constexpr (std::is_same_v<T, aix::Aix>) {
+            for (const auto& mutation : options.mutations) {
+                if (auto result = apply_aix_mutation(current, mutation); !result) return result;
+            }
+            return current.save_to_file(output_path);
         } else if constexpr (std::is_same_v<T, awb::AwbContainer>) {
             for (const auto& mutation : options.mutations) {
                 if (auto result = apply_awb_mutation(current, mutation); !result) return result;
@@ -415,6 +678,11 @@ namespace cricodecs::cli::detail {
         } else if constexpr (std::is_same_v<T, cpk::Cpk>) {
             for (const auto& mutation : options.mutations) {
                 if (auto result = apply_cpk_mutation(current, mutation, options); !result) return result;
+            }
+            return current.save_to_file(output_path);
+        } else if constexpr (std::is_same_v<T, csb::CsbContainer>) {
+            for (const auto& mutation : options.mutations) {
+                if (auto result = apply_csb_mutation(current, mutation); !result) return result;
             }
             return current.save_to_file(output_path);
         } else if constexpr (std::is_same_v<T, cvm::CvmContainer>) {
@@ -531,8 +799,14 @@ namespace cricodecs::cli::detail {
                 if (!key) return std::unexpected(key.error());
                 input.key = *key;
             }
-            for (const auto& audio_path : options.audio_paths) {
-                input.audio_tracks.push_back({.path = audio_path, .encrypt = false});
+            for (size_t index = 0; index < options.audio_paths.size(); ++index) {
+                input.audio_tracks.push_back({
+                    .path = options.audio_paths[index],
+                    .encrypt = std::nullopt,
+                    .channel_no = options.audio_channels.empty()
+                        ? std::nullopt
+                        : std::optional<uint8_t>{options.audio_channels[index]},
+                });
             }
             usm::UsmBuilder builder;
             return builder.build_to_file(output_path, input);

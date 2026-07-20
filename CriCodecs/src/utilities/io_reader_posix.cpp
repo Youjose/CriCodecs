@@ -61,8 +61,12 @@ reader& reader::operator=(reader&& other) noexcept {
 }
 
 std::expected<void, const char*> reader::open(const std::filesystem::path& path) noexcept {
+    return open(path, access_pattern::sequential);
+}
+
+std::expected<void, const char*> reader::open(const std::filesystem::path& path, access_pattern pattern) noexcept {
     if (is_open()) return std::unexpected("I/O reader failed: already open");
-    return open_file_impl(path);
+    return open_file_impl(path, pattern);
 }
 
 std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) noexcept {
@@ -71,6 +75,7 @@ std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) 
     m_data_ptr = data;
     m_data_size = size;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = true;
     return {};
@@ -87,6 +92,7 @@ void reader::close() noexcept {
     m_data_ptr = nullptr;
     m_data_size = 0;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = false;
 }
@@ -103,7 +109,7 @@ size_t reader::size() const noexcept {
     return m_data_size;
 }
 
-std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path) noexcept {
+std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept {
     m_descriptor = std::make_unique<detail::posix_reader_descriptor>();
 
     m_descriptor->fd = ::open(path.c_str(), O_RDONLY);
@@ -122,6 +128,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
     m_data_size = static_cast<size_t>(file_stats.st_size);
     if (m_data_size == 0) {
         m_data_ptr = nullptr;
+        m_pattern = pattern;
         m_owns_mapping = false;
         m_cursor = 0;
         m_has_external_source = false;
@@ -135,15 +142,24 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
         return std::unexpected("I/O reader failed: could not memory-map file");
     }
 
-#if defined(POSIX_FADV_SEQUENTIAL)
-    posix_fadvise(m_descriptor->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+#if defined(POSIX_FADV_SEQUENTIAL) && defined(POSIX_FADV_RANDOM)
+    if (pattern == access_pattern::random) {
+        posix_fadvise(m_descriptor->fd, 0, 0, POSIX_FADV_RANDOM);
+    } else if (pattern == access_pattern::sequential) {
+        posix_fadvise(m_descriptor->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+    }
 #endif
-#if defined(MADV_SEQUENTIAL)
-    madvise(mapped, m_data_size, MADV_SEQUENTIAL);
+#if defined(MADV_SEQUENTIAL) && defined(MADV_RANDOM)
+    if (pattern == access_pattern::random) {
+        madvise(mapped, m_data_size, MADV_RANDOM);
+    } else if (pattern == access_pattern::sequential) {
+        madvise(mapped, m_data_size, MADV_SEQUENTIAL);
+    }
 #endif
 
     m_data_ptr = static_cast<const uint8_t*>(mapped);
     m_descriptor->mapped_size = m_data_size;
+    m_pattern = pattern;
     m_owns_mapping = true;
     m_cursor = 0;
     m_has_external_source = false;

@@ -102,6 +102,21 @@ namespace cricodecs::wav {
             std::span<const SampleLoop> loops = {}
         );
 
+        static std::expected<size_t, std::string> built_size(
+            std::span<const int16_t> pcm_data,
+            uint32_t sample_rate,
+            uint16_t channels,
+            std::span<const SampleLoop> loops = {}
+        );
+
+        static std::expected<void, std::string> build_into(
+            std::span<uint8_t> output,
+            std::span<const int16_t> pcm_data,
+            uint32_t sample_rate,
+            uint16_t channels,
+            std::span<const SampleLoop> loops = {}
+        );
+
         static std::expected<void, std::string> write(
             const std::string& path,
             const std::vector<int16_t>& pcm_data,

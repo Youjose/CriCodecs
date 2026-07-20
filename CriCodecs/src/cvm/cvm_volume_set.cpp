@@ -97,8 +97,7 @@ constexpr size_t iso_sector_size = 0x800;
 }
 
 [[nodiscard]] uint32_t sector_count_for_byte_size(uint64_t byte_size) {
-    // ROFS samples are 0x800-byte sectors; this rounds declared extents to whole sectors.
-    // ref/docs/cvm_rofs_notes.md observes directory spans and ZONE/CVMH alignment at 0x800.
+    // ROFS uses 0x800-byte sectors; round declared extents to whole sectors.
     return static_cast<uint32_t>(divide_round_up(byte_size, iso_sector_size));
 }
 
@@ -477,8 +476,8 @@ std::expected<void, std::string> CvmVolumeSet::set_current_directory_iso(
         return std::unexpected(directory.error());
     }
 
-    // ROFS directory spans are padded to 2048-byte sector units in
-    // ref/docs/cvm_rofs_notes.md; compare against the full mounted span.
+    // ROFS directory spans are padded to 2048-byte sector units; compare
+    // against the full mounted span.
     const size_t padded_size = static_cast<size_t>(align_up(directory->byte_size, iso_sector_size));
     if (padded_size != active_bytes->size()) {
         return std::unexpected(

@@ -42,6 +42,14 @@ namespace cricodecs::cli::detail {
             options.decrypt = true;
             continue;
         }
+        if (arg == "--recover-key") {
+            options.recover_key = true;
+            continue;
+        }
+        if (arg == "--independent") {
+            options.independent_key_recovery = true;
+            continue;
+        }
         if (arg == "--raw") {
             options.raw = true;
             continue;
@@ -154,6 +162,21 @@ namespace cricodecs::cli::detail {
             options.audio_paths.emplace_back(*value);
             continue;
         }
+        if (arg == "--audio-channel") {
+            auto value = require_value(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            auto parsed = parse_u16(*value, "--audio-channel");
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            if (*parsed > std::numeric_limits<uint8_t>::max()) {
+                return std::unexpected("`--audio-channel` must be in the range 0..255");
+            }
+            options.audio_channels.push_back(static_cast<uint8_t>(*parsed));
+            continue;
+        }
         if (arg == "--profile") {
             auto value = require_value(arg);
             if (!value) {
@@ -238,18 +261,43 @@ namespace cricodecs::cli::detail {
         if (!arg.empty() && arg[0] == '-') {
             return std::unexpected("unknown option `" + arg + "`");
         }
-        if (options.input_path.has_value()) {
-            return std::unexpected("only one input path is supported");
-        }
-        options.input_path = std::filesystem::path(arg);
+        options.input_paths.emplace_back(arg);
     }
 
     if (options.help || options.show_version) {
         return options;
     }
-    if (!options.input_path.has_value()) {
+    if (options.input_paths.empty()) {
         options.help = true;
         return options;
+    }
+    if (!options.recover_key && options.input_paths.size() != 1) {
+        return std::unexpected("only one input path is supported");
+    }
+    if (options.recover_key && !options.force_type.has_value()) {
+        return std::unexpected("`--recover-key` requires `-f hca`, `-f usm`, `-f adx`, `-f ahx`, `-f awb`, or `-f acb`");
+    }
+    if (options.independent_key_recovery && !options.recover_key) {
+        return std::unexpected("`--independent` is only valid with `--recover-key`");
+    }
+    if (options.recover_key && *options.force_type != Format::hca &&
+        *options.force_type != Format::usm && *options.force_type != Format::adx &&
+        *options.force_type != Format::ahx && *options.force_type != Format::awb &&
+        *options.force_type != Format::acb) {
+        return std::unexpected("`--recover-key` only supports `-f hca`, `-f usm`, `-f adx`, `-f ahx`, `-f awb`, or `-f acb`");
+    }
+    if (options.recover_key
+        && (options.encode || options.build || options.metadata_only || options.raw
+            || options.list_only || options.encrypt || options.decrypt
+            || options.output_path.has_value()
+            || options.encoding.has_value() || options.profile.has_value()
+            || options.version.has_value() || options.key.has_value()
+            || options.subkey.has_value() || options.cipher_type.has_value()
+            || options.aac_keycode.has_value() || !options.indexes.empty()
+            || !options.audio_paths.empty() || !options.audio_channels.empty() || !options.mutations.empty()
+            || options.compress)) {
+        return std::unexpected(
+            "`--recover-key` cannot be combined with metadata/export/build/encode/crypto/mutation options");
     }
     if (options.encode && !options.output_path.has_value()) {
         return std::unexpected("`--encode` requires `-o`/`--output`");
@@ -269,8 +317,14 @@ namespace cricodecs::cli::detail {
     if (options.build && (options.encode || options.metadata_only || options.json || options.raw || options.list_only || options.encrypt || options.decrypt || !options.indexes.empty())) {
         return std::unexpected("`--build` cannot be combined with encode/export/list/metadata/crypto selection flags");
     }
-    if (!options.build && (!options.audio_paths.empty() || options.profile.has_value() || options.version.has_value())) {
-        return std::unexpected("`--audio`, `--profile`, and `--version` are only valid with `--build`");
+    if (!options.build && (!options.audio_paths.empty() || !options.audio_channels.empty() || options.profile.has_value() || options.version.has_value())) {
+        return std::unexpected("`--audio`, `--audio-channel`, `--profile`, and `--header-version` are only valid with `--build`");
+    }
+    if (!options.audio_channels.empty() && options.audio_channels.size() != options.audio_paths.size()) {
+        return std::unexpected("repeat `--audio-channel` once per `--audio`, or omit it for automatic channels");
+    }
+    if (!options.audio_channels.empty() && options.force_type != Format::usm) {
+        return std::unexpected("`--audio-channel` is only supported for USM builds");
     }
     if (!options.mutations.empty() && !options.output_path.has_value()) {
         return std::unexpected("mutation commands require `-o`/`--output`");
@@ -287,8 +341,8 @@ namespace cricodecs::cli::detail {
     if ((options.encrypt || options.decrypt) && options.raw) {
         return std::unexpected("`--raw` cannot be combined with `--encrypt` or `--decrypt`");
     }
-    if (options.json && !options.metadata_only) {
-        return std::unexpected("`--json` requires `-m`");
+    if (options.json && !options.metadata_only && !options.recover_key) {
+        return std::unexpected("`--json` requires `-m` or `--recover-key`");
     }
     if (options.metadata_only && (options.raw || options.list_only || !options.indexes.empty() || options.encrypt || options.decrypt)) {
         return std::unexpected("`-m` cannot be combined with export/list selection flags");
@@ -314,33 +368,38 @@ void print_usage(std::ostream& out, bool show_identity) {
     }
     out <<
         "Usage: cricodecs <input> [-e] [--encode|--build] [--raw] [--list] [--encrypt|--decrypt] [-m] [--json] [-q] [-f TYPE] [-o PATH]\n"
+        "       cricodecs --recover-key -f hca|usm|adx|ahx|awb|acb <input> [input ...] [--json] [-q]\n"
         "                 [--index N] [--key VALUE] [--subkey VALUE] [--cipher-type VALUE] [--aac-keycode VALUE]\n"
-        "                 [--encoding NAME] [--audio PATH] [--profile NAME] [--header-version VALUE]\n"
+        "                 [--encoding NAME] [--audio PATH] [--audio-channel 0..255] [--profile NAME] [--header-version VALUE]\n"
         "\n"
         "  -e, --export         explicit export; same as default behavior\n"
         "      --encode         encode WAV input as hca/adx/ahx; requires -f and -o\n"
         "      --build          build afs/awb/cpk/acx/csb/cvm from directory or supported list/script input\n"
-        "      --audio PATH     add build audio input; repeatable for usm/sfd\n"
+        "      --audio PATH     add ADX/HCA audio for usm, or ADX for sfd; repeatable for usm\n"
+        "      --audio-channel  assign explicit USM channel per --audio; repeat for every audio input\n"
         "      --profile NAME   build profile where supported\n"
         "      --header-version VALUE  builder/header version where supported\n"
-        "      --add SRC=DEST   add file to archive; DEST is archive path/name or AWB wave ID\n"
+        "      --add SRC=DEST   add file to archive; DEST is archive path/name, AWB wave ID, or AIX segment/layer\n"
         "      --replace T=SRC  replace archive entry T with source file SRC\n"
         "      --remove T       remove archive entry T\n"
         "      --rename T=DEST  rename archive entry T where supported\n"
         "      --move FROM=TO   reorder archive entries by index\n"
+        "                         AIX targets: segment:N, layer:N, or SEGMENT:LAYER for replacement\n"
         "      --compress       compress added/replaced CPK payloads\n"
         "      --raw            export raw contained/original payloads without audio decode\n"
         "      --list           list exportable items and exit\n"
         "  -m                   print metadata only\n"
-        "      --json           emit metadata as JSON (requires -m)\n"
-        "      --encrypt        write an encrypted/scrambled output file where supported\n"
-        "      --decrypt        write a decrypted/descrambled output file where supported\n"
+        "      --json           emit metadata or recovered-key output as JSON\n"
+        "      --encrypt        write encrypted output; encrypts CPK UTF tables and scrambles CVM metadata\n"
+        "      --decrypt        write decrypted output; restores plain CPK UTF tables or CVM metadata\n"
+        "      --recover-key    recover keys; requires -f hca, usm, adx, ahx, awb, or acb\n"
+        "      --independent    recover multiple inputs independently instead of asserting one shared base key\n"
         "  -o, --output         override output path/root\n"
         "                        ?i = selected entry index, ?e = entry filename, ?s = input filename\n"
         "      --index          export only a specific item index; repeatable\n"
         "  -q, --quiet          suppress non-error console output\n"
-        "  -f, --force-type     force input parsing as a specific type\n"
-        "      --key            format key string or numeric keycode where applicable\n"
+        "  -f, --force-type     force input parsing; selects hca/usm/adx/ahx/awb/acb recovery domain with --recover-key\n"
+        "      --key            format key string or numeric keycode; CVM uses it as the scramble key\n"
         "      --subkey         numeric subkey for HCA/ADX type 9 where applicable\n"
         "      --cipher-type    target cipher/encryption type where applicable\n"
         "      --aac-keycode    AAC keycode for ACB waveform extraction\n"

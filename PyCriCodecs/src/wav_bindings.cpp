@@ -111,18 +111,14 @@ void bind_wav_module(nb::module_& module) {
         );
 
     nb::class_<cricodecs::wav::WavContainer>(module, "Wav")
-        .def_static("load", [](const std::string& path) {
-            cricodecs::wav::WavContainer wav;
-            unwrap_expected(wav.load(path));
-            return wav;
-        }, nb::arg("path"))
+        .def_static("load", &load_wav_any, nb::arg("source"))
         .def_static("load_bytes", [](const nb::bytes& data) {
             cricodecs::wav::WavContainer wav;
             unwrap_expected(wav.load(as_byte_span(borrow_python_bytes(data))));
             return wav;
         }, nb::arg("data"))
         .def_prop_ro("source_path", [](const cricodecs::wav::WavContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro(
             "format",
@@ -155,7 +151,7 @@ void bind_wav_module(nb::module_& module) {
         })
         .def("info", [](const cricodecs::wav::WavContainer& self) {
             nb::object info = simple_namespace();
-            info.attr("source_path") = self.source_path().empty() ? nb::none() : nb::cast(self.source_path().generic_string());
+            info.attr("source_path") = path_or_none(self.source_path());
             info.attr("format") = self.format();
             info.attr("sampler") = self.sampler();
             info.attr("cues") = cue_list(self.cues());
@@ -181,16 +177,35 @@ void bind_wav_module(nb::module_& module) {
 
     module.def(
         "build",
-        [](const std::string& output_path, const nb::bytes& pcm16le, uint32_t sample_rate, uint16_t channels, const nb::list& loops) {
+        [](const nb::object& output_path, const nb::bytes& pcm16le, uint32_t sample_rate, uint16_t channels, const nb::list& loops) {
             auto pcm = wav_pcm16_from_python_bytes(pcm16le);
             std::vector<cricodecs::wav::SampleLoop> native_loops;
             native_loops.reserve(static_cast<size_t>(PyList_Size(loops.ptr())));
             for (auto item : loops) {
                 native_loops.push_back(nb::cast<cricodecs::wav::SampleLoop>(item));
             }
-            unwrap_expected(cricodecs::wav::WavContainer::write(output_path, pcm, sample_rate, channels, native_loops));
+            unwrap_expected(cricodecs::wav::WavContainer::write(
+                require_python_path(output_path, "output_path").string(), pcm, sample_rate, channels, native_loops));
         },
         nb::arg("output_path"),
+        nb::arg("pcm16le"),
+        nb::arg("sample_rate"),
+        nb::arg("channels"),
+        nb::arg("loops") = nb::list()
+    );
+
+    module.def(
+        "build_bytes",
+        [](const nb::bytes& pcm16le, uint32_t sample_rate, uint16_t channels, const nb::list& loops) {
+            auto pcm = wav_pcm16_from_python_bytes(pcm16le);
+            std::vector<cricodecs::wav::SampleLoop> native_loops;
+            native_loops.reserve(static_cast<size_t>(PyList_Size(loops.ptr())));
+            for (auto item : loops) {
+                native_loops.push_back(nb::cast<cricodecs::wav::SampleLoop>(item));
+            }
+            return to_python_bytes(unwrap_expected(
+                cricodecs::wav::WavContainer::build_bytes(pcm, sample_rate, channels, native_loops)));
+        },
         nb::arg("pcm16le"),
         nb::arg("sample_rate"),
         nb::arg("channels"),

@@ -10,6 +10,7 @@
  *  CueName → Cue → [Synth|Sequence|BlockSequence] → ... → Waveform
  */
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -95,7 +96,7 @@ public:
     [[nodiscard]] std::string_view find_name(uint16_t wave_id) const;
     [[nodiscard]] std::string_view waveform_name(uint32_t index) const;
     [[nodiscard]] std::string_view waveform_name_raw(uint32_t index) const;
-    [[nodiscard]] std::string waveform_filename(uint32_t index, bool include_index_prefix = true) const;
+    [[nodiscard]] std::string waveform_filename(uint32_t index, bool include_index_prefix = false) const;
     [[nodiscard]] std::optional<std::span<const uint8_t>> embedded_awb() const;
     [[nodiscard]] bool has_embedded_awb() const;
     [[nodiscard]] std::optional<std::filesystem::path> companion_awb_path() const;
@@ -103,7 +104,12 @@ public:
     [[nodiscard]] std::expected<awb::AacEncryptionState, std::string> probe_waveform_aac_encryption(
         uint32_t index,
         uint64_t keycode) const;
+    [[nodiscard]] bool has_aac_waveforms() const noexcept;
+    [[nodiscard]] std::expected<awb::KeyRecoveryResult, std::string> recover_aac_key() const;
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> extract_waveform_data(
+        uint32_t index,
+        uint64_t aac_keycode = 0) const;
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> extract_waveform_stream_data(
         uint32_t index,
         uint64_t aac_keycode = 0) const;
     [[nodiscard]] std::expected<void, std::string> extract_file(
@@ -184,6 +190,27 @@ private:
             int block_index = unresolved_column;
         } block_sequence_columns;
     };
+
+    struct SubtableDescriptor {
+        const char* name = "";
+        std::optional<utf::UtfTable> SubTables::* table = nullptr;
+    };
+
+    [[nodiscard]] static constexpr std::array<SubtableDescriptor, 10> subtable_descriptors() noexcept {
+        return {{
+            {"CueNameTable", &SubTables::cue_name_table},
+            {"CueTable", &SubTables::cue_table},
+            {"SynthTable", &SubTables::synth_table},
+            {"SequenceTable", &SubTables::sequence_table},
+            {"TrackTable", &SubTables::track_table},
+            {"TrackEventTable", &SubTables::track_event_table},
+            {"CommandTable", &SubTables::command_table},
+            {"WaveformTable", &SubTables::waveform_table},
+            {"BlockTable", &SubTables::block_table},
+            {"BlockSequenceTable", &SubTables::block_sequence_table},
+        }};
+    }
+
     mutable SubTables m_sub;
     
     // Extracted info
@@ -195,7 +222,9 @@ private:
     // Name lookup
     std::flat_map<uint16_t, std::string> m_name_map;
 
-    bool load_subtable(const char* col_name, std::optional<utf::UtfTable>& out) const;
+    std::optional<std::reference_wrapper<const utf::UtfTable>> load_subtable(const SubtableDescriptor& descriptor) const;
+    std::optional<std::reference_wrapper<const utf::UtfTable>> load_subtable(std::string_view name) const;
+    [[nodiscard]] std::expected<void, std::string> finish_load_from_source();
     bool preload_waveforms();
     bool preload_cue_names();
 
@@ -236,15 +265,19 @@ private:
     bool load_block_sequence(uint16_t index);
 
     [[nodiscard]] static uint16_t waveform_id_for_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept;
+    [[nodiscard]] static bool prefers_memory_bank(const WaveformInfo& waveform) noexcept;
     [[nodiscard]] static bool waveform_matches_bank(const WaveformInfo& waveform, bool is_memory_bank) noexcept;
+    [[nodiscard]] bool uses_memory_bank_for_associated_awb(const WaveformInfo& waveform) const;
     [[nodiscard]] std::expected<std::reference_wrapper<const awb::AwbContainer>, std::string> associated_awb() const;
     [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> waveform_data_from_awb(
         uint32_t index,
-        const awb::AwbContainer& awb) const;
+        const awb::AwbContainer& awb,
+        bool prefer_stream_bank = false) const;
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> extract_waveform_data_from_awb(
         uint32_t index,
         const awb::AwbContainer& awb,
-        uint64_t aac_keycode) const;
+        uint64_t aac_keycode,
+        bool prefer_stream_bank = false) const;
     [[nodiscard]] std::expected<void, std::string> extract_file_from_awb(
         uint32_t index,
         const awb::AwbContainer& awb,

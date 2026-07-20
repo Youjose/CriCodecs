@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#include "../utilities/io_endian.hpp"
+
 namespace cricodecs::hca {
 
 inline constexpr int HCA_MASK             = 0x7F7F7F7F;
@@ -22,17 +24,17 @@ inline constexpr uint16_t HCA_VERSION_V103 = 0x0103;
 inline constexpr uint16_t HCA_VERSION_V200 = 0x0200;
 inline constexpr uint16_t HCA_VERSION_V300 = 0x0300;
 
-inline constexpr uint32_t HCA_CHUNK_ID_HCA  = 0x48434100; // "HCA\0"
-inline constexpr uint32_t HCA_CHUNK_ID_FMT  = 0x666D7400; // "fmt\0"
-inline constexpr uint32_t HCA_CHUNK_ID_COMP = 0x636F6D70; // "comp"
-inline constexpr uint32_t HCA_CHUNK_ID_DEC  = 0x64656300; // "dec\0"
-inline constexpr uint32_t HCA_CHUNK_ID_VBR  = 0x76627200; // "vbr\0"
-inline constexpr uint32_t HCA_CHUNK_ID_ATH  = 0x61746800; // "ath\0"
-inline constexpr uint32_t HCA_CHUNK_ID_LOOP = 0x6C6F6F70; // "loop"
-inline constexpr uint32_t HCA_CHUNK_ID_CIPH = 0x63697068; // "ciph"
-inline constexpr uint32_t HCA_CHUNK_ID_RVA  = 0x72766100; // "rva\0"
-inline constexpr uint32_t HCA_CHUNK_ID_COMM = 0x636F6D6D; // "comm"
-inline constexpr uint32_t HCA_CHUNK_ID_PAD  = 0x70616400; // "pad\0"
+inline constexpr uint32_t HCA_CHUNK_ID_HCA  = io::FourCC{"HCA\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_FMT  = io::FourCC{"fmt\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_COMP = io::FourCC{"comp"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_DEC  = io::FourCC{"dec\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_VBR  = io::FourCC{"vbr\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_ATH  = io::FourCC{"ath\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_LOOP = io::FourCC{"loop"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_CIPH = io::FourCC{"ciph"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_RVA  = io::FourCC{"rva\0"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_COMM = io::FourCC{"comm"}.be_value();
+inline constexpr uint32_t HCA_CHUNK_ID_PAD  = io::FourCC{"pad\0"}.be_value();
 
 enum class ChannelType : uint8_t {
     Discrete = 0,

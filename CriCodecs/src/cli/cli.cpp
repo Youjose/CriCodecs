@@ -104,7 +104,82 @@ int run(std::span<const std::string> args, std::ostream& out, std::ostream& err)
         return 0;
     }
 
-    const auto& input_path = *options->input_path;
+    if (options->recover_key) {
+        for (const auto& path : options->input_paths) {
+            if (!std::filesystem::exists(path)) {
+                err << "input path does not exist: " << path.string() << '\n';
+                return 1;
+            }
+            if (!std::filesystem::is_regular_file(path) && !std::filesystem::is_directory(path)) {
+                err << "input path is not a regular file or directory: " << path.string() << '\n';
+                return 1;
+            }
+        }
+        if (*options->force_type == Format::acb || *options->force_type == Format::awb) {
+            auto recovered = perform_aac_key_recovery(options->input_paths, *options->force_type, *options);
+            if (!recovered) {
+                err << recovered.error() << '\n';
+                return 1;
+            }
+            if (options->json) {
+                print_aac_key_recovery_json(out, *recovered);
+                out << '\n';
+            } else {
+                print_aac_key_recovery_text(out, *recovered);
+            }
+        } else if (*options->force_type == Format::usm) {
+            auto recovered = perform_usm_key_recovery(options->input_paths, *options);
+            if (!recovered) {
+                err << recovered.error() << '\n';
+                return 1;
+            }
+            if (options->json) {
+                print_usm_key_recovery_json(out, *recovered);
+                out << '\n';
+            } else {
+                print_usm_key_recovery_text(out, *recovered);
+            }
+        } else if (*options->force_type == Format::adx) {
+            auto recovered = perform_adx_key_recovery(options->input_paths, *options);
+            if (!recovered) {
+                err << recovered.error() << '\n';
+                return 1;
+            }
+            if (options->json) {
+                print_adx_key_recovery_json(out, *recovered);
+                out << '\n';
+            } else {
+                print_adx_key_recovery_text(out, *recovered);
+            }
+        } else if (*options->force_type == Format::ahx) {
+            auto recovered = perform_ahx_key_recovery(options->input_paths, *options);
+            if (!recovered) {
+                err << recovered.error() << '\n';
+                return 1;
+            }
+            if (options->json) {
+                print_ahx_key_recovery_json(out, *recovered);
+                out << '\n';
+            } else {
+                print_ahx_key_recovery_text(out, *recovered);
+            }
+        } else {
+            auto recovered = perform_hca_key_recovery(options->input_paths, *options);
+            if (!recovered) {
+                err << recovered.error() << '\n';
+                return 1;
+            }
+            if (options->json) {
+                print_hca_key_recovery_json(out, *recovered);
+                out << '\n';
+            } else {
+                print_hca_key_recovery_text(out, *recovered);
+            }
+        }
+        return 0;
+    }
+
+    const auto& input_path = options->input_paths.front();
     if (!std::filesystem::exists(input_path)) {
         err << "input path does not exist: " << input_path.string() << '\n';
         return 1;

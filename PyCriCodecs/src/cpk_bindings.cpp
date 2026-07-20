@@ -98,13 +98,8 @@ void bind_cpk_module(nb::module_& module) {
         )
         .def_static(
             "load",
-            [](const std::string& path, nb::object encoding) {
-                return unwrap_expected(cricodecs::cpk::Cpk::load(
-                    std::filesystem::path(path),
-                    python_encoding_options_from_object(encoding)
-                ));
-            },
-            nb::arg("path"),
+            &load_cpk_any,
+            nb::arg("source"),
             nb::arg("encoding") = nb::none()
         )
         .def_static(
@@ -120,7 +115,7 @@ void bind_cpk_module(nb::module_& module) {
             nb::arg("encoding") = nb::none()
         )
         .def_prop_ro("source_path", [](const cricodecs::cpk::Cpk& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("file_count", &cricodecs::cpk::Cpk::file_count)
         .def_prop_ro("layout_mode", &cricodecs::cpk::Cpk::layout_mode)
@@ -190,10 +185,17 @@ void bind_cpk_module(nb::module_& module) {
         })
         .def("info", [](const cricodecs::cpk::Cpk& self) {
             nb::object info = simple_namespace();
-            info.attr("source_path") = self.source_path().empty() ? nb::none() : nb::cast(self.source_path().generic_string());
+            info.attr("source_path") = path_or_none(self.source_path());
             info.attr("file_count") = self.file_count();
+            info.attr("alignment") = self.alignment();
+            info.attr("content_offset") = self.content_offset();
             info.attr("layout_mode") = self.layout_mode();
             info.attr("preset") = self.preset();
+            info.attr("has_declared_preset") = self.has_declared_preset();
+            info.attr("declared_preset") = self.declared_preset();
+            info.attr("tver") = self.options().tver;
+            info.attr("comment") = self.options().comment;
+            info.attr("etoc_local_dir") = self.options().etoc_local_dir;
             info.attr("has_toc") = self.has_toc();
             info.attr("has_itoc") = self.has_itoc();
             info.attr("has_gtoc") = self.has_gtoc();
@@ -230,8 +232,8 @@ void bind_cpk_module(nb::module_& module) {
         )
         .def(
             "extract",
-            [](const cricodecs::cpk::Cpk& self, const std::string& output_dir, bool disambiguate_conflicts) {
-                unwrap_expected(self.extract(std::filesystem::path(output_dir), disambiguate_conflicts));
+            [](const cricodecs::cpk::Cpk& self, const nb::object& output_dir, bool disambiguate_conflicts) {
+                unwrap_expected(self.extract(require_python_path(output_dir, "output_dir"), disambiguate_conflicts));
             },
             nb::arg("output_dir"),
             nb::arg("disambiguate_conflicts") = true
@@ -260,11 +262,11 @@ void bind_cpk_module(nb::module_& module) {
         .def(
             "add_file",
             [](cricodecs::cpk::Cpk& self,
-               const std::string& local_path,
+               const nb::object& local_path,
                const std::string& cpk_path,
                bool compress,
                std::optional<uint32_t> id) {
-                self.add_file(std::filesystem::path(local_path), cpk_path, compress, id);
+                self.add_file(require_python_path(local_path, "local_path"), cpk_path, compress, id);
             },
             nb::arg("local_path"),
             nb::arg("cpk_path"),
@@ -305,9 +307,9 @@ void bind_cpk_module(nb::module_& module) {
             "replace_file",
             [](cricodecs::cpk::Cpk& self,
                uint32_t index,
-               const std::string& local_path,
+               const nb::object& local_path,
                std::optional<bool> compress) {
-                unwrap_expected(self.replace_file(index, std::filesystem::path(local_path), compress));
+                unwrap_expected(self.replace_file(index, require_python_path(local_path, "local_path"), compress));
             },
             nb::arg("index"),
             nb::arg("local_path"),
@@ -333,7 +335,52 @@ void bind_cpk_module(nb::module_& module) {
             },
             nb::arg("index"),
             nb::arg("cpk_path")
-        );
+        )
+        .def(
+            "set_dirname",
+            [](cricodecs::cpk::Cpk& self, uint32_t index, const std::string& dirname) {
+                unwrap_expected(self.set_dirname(index, dirname));
+            },
+            nb::arg("index"),
+            nb::arg("dirname")
+        )
+        .def(
+            "set_filename",
+            [](cricodecs::cpk::Cpk& self, uint32_t index, const std::string& filename) {
+                unwrap_expected(self.set_filename(index, filename));
+            },
+            nb::arg("index"),
+            nb::arg("filename")
+        )
+        .def(
+            "set_request_compress",
+            [](cricodecs::cpk::Cpk& self, uint32_t index, bool compress) {
+                unwrap_expected(self.set_request_compress(index, compress));
+            },
+            nb::arg("index"),
+            nb::arg("compress")
+        )
+        .def(
+            "set_all_request_compress",
+            [](cricodecs::cpk::Cpk& self, bool compress) {
+                self.set_all_request_compress(compress);
+            },
+            nb::arg("compress")
+        )
+        .def(
+            "move_file",
+            [](cricodecs::cpk::Cpk& self, size_t from_index, size_t to_index) {
+                unwrap_expected(self.move_file(from_index, to_index));
+            },
+            nb::arg("from_index"),
+            nb::arg("to_index")
+        )
+        .def("encrypt", [](cricodecs::cpk::Cpk& self) {
+            return to_python_bytes(unwrap_expected(self.encrypt()));
+        })
+        .def("decrypt", [](cricodecs::cpk::Cpk& self) {
+            return to_python_bytes(unwrap_expected(self.decrypt()));
+        });
 
     install_attr_repr(module, "CpkEntry", {"dirname", "filename", "id", "toc_index", "file_offset", "file_size", "extract_size", "is_compressed", "request_compress", "group", "attribute", "user_string", "update_date_time", "full_path"});
     install_attr_repr(module, "Cpk", {"source_path", "file_count", "layout_mode", "preset", "has_declared_preset", "declared_preset", "alignment", "content_offset", "has_toc", "has_itoc", "has_gtoc", "has_etoc", "files"});
@@ -353,9 +400,9 @@ void bind_cpk_module(nb::module_& module) {
     );
     module.def(
         "extract",
-        [](const nb::object& source, const std::string& output_dir, bool disambiguate_conflicts, nb::object encoding) {
+        [](const nb::object& source, const nb::object& output_dir, bool disambiguate_conflicts, nb::object encoding) {
             auto cpk = load_cpk_any(source, encoding);
-            unwrap_expected(cpk.extract(std::filesystem::path(output_dir), disambiguate_conflicts));
+            unwrap_expected(cpk.extract(require_python_path(output_dir, "output_dir"), disambiguate_conflicts));
         },
         nb::arg("source"),
         nb::arg("output_dir"),

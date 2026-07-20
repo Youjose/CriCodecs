@@ -387,32 +387,31 @@ std::expected<std::vector<uint8_t>, std::string> CsbContainer::export_utf_payloa
         return output;
     }
 
+    std::vector<std::span<const uint8_t>> payloads;
+    payloads.reserve(table->row_count());
     size_t total_size = 0;
+    const bool validate_loop_flags =
+        (table->table_name() == "AAX" || table->table_name() == "HCA") &&
+        table->find_column("lpflg") >= 0;
     for (uint32_t i = 0; i < table->row_count(); ++i) {
-        auto payload = require_data(*table, i, "data", "Wrapped UTF payload");
-        if (!payload) {
-            return std::unexpected(payload.error());
-        }
-        total_size += payload->size();
-    }
-
-    std::vector<uint8_t> output;
-    output.reserve(total_size);
-
-    for (uint32_t i = 0; i < table->row_count(); ++i) {
-        if ((table->table_name() == "AAX" || table->table_name() == "HCA") &&
-            table->find_column("lpflg") >= 0) {
+        if (validate_loop_flags) {
             auto loop_flag = read_segment_loop_flag(*table, i);
             if (!loop_flag) {
                 return std::unexpected(loop_flag.error());
             }
         }
-
         auto payload = require_data(*table, i, "data", "Wrapped UTF payload");
         if (!payload) {
             return std::unexpected(payload.error());
         }
-        output.insert(output.end(), payload->begin(), payload->end());
+        total_size += payload->size();
+        payloads.push_back(*payload);
+    }
+
+    std::vector<uint8_t> output;
+    output.reserve(total_size);
+    for (const auto payload : payloads) {
+        output.insert(output.end(), payload.begin(), payload.end());
     }
 
     return output;

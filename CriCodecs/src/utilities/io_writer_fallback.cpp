@@ -32,9 +32,11 @@ writer::writer(writer&& other) noexcept
       m_buffer(std::move(other.m_buffer)),
       m_buffer_pos(other.m_buffer_pos),
       m_total_written(other.m_total_written),
+      m_buffer_zeroed(other.m_buffer_zeroed),
       m_write_failed(other.m_write_failed) {
     other.m_buffer_pos = 0;
     other.m_total_written = 0;
+    other.m_buffer_zeroed = false;
     other.m_write_failed = false;
 }
 
@@ -45,9 +47,11 @@ writer& writer::operator=(writer&& other) noexcept {
         m_buffer = std::move(other.m_buffer);
         m_buffer_pos = other.m_buffer_pos;
         m_total_written = other.m_total_written;
+        m_buffer_zeroed = other.m_buffer_zeroed;
         m_write_failed = other.m_write_failed;
         other.m_buffer_pos = 0;
         other.m_total_written = 0;
+        other.m_buffer_zeroed = false;
         other.m_write_failed = false;
     }
     return *this;
@@ -67,6 +71,7 @@ std::expected<void, const char*> writer::open(const std::filesystem::path& path,
     m_buffer.resize(buffer_size);
     m_buffer_pos = 0;
     m_total_written = 0;
+    m_buffer_zeroed = true;
     m_write_failed = false;
     return {};
 }
@@ -78,6 +83,7 @@ std::expected<void, const char*> writer::close() noexcept {
         m_fallback.reset();
         m_buffer.clear();
         m_buffer_pos = 0;
+        m_buffer_zeroed = false;
         m_write_failed = false;
         return std::unexpected("I/O writer failed: write failed");
     }
@@ -100,6 +106,7 @@ std::expected<void, const char*> writer::close() noexcept {
     m_fallback.reset();
     m_buffer.clear();
     m_buffer_pos = 0;
+    m_buffer_zeroed = false;
     return {};
 }
 
@@ -129,6 +136,7 @@ void writer::write_to_buffer(const uint8_t* data, size_t size) noexcept {
         size_t space = m_buffer.size() - m_buffer_pos;
         size_t to_copy = size < space ? size : space;
         std::memcpy(m_buffer.data() + m_buffer_pos, data, to_copy);
+        m_buffer_zeroed = false;
         m_buffer_pos += to_copy;
         data += to_copy;
         size -= to_copy;
@@ -181,16 +189,21 @@ void writer::write_zeros(size_t count) noexcept {
                 return;
             }
         }
+        if (count == 0) {
+            return;
+        }
     }
 
-    static const uint8_t zeros[DEFAULT_BUFFER_SIZE] = {};
+    if (!m_buffer_zeroed) {
+        std::memset(m_buffer.data(), 0, m_buffer.size());
+        m_buffer_zeroed = true;
+    }
     while (count >= m_buffer.size()) {
-        const size_t chunk = count < sizeof(zeros) ? count : sizeof(zeros);
-        if (!write_direct(zeros, chunk)) {
+        if (!write_direct(m_buffer.data(), m_buffer.size())) {
             m_write_failed = true;
             return;
         }
-        count -= chunk;
+        count -= m_buffer.size();
     }
 
     while (count > 0) {

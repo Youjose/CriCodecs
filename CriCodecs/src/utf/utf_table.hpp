@@ -18,9 +18,9 @@
 #include <optional>
 #include <bit>
 #include <cstring>
-#include <unordered_map>
 #include <utility>
 
+#include "../utilities/flat_unordered_map.hpp"
 #include "../utilities/io_reader.hpp"
 
 namespace cricodecs::utf {
@@ -116,6 +116,7 @@ public:
     UtfTable() = default;
     
     static std::expected<UtfTable, std::string> load(std::span<const uint8_t> data);
+    static std::expected<UtfTable, std::string> load(std::vector<uint8_t>&& data);
     static std::expected<UtfTable, std::string> load(std::span<const uint8_t> data, io::SourceView::Owner owner);
     static std::expected<UtfTable, std::string> load(const std::filesystem::path& path);
     
@@ -127,6 +128,7 @@ public:
     const std::vector<Column>& columns() const { return m_columns; }
     uint16_t version() const { return m_version; }
     uint32_t table_size() const { return m_table_size; }
+    uint32_t data_offset() const { return m_data_offset; }
     const std::optional<std::string>& text_encoding() const { return m_text_encoding; }
     void set_text_encoding(std::optional<std::string> encoding) { m_text_encoding = std::move(encoding); }
     void set_table_name(std::string_view name);
@@ -189,21 +191,28 @@ public:
     void add_column(std::string_view name, ColumnType type, ColumnFlag flag = ColumnFlag::Name);
     uint32_t add_row();
     bool remove_row(uint32_t row);
+    bool move_row(uint32_t from_row, uint32_t to_row);
     bool remove_column(uint32_t col);
     bool rename_column(uint32_t col, std::string_view name);
     bool set_column_type(uint32_t col, ColumnType type);
     bool set_column_flag(uint32_t col, ColumnFlag flag);
     [[nodiscard]] UtfTable editable_copy() const;
     
-    void set(uint32_t row, uint32_t col, Value value);
-    void set(uint32_t row, std::string_view col_name, Value value) {
+    std::expected<void, std::string> set(uint32_t row, uint32_t col, Value value);
+    std::expected<void, std::string> set(uint32_t row, std::string_view col_name, Value value) {
         int col = find_column(col_name);
-        if (col >= 0) set(row, static_cast<uint32_t>(col), std::move(value));
+        if (col < 0) {
+            return std::unexpected("UTF set failed: column not found: " + std::string(col_name));
+        }
+        return set(row, static_cast<uint32_t>(col), std::move(value));
     }
-    void set_default_value(uint32_t col, Value value);
-    void set_default_value(std::string_view col_name, Value value) {
+    std::expected<void, std::string> set_default_value(uint32_t col, Value value);
+    std::expected<void, std::string> set_default_value(std::string_view col_name, Value value) {
         int col = find_column(col_name);
-        if (col >= 0) set_default_value(static_cast<uint32_t>(col), std::move(value));
+        if (col < 0) {
+            return std::unexpected("UTF default set failed: column not found: " + std::string(col_name));
+        }
+        return set_default_value(static_cast<uint32_t>(col), std::move(value));
     }
     
     std::vector<uint8_t> build() const;
@@ -217,6 +226,7 @@ private:
     uint32_t m_strings_offset = 0;
     uint32_t m_data_offset = 0;
     uint32_t m_name_offset = 0;
+    uint16_t m_serialized_column_count = 0;
     uint16_t m_row_width = 0;
     uint32_t m_num_rows = 0;
     uint32_t m_data_alignment = 0;
@@ -232,7 +242,7 @@ private:
     std::vector<std::vector<Value>> m_values;
     std::vector<Value> m_default_values;
     
-    mutable std::unordered_map<std::string, int> m_column_cache;
+    mutable util::flat_unordered_map<std::string, int, util::transparent_string_hash, std::equal_to<>> m_column_cache;
     
     std::expected<void, std::string> parse_header();
     std::expected<void, std::string> parse_schema();

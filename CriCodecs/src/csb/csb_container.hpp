@@ -135,6 +135,20 @@ public:
     [[nodiscard]] std::expected<void, std::string> export_stream(uint32_t index, const std::filesystem::path& output_path) const;
     [[nodiscard]] std::expected<void, std::string> export_all(const std::filesystem::path& output_dir) const;
 
+    [[nodiscard]] std::expected<void, std::string> add_file(
+        std::span<const uint8_t> bytes,
+        const std::filesystem::path& archive_path
+    );
+    [[nodiscard]] std::expected<void, std::string> replace_file(uint32_t index, std::span<const uint8_t> bytes);
+    [[nodiscard]] std::expected<void, std::string> remove_file(uint32_t index);
+    [[nodiscard]] std::expected<void, std::string> move_file(uint32_t from_index, uint32_t to_index);
+    [[nodiscard]] std::expected<void, std::string> rename_file(
+        uint32_t index,
+        const std::filesystem::path& archive_path
+    );
+    [[nodiscard]] std::expected<void, std::string> set_streamed(uint32_t index, bool streamed);
+    [[nodiscard]] std::expected<void, std::string> set_element_streamed(uint32_t index, bool streamed);
+
 private:
     std::span<const uint8_t> m_source;
     std::vector<uint8_t> m_owned_source;
@@ -153,6 +167,7 @@ private:
     [[nodiscard]] std::expected<void, std::string> parse_sound_elements();
 
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> export_utf_payload(std::span<const uint8_t> wrapper) const;
+    [[nodiscard]] std::expected<void, std::string> replace_sound_element(utf::UtfTable sound_element);
 };
 
 } // namespace cricodecs::csb

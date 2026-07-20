@@ -1,6 +1,14 @@
 #include "binding_helpers.hpp"
 
+#include <algorithm>
+#include <array>
+
+#include <nanobind/stl/array.h>
+#include <nanobind/stl/vector.h>
+
 #include "../../CriCodecs/src/ahx/ahx_codec.hpp"
+#include "../../CriCodecs/src/ahx/ahx_key_recovery.hpp"
+#include "../../CriCodecs/src/key_recovery/key_recovery.hpp"
 #include "../../CriCodecs/src/adx/adx_crypto.hpp"
 #include "../../CriCodecs/src/adx/adx_codec.hpp"
 
@@ -54,6 +62,14 @@ namespace {
     };
 }
 
+[[nodiscard]] cricodecs::ahx::AhxKey ahx_key_from_adx_state(cricodecs::adx::AdxKeyState state) {
+    return cricodecs::ahx::AhxKey{
+        .start = state.xor_value,
+        .mult = state.mult,
+        .add = state.add,
+    };
+}
+
 [[nodiscard]] cricodecs::ahx::AhxKey ahx_key_from_object(const nb::object& key, uint16_t subkey = 0) {
     if (key.is_none()) {
         return {};
@@ -80,17 +96,14 @@ namespace {
         if (text.find("\xEF\xBF\xBD") != std::string::npos) {
             raise_value_error("AHX key string contains Unicode replacement characters; pass raw key bytes instead");
         }
-        cricodecs::ahx::AhxKey ahx_key{};
-        cricodecs::adx::key8_derive(text, ahx_key.start, ahx_key.mult, ahx_key.add);
+        auto state = cricodecs::adx::key8_derive(text);
         if (subkey != 0) {
-            cricodecs::adx::key9_derive(0, subkey, ahx_key.start, ahx_key.mult, ahx_key.add);
+            state = cricodecs::adx::key9_derive(0, subkey);
         }
-        return ahx_key;
+        return ahx_key_from_adx_state(state);
     }
     if (PyLong_Check(key.ptr())) {
-        cricodecs::ahx::AhxKey ahx_key{};
-        cricodecs::adx::key9_derive(nb::cast<uint64_t>(key), subkey, ahx_key.start, ahx_key.mult, ahx_key.add);
-        return ahx_key;
+        return ahx_key_from_adx_state(cricodecs::adx::key9_derive(nb::cast<uint64_t>(key), subkey));
     }
     raise_type_error("AHX key must be None, AhxKey, raw 6-byte triplet, tuple/list triplet, string, or integer keycode");
 }
@@ -127,6 +140,21 @@ namespace {
     return wav;
 }
 
+[[nodiscard]] cricodecs::ahx::KeyRecoveryResult recover_ahx_python(
+    const nb::object& source,
+    bool same_base_key)
+{
+    auto bytes = copy_python_recovery_sources(source, "AHX key recovery");
+    std::vector<cricodecs::ahx::AhxRecoverySource> sources;
+    sources.reserve(bytes.size());
+    for (const auto& data : bytes) sources.push_back({data});
+    return unwrap_expected(cricodecs::ahx::recover_key(
+        sources,
+        same_base_key
+            ? cricodecs::KeyRecoveryMode::SharedBaseKey
+            : cricodecs::KeyRecoveryMode::Independent));
+}
+
 } // namespace
 
 void bind_ahx_module(nb::module_& module) {
@@ -143,6 +171,20 @@ void bind_ahx_module(nb::module_& module) {
         .def_rw("mult", &cricodecs::ahx::AhxKey::mult)
         .def_rw("add", &cricodecs::ahx::AhxKey::add)
         .def("empty", &cricodecs::ahx::AhxKey::empty);
+
+    nb::class_<cricodecs::ahx::KeyCandidate>(module, "KeyCandidate")
+        .def_ro("key", &cricodecs::ahx::KeyCandidate::key)
+        .def_ro("score", &cricodecs::ahx::KeyCandidate::score)
+        .def_ro("source_count", &cricodecs::ahx::KeyCandidate::source_count)
+        .def_ro("evidence_count", &cricodecs::ahx::KeyCandidate::evidence_count)
+        .def_ro("evidence_frames", &cricodecs::ahx::KeyCandidate::evidence_frames)
+        .def_ro("candidate_counts", &cricodecs::ahx::KeyCandidate::candidate_counts)
+        .def_ro("canonical_type9_code", &cricodecs::ahx::KeyCandidate::canonical_type9_code);
+
+    nb::class_<cricodecs::ahx::KeyRecoveryResult>(module, "KeyRecoveryResult")
+        .def_ro("candidates", &cricodecs::ahx::KeyRecoveryResult::candidates)
+        .def_ro("source_count", &cricodecs::ahx::KeyRecoveryResult::source_count)
+        .def_ro("evidence_count", &cricodecs::ahx::KeyRecoveryResult::evidence_count);
 
     nb::class_<cricodecs::ahx::AhxDecodeConfig>(module, "AhxDecodeConfig")
         .def(nb::init<>())
@@ -172,6 +214,8 @@ void bind_ahx_module(nb::module_& module) {
         );
 
     install_attr_repr(module, "AhxKey", {"start", "mult", "add"});
+    install_attr_repr(module, "KeyCandidate", {"key", "score", "source_count", "evidence_count", "candidate_counts", "canonical_type9_code"});
+    install_attr_repr(module, "KeyRecoveryResult", {"candidates", "source_count", "evidence_count"});
     install_attr_repr(module, "AhxDecodeConfig", {"encoding_mode", "sample_rate", "sample_count", "channels", "encryption_type", "start_offset", "key"});
     install_attr_repr(module, "AhxEncodeConfig", {"encoding_mode", "sample_rate", "channels", "encryption_type", "key", "bit_allocation_pattern"});
 
@@ -198,27 +242,21 @@ void bind_ahx_module(nb::module_& module) {
     module.def(
         "_key_from_type8",
         [](const std::string& key) {
-            cricodecs::ahx::AhxKey ahx_key{};
-            cricodecs::adx::key8_derive(key, ahx_key.start, ahx_key.mult, ahx_key.add);
-            return ahx_key;
+            return ahx_key_from_adx_state(cricodecs::adx::key8_derive(key));
         },
         nb::arg("key")
     );
     module.def(
         "_key_from_type8_bytes",
         [](const nb::bytes& key) {
-            cricodecs::ahx::AhxKey ahx_key{};
-            cricodecs::adx::key8_derive(borrow_python_bytes(key), ahx_key.start, ahx_key.mult, ahx_key.add);
-            return ahx_key;
+            return ahx_key_from_adx_state(cricodecs::adx::key8_derive(borrow_python_bytes(key)));
         },
         nb::arg("key")
     );
     module.def(
         "_key_from_type9",
         [](uint64_t keycode, uint16_t subkey) {
-            cricodecs::ahx::AhxKey ahx_key{};
-            cricodecs::adx::key9_derive(keycode, subkey, ahx_key.start, ahx_key.mult, ahx_key.add);
-            return ahx_key;
+            return ahx_key_from_adx_state(cricodecs::adx::key9_derive(keycode, subkey));
         },
         nb::arg("keycode"),
         nb::arg("subkey") = 0
@@ -232,7 +270,7 @@ void bind_ahx_module(nb::module_& module) {
                 ? ahx_decode_config_from_adx(adx)
                 : nb::cast<cricodecs::ahx::AhxDecodeConfig>(config_object);
             config.key = ahx_key_from_object(key, subkey);
-            const auto encoded = adx.encode();
+            const auto encoded = unwrap_expected(adx.rebuild());
             auto decoded = unwrap_expected(cricodecs::ahx::decode(encoded, config));
             return pcm16_to_wav_python_bytes(
                 decoded,
@@ -244,6 +282,14 @@ void bind_ahx_module(nb::module_& module) {
         nb::arg("config") = nb::none(),
         nb::arg("key") = nb::none(),
         nb::arg("subkey") = static_cast<uint16_t>(0)
+    );
+
+    module.def(
+        "recover_key",
+        &recover_ahx_python,
+        nb::arg("source"),
+        nb::arg("same_base_key") = true,
+        "Recover up to ten ranked AHX key-triplet candidates from one or more sources."
     );
 
     module.def(

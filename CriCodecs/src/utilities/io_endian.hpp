@@ -7,15 +7,49 @@
  * Implemented by Youjose.
  */
 
-#include <cstdint>
-#include <cstring>
+#include <array>
 #include <bit>
 #include <concepts>
+#include <cstdint>
+#include <cstring>
 #include <span>
-#include <vector>
 #include <type_traits>
+#include <vector>
 
 namespace cricodecs::io {
+
+struct FourCC {
+    std::array<uint8_t, 4> bytes{};
+
+    consteval explicit FourCC(const char (&text)[5]) noexcept
+        : bytes{
+            static_cast<uint8_t>(text[0]),
+            static_cast<uint8_t>(text[1]),
+            static_cast<uint8_t>(text[2]),
+            static_cast<uint8_t>(text[3]),
+        } {}
+
+    constexpr FourCC(uint8_t first, uint8_t second, uint8_t third, uint8_t fourth) noexcept
+        : bytes{first, second, third, fourth} {}
+
+    [[nodiscard]] constexpr uint32_t be_value() const noexcept {
+        return (static_cast<uint32_t>(bytes[0]) << 24u) |
+            (static_cast<uint32_t>(bytes[1]) << 16u) |
+            (static_cast<uint32_t>(bytes[2]) << 8u) |
+            static_cast<uint32_t>(bytes[3]);
+    }
+
+    [[nodiscard]] constexpr uint32_t le_value() const noexcept {
+        return static_cast<uint32_t>(bytes[0]) |
+            (static_cast<uint32_t>(bytes[1]) << 8u) |
+            (static_cast<uint32_t>(bytes[2]) << 16u) |
+            (static_cast<uint32_t>(bytes[3]) << 24u);
+    }
+
+    [[nodiscard]] constexpr auto begin() const noexcept { return bytes.begin(); }
+    [[nodiscard]] constexpr auto end() const noexcept { return bytes.end(); }
+    [[nodiscard]] constexpr size_t size() const noexcept { return bytes.size(); }
+};
 
 struct Int24 {
     uint8_t val[3];
@@ -125,5 +159,8 @@ inline void append_be(std::vector<uint8_t>& buffer, T val) {
     buffer.resize(position + sizeof(T));
     write_be<T>(buffer.data() + position, val);
 }
+
+static_assert(FourCC{"RIFF"}.be_value() == 0x52494646u);
+static_assert(FourCC{"RIFF"}.le_value() == 0x46464952u);
 
 } // namespace cricodecs::io

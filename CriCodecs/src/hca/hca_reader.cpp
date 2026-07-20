@@ -13,8 +13,10 @@
 #include "hca_tables.hpp"
 
 #include <cstring>
+#include <limits>
 
-#include "../utilities/io.hpp"
+#include "../utilities/io_endian.hpp"
+#include "../utilities/io_reader.hpp"
 #include "../utilities/numeric.hpp"
 
 namespace cricodecs::hca {
@@ -69,8 +71,12 @@ std::expected<HcaHeader, std::string> detail::parse_header(std::span<const uint8
         return std::unexpected(std::string("HCA parse failed: invalid fmt chunk values"));
     }
     const uint64_t frame_sample_total = static_cast<uint64_t>(info.fmt.frame_count) * HCA_SAMPLES_PER_FRAME;
-    if (static_cast<uint64_t>(info.fmt.encoder_delay) + info.fmt.encoder_padding >= frame_sample_total) {
+    const uint64_t sample_trim = static_cast<uint64_t>(info.fmt.encoder_delay) + info.fmt.encoder_padding;
+    if (sample_trim >= frame_sample_total) {
         return std::unexpected(std::string("HCA parse failed: invalid encoder delay/padding"));
+    }
+    if (frame_sample_total - sample_trim > std::numeric_limits<uint32_t>::max()) {
+        return std::unexpected(std::string("HCA parse failed: sample count exceeds supported range"));
     }
 
     if (remaining >= 0x10 && (br.peek(32) & HCA_MASK) == HCA_CHUNK_ID_COMP) {
@@ -167,11 +173,6 @@ std::expected<HcaHeader, std::string> detail::parse_header(std::span<const uint8
             return std::unexpected(std::string("HCA parse failed: comment chunk exceeds header"));
         }
         br.skip(info.comment.length * 8);
-        remaining -= static_cast<size_t>(0x05 + info.comment.length);
-    }
-
-    if (remaining >= 0x04 && (br.peek(32) & HCA_MASK) == HCA_CHUNK_ID_PAD) {
-        remaining = 2;
     }
 
     if (info.codec.frame_size < HCA_MIN_FRAME_SIZE || info.codec.frame_size > HCA_MAX_FRAME_SIZE) {
@@ -203,13 +204,6 @@ std::expected<HcaHeader, std::string> detail::parse_header(std::span<const uint8
         info.codec.hfr_group_count = static_cast<uint8_t>(
             divide_round_up(hfr_band_count, static_cast<uint32_t>(info.codec.bands_per_hfr_group))
         );
-    }
-
-    const uint64_t required_frame_bytes =
-        static_cast<uint64_t>(info.file.header_size) +
-        static_cast<uint64_t>(info.fmt.frame_count) * static_cast<uint64_t>(info.codec.frame_size);
-    if (required_frame_bytes > data.size()) {
-        return std::unexpected(std::string("HCA parse failed: frame payload is shorter than header declares"));
     }
 
     return info;

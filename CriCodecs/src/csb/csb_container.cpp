@@ -9,7 +9,7 @@
 
 #include "csb_container.hpp"
 
-#include <fstream>
+#include "../utilities/io.hpp"
 
 namespace cricodecs::csb {
 
@@ -31,23 +31,25 @@ std::expected<std::vector<uint8_t>, std::string> CsbContainer::save() const {
 }
 
 std::expected<void, std::string> CsbContainer::save_to_file(const std::filesystem::path& output_path) const {
-    auto bytes = save();
-    if (!bytes) {
-        return std::unexpected(bytes.error());
-    }
-
+    std::error_code error;
     if (output_path.has_parent_path()) {
-        std::filesystem::create_directories(output_path.parent_path());
+        std::filesystem::create_directories(output_path.parent_path(), error);
+        if (error) {
+            return std::unexpected(
+                "CSB save failed: could not create output directory: " +
+                output_path.parent_path().string());
+        }
     }
 
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output.is_open()) {
+    io::writer writer;
+    if (auto result = writer.open(output_path); !result) {
         return std::unexpected("CSB save failed: could not open output file: " + output_path.string());
     }
-
-    output.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
-    if (!output.good()) {
+    if (auto result = writer.write(m_source); !result) {
         return std::unexpected("CSB save failed: could not write output file: " + output_path.string());
+    }
+    if (auto result = writer.close(); !result) {
+        return std::unexpected("CSB save failed: could not finalize output file: " + output_path.string());
     }
 
     return {};

@@ -1,10 +1,16 @@
 #include "binding_helpers.hpp"
 
+#include <array>
+#include <algorithm>
 #include <filesystem>
 #include <utility>
 #include <vector>
 
+#include <nanobind/stl/vector.h>
+
 #include "../../CriCodecs/src/adx/adx_codec.hpp"
+#include "../../CriCodecs/src/adx/adx_key_recovery.hpp"
+#include "../../CriCodecs/src/key_recovery/key_recovery.hpp"
 
 namespace cricodecs::python {
 namespace {
@@ -40,6 +46,21 @@ namespace {
     config.sample_rate = wav.sample_rate();
     config.channels = static_cast<uint8_t>(wav.channels());
     return config;
+}
+
+[[nodiscard]] cricodecs::adx::KeyRecoveryResult recover_adx_python(
+    const nb::object& source,
+    bool same_base_key)
+{
+    auto bytes = copy_python_recovery_sources(source, "ADX key recovery");
+    std::vector<cricodecs::adx::AdxRecoverySource> sources;
+    sources.reserve(bytes.size());
+    for (const auto& data : bytes) sources.push_back({data});
+    return unwrap_expected(cricodecs::adx::recover_key(
+        sources,
+        same_base_key
+            ? cricodecs::KeyRecoveryMode::SharedBaseKey
+            : cricodecs::KeyRecoveryMode::Independent));
 }
 
 [[nodiscard]] nb::bytes decode_adx_to_wav(cricodecs::adx::Adx& adx) {
@@ -108,6 +129,25 @@ void apply_adx_key(cricodecs::adx::Adx& adx, const nb::object& key, uint16_t sub
 } // namespace
 
 void bind_adx_module(nb::module_& module) {
+    nb::class_<cricodecs::adx::AdxKeyState>(module, "AdxKey")
+        .def(nb::init<>())
+        .def_rw("start", &cricodecs::adx::AdxKeyState::xor_value)
+        .def_rw("mult", &cricodecs::adx::AdxKeyState::mult)
+        .def_rw("add", &cricodecs::adx::AdxKeyState::add);
+
+    nb::class_<cricodecs::adx::KeyCandidate>(module, "KeyCandidate")
+        .def_ro("key", &cricodecs::adx::KeyCandidate::key)
+        .def_ro("score", &cricodecs::adx::KeyCandidate::score)
+        .def_ro("source_count", &cricodecs::adx::KeyCandidate::source_count)
+        .def_ro("evidence_count", &cricodecs::adx::KeyCandidate::evidence_count)
+        .def_ro("evidence_frames", &cricodecs::adx::KeyCandidate::evidence_frames)
+        .def_ro("canonical_type9_code", &cricodecs::adx::KeyCandidate::canonical_type9_code);
+
+    nb::class_<cricodecs::adx::KeyRecoveryResult>(module, "KeyRecoveryResult")
+        .def_ro("candidates", &cricodecs::adx::KeyRecoveryResult::candidates)
+        .def_ro("source_count", &cricodecs::adx::KeyRecoveryResult::source_count)
+        .def_ro("evidence_count", &cricodecs::adx::KeyRecoveryResult::evidence_count);
+
     nb::class_<cricodecs::adx::AdxLoop>(module, "AdxLoop")
         .def(nb::init<>())
         .def_rw("index", &cricodecs::adx::AdxLoop::index)
@@ -147,13 +187,7 @@ void bind_adx_module(nb::module_& module) {
         .def_rw("subkey", &cricodecs::adx::AdxEncodeConfig::subkey);
 
     nb::class_<cricodecs::adx::Adx>(module, "Adx")
-        .def_static(
-            "load",
-            [](const std::string& path) {
-                return unwrap_expected(cricodecs::adx::Adx::load(std::filesystem::path(path)));
-            },
-            nb::arg("path")
-        )
+        .def_static("load", &load_adx_any, nb::arg("source"))
         .def_static(
             "load_bytes",
             [](const nb::bytes& data) {
@@ -162,7 +196,7 @@ void bind_adx_module(nb::module_& module) {
             nb::arg("data")
         )
         .def_prop_ro("source_path", [](const cricodecs::adx::Adx& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro(
             "header",
@@ -190,7 +224,7 @@ void bind_adx_module(nb::module_& module) {
             info.attr("loops") = loops_list(self);
             info.attr("is_encrypted") = self.is_encrypted();
             info.attr("is_ahx") = self.is_ahx();
-            info.attr("source_path") = self.source_path().empty() ? nb::none() : nb::cast(self.source_path().generic_string());
+            info.attr("source_path") = path_or_none(self.source_path());
             return info;
         })
         .def("set_key_type8", [](cricodecs::adx::Adx& self, const std::string& key) {
@@ -206,8 +240,22 @@ void bind_adx_module(nb::module_& module) {
             self.set_ahx_key(start, mult, add);
         }, nb::arg("start"), nb::arg("mult"), nb::arg("add"))
         .def("decode", &decode_adx_to_wav)
+        .def("decrypt", [](const cricodecs::adx::Adx& self) {
+            return to_python_bytes(unwrap_expected(self.decrypt()));
+        })
         .def("encode", [](const cricodecs::adx::Adx& self) {
-            return to_python_bytes(self.encode());
+            return to_python_bytes(unwrap_expected(self.rebuild()));
+        })
+        .def("encode", [](cricodecs::adx::Adx& self, const cricodecs::adx::AdxEncodeConfig& config, const nb::list& loops) {
+            return to_python_bytes(unwrap_expected(self.encode(config, native_loops_from_python(loops))));
+        }, nb::arg("config"), nb::arg("loops") = nb::list())
+        .def("rebuild", [](const cricodecs::adx::Adx& self) {
+            return to_python_bytes(unwrap_expected(self.rebuild()));
+        })
+        .def("recover_key", [](const cricodecs::adx::Adx& self) {
+            const auto data = unwrap_expected(self.rebuild());
+            const std::array sources{cricodecs::adx::AdxRecoverySource{data}};
+            return unwrap_expected(cricodecs::adx::recover_key(sources));
         })
         .def("_encode_with_config", [](cricodecs::adx::Adx& self, const cricodecs::adx::AdxEncodeConfig& config, const nb::list& loops) {
             std::vector<cricodecs::adx::AdxLoop> native_loops;
@@ -220,6 +268,9 @@ void bind_adx_module(nb::module_& module) {
         }, nb::arg("config"), nb::arg("loops") = nb::list());
 
     install_attr_repr(module, "AdxLoop", {"index", "type", "start_sample", "start_byte", "end_sample", "end_byte"});
+    install_attr_repr(module, "AdxKey", {"start", "mult", "add"});
+    install_attr_repr(module, "KeyCandidate", {"key", "score", "source_count", "evidence_count", "canonical_type9_code"});
+    install_attr_repr(module, "KeyRecoveryResult", {"candidates", "source_count", "evidence_count"});
     install_attr_repr(module, "AdxHeader", {"signature", "data_offset", "encoding_mode", "block_size", "bit_depth", "channels", "sample_rate", "sample_count", "highpass_freq", "version", "flags"});
     install_attr_repr(module, "AdxEncodeConfig", {"sample_rate", "channels", "bit_depth", "block_size", "encoding_mode", "highpass_freq", "filter_id", "version", "encryption_type", "delete_samples_after_loop_end", "key_string", "key64", "subkey"});
     install_attr_repr(module, "Adx", {"source_path", "header", "has_loops", "loops", "is_encrypted", "is_ahx"});
@@ -280,6 +331,13 @@ void bind_adx_module(nb::module_& module) {
     );
 
     module.def("load", &load_adx_any, nb::arg("source"));
+    module.def(
+        "recover_key",
+        &recover_adx_python,
+        nb::arg("source"),
+        nb::arg("same_base_key") = true,
+        "Recover up to ten ranked ADX key-triplet candidates from one or more sources."
+    );
     module.def("decode", [](const nb::object& source, const nb::object& key, uint16_t subkey) {
         auto adx = load_adx_any(source);
         apply_adx_key(adx, key, subkey);

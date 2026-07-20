@@ -17,9 +17,16 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <algorithm>
 #include "io_endian.hpp"
 
 namespace cricodecs::io {
+
+enum class access_pattern : uint8_t {
+    normal,
+    sequential,
+    random
+};
 
 struct SourceView {
     using Owner = std::shared_ptr<const void>;
@@ -182,6 +189,7 @@ public:
     reader& operator=(reader&&) noexcept;
 
     std::expected<void, const char*> open(const std::filesystem::path& path) noexcept;
+    std::expected<void, const char*> open(const std::filesystem::path& path, access_pattern pattern) noexcept;
     std::expected<void, const char*> open(const uint8_t* data, size_t size) noexcept;
     std::expected<void, const char*> open(std::span<const uint8_t> data) noexcept {
         return open(data.data(), data.size());
@@ -191,6 +199,7 @@ public:
 
     [[nodiscard]] std::span<const uint8_t> data() const noexcept;
     [[nodiscard]] size_t size() const noexcept;
+    [[nodiscard]] access_pattern pattern() const noexcept { return m_pattern; }
 
     [[nodiscard]] size_t tell() const noexcept { return m_cursor; }
     [[nodiscard]] size_t remaining() const noexcept { return m_data_size > m_cursor ? m_data_size - m_cursor : 0; }
@@ -222,22 +231,6 @@ public:
     }
 
     template<EndianSwappable T>
-    std::expected<T, const char*> try_read_le() noexcept {
-        if (remaining() < sizeof(T)) return std::unexpected("I/O reader failed: read is out of bounds");
-        T val = io::read_le<T>(m_data_ptr + m_cursor);
-        m_cursor += sizeof(T);
-        return val;
-    }
-
-    template<EndianSwappable T>
-    std::expected<T, const char*> try_read_be() noexcept {
-        if (remaining() < sizeof(T)) return std::unexpected("I/O reader failed: read is out of bounds");
-        T val = io::read_be<T>(m_data_ptr + m_cursor);
-        m_cursor += sizeof(T);
-        return val;
-    }
-
-    template<EndianSwappable T>
     T read_le_at(size_t offset) const noexcept {
         if (offset > m_data_size || m_data_size - offset < sizeof(T)) return T{};
         return io::read_le<T>(m_data_ptr + offset);
@@ -257,6 +250,13 @@ public:
         T result{};
         std::memcpy(&result, m_data_ptr + offset, sizeof(T));
         return result;
+    }
+
+    [[nodiscard]] size_t read_at(size_t offset, std::span<uint8_t> output) const noexcept {
+        if (output.empty() || offset >= m_data_size || m_data_ptr == nullptr) return 0;
+        const size_t count = std::min(output.size(), m_data_size - offset);
+        std::memcpy(output.data(), m_data_ptr + offset, count);
+        return count;
     }
 
     std::span<const uint8_t> read_bytes(size_t count) noexcept {
@@ -279,18 +279,19 @@ private:
     // Platform-specific file mapping state
 #if defined(_WIN32)
     std::unique_ptr<detail::win32_reader_handles> m_handles;
-    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path) noexcept;
+    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept;
 #elif !defined(USE_FALLBACK_READER) && (defined(__unix__) || defined(__APPLE__) || defined(__linux__))
     std::unique_ptr<detail::posix_reader_descriptor> m_descriptor;
-    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path) noexcept;
+    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept;
 #else
     std::unique_ptr<detail::fallback_reader_state> m_fallback;
-    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path) noexcept;
+    std::expected<void, const char*> open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept;
 #endif
 
     const uint8_t* m_data_ptr = nullptr;
     size_t m_data_size = 0;
     size_t m_cursor = 0;
+    access_pattern m_pattern = access_pattern::normal;
     bool m_owns_mapping = false;  // true if we mmap'd/allocated, false if external memory
     bool m_has_external_source = false;  // true when bound to caller-owned memory, including empty spans
 };

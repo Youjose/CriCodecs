@@ -316,37 +316,37 @@ NB_MODULE(cricodecs, module) {
     auto aix_module = module.def_submodule("aix", "AIX container helpers");
     cricodecs::python::bind_aix_module(aix_module);
 
-    auto acx_module = module.def_submodule("acx", "Read-only ACX archive helpers");
+    auto acx_module = module.def_submodule("acx", "ACX archive helpers");
     cricodecs::python::bind_acx_module(acx_module);
 
-    auto acb_module = module.def_submodule("acb", "Read-only ACB waveform helpers");
+    auto acb_module = module.def_submodule("acb", "ACB waveform helpers");
     cricodecs::python::bind_acb_module(acb_module);
 
     auto hca_module = module.def_submodule("hca", "HCA codec helpers");
     cricodecs::python::bind_hca_module(hca_module);
 
-    auto awb_module = module.def_submodule("awb", "Read-only AWB container helpers");
+    auto awb_module = module.def_submodule("awb", "AWB container helpers");
     cricodecs::python::bind_awb_module(awb_module);
 
-    auto afs_module = module.def_submodule("afs", "Read-only AFS container helpers");
+    auto afs_module = module.def_submodule("afs", "AFS container helpers");
     cricodecs::python::bind_afs_module(afs_module);
 
-    auto cpk_module = module.def_submodule("cpk", "Read-only CPK archive helpers");
+    auto cpk_module = module.def_submodule("cpk", "CPK archive helpers");
     cricodecs::python::bind_cpk_module(cpk_module);
 
-    auto csb_module = module.def_submodule("csb", "Read-only CSB cue archive helpers");
+    auto csb_module = module.def_submodule("csb", "CSB cue archive helpers");
     cricodecs::python::bind_csb_module(csb_module);
 
-    auto cvm_module = module.def_submodule("cvm", "Read-only CVM image helpers");
+    auto cvm_module = module.def_submodule("cvm", "CVM image helpers");
     cricodecs::python::bind_cvm_module(cvm_module);
 
-    auto sfd_module = module.def_submodule("sfd", "Read-only SFD container helpers");
+    auto sfd_module = module.def_submodule("sfd", "SFD container helpers");
     cricodecs::python::bind_sfd_module(sfd_module);
 
-    auto usm_module = module.def_submodule("usm", "Read-only USM container helpers");
+    auto usm_module = module.def_submodule("usm", "USM container helpers");
     cricodecs::python::bind_usm_module(usm_module);
 
-    auto utf_module = module.def_submodule("utf", "Read-only UTF table helpers");
+    auto utf_module = module.def_submodule("utf", "UTF table helpers");
     cricodecs::python::bind_utf_module(utf_module);
 
     auto video_module = module.def_submodule("video", "Video elementary stream readers");

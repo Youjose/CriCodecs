@@ -36,15 +36,13 @@ void bind_aax_module(nb::module_& module) {
         .def_ro("loop_segment", &cricodecs::aax::AaxSegmentInfo::loop_segment);
 
     nb::class_<cricodecs::aax::AaxContainer>(module, "Aax")
-        .def_static("load", [](const std::string& path) {
-            return unwrap_expected(cricodecs::aax::AaxContainer::load(std::filesystem::path(path)));
-        }, nb::arg("path"))
+        .def_static("load", &load_aax_any, nb::arg("source"))
         .def_static("load_bytes", [](const nb::bytes& data) {
             const auto data_view = borrow_python_bytes(data);
             return unwrap_expected(cricodecs::aax::AaxContainer::load(as_byte_span(data_view)));
         }, nb::arg("data"))
         .def_prop_ro("source_path", [](const cricodecs::aax::AaxContainer& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("name", [](const cricodecs::aax::AaxContainer& self) {
             return std::string(self.name());
@@ -108,6 +106,23 @@ void bind_aax_module(nb::module_& module) {
         .def("extract", [](const cricodecs::aax::AaxContainer& self, const std::string& output_path) {
             unwrap_expected(self.extract(output_path));
         }, nb::arg("output_path"))
+        .def("add_segment", [](cricodecs::aax::AaxContainer& self, const nb::bytes& data, bool loop) {
+            const auto view = borrow_python_bytes(data);
+            unwrap_expected(self.add_segment(as_byte_span(view), loop));
+        }, nb::arg("data"), nb::arg("loop") = false)
+        .def("replace_segment", [](cricodecs::aax::AaxContainer& self, uint32_t index, const nb::bytes& data) {
+            const auto view = borrow_python_bytes(data);
+            unwrap_expected(self.replace_segment(index, as_byte_span(view)));
+        }, nb::arg("index"), nb::arg("data"))
+        .def("remove_segment", [](cricodecs::aax::AaxContainer& self, uint32_t index) {
+            unwrap_expected(self.remove_segment(index));
+        }, nb::arg("index"))
+        .def("move_segment", [](cricodecs::aax::AaxContainer& self, uint32_t from_index, uint32_t to_index) {
+            unwrap_expected(self.move_segment(from_index, to_index));
+        }, nb::arg("from_index"), nb::arg("to_index"))
+        .def("set_loop_segment", [](cricodecs::aax::AaxContainer& self, uint32_t index, bool loop) {
+            unwrap_expected(self.set_loop_segment(index, loop));
+        }, nb::arg("index"), nb::arg("loop"))
         .def("save_bytes", [](const cricodecs::aax::AaxContainer& self) {
             auto bytes = unwrap_expected(self.save());
             return to_python_bytes(bytes);

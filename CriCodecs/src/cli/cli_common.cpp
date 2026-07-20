@@ -10,6 +10,13 @@
 
 namespace cricodecs::cli::detail {
 
+namespace {
+
+constexpr io::FourCC CvmHeaderMagic{"CVMH"};
+constexpr io::FourCC CvmZoneMagic{"ZONE"};
+
+} // namespace
+
 [[nodiscard]] std::string lower_ascii(std::string_view text) {
     std::string lowered(text);
     std::ranges::transform(lowered, lowered.begin(), [](unsigned char ch) {
@@ -172,34 +179,20 @@ template <typename T>
     return std::string(CRICODECS_VERSION) + " (" + CRICODECS_GIT_HASH + ")";
 }
 
-[[nodiscard]] uint32_t be32(std::span<const uint8_t> bytes, size_t offset) {
-    if (bytes.size() < offset + 4) {
-        return 0;
-    }
-    return (static_cast<uint32_t>(bytes[offset]) << 24u) |
-           (static_cast<uint32_t>(bytes[offset + 1]) << 16u) |
-           (static_cast<uint32_t>(bytes[offset + 2]) << 8u) |
-           static_cast<uint32_t>(bytes[offset + 3]);
-}
-
-[[nodiscard]] bool has_magic_at(std::span<const uint8_t> bytes, size_t offset, std::string_view magic) {
+[[nodiscard]] bool has_magic_at(std::span<const uint8_t> bytes, size_t offset, const io::FourCC& magic) {
     return bytes.size() >= offset + magic.size() &&
            std::equal(magic.begin(), magic.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset));
 }
 
 [[nodiscard]] bool has_cvm_header(std::span<const uint8_t> bytes) {
-    return has_magic_at(bytes, 0, "CVMH") && has_magic_at(bytes, 0x800, "ZONE");
+    return has_magic_at(bytes, 0, CvmHeaderMagic) && has_magic_at(bytes, 0x800, CvmZoneMagic);
 }
 
 [[nodiscard]] bool looks_like_acx(std::span<const uint8_t> bytes) noexcept {
     if (bytes.size() < 8 || bytes[0] != 0 || bytes[1] != 0 || bytes[2] != 0 || bytes[3] != 0) {
         return false;
     }
-    const uint32_t entry_count =
-        (static_cast<uint32_t>(bytes[4]) << 24u) |
-        (static_cast<uint32_t>(bytes[5]) << 16u) |
-        (static_cast<uint32_t>(bytes[6]) << 8u) |
-        static_cast<uint32_t>(bytes[7]);
+    const uint32_t entry_count = io::read_be<uint32_t>(bytes.data() + 4u);
     return entry_count > 0 && entry_count <= 0x10000u;
 }
 
@@ -281,38 +274,13 @@ void push_unique(std::vector<Format>& formats, Format format) {
         }
     }
 
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output) {
-        return std::unexpected("could not open output file: " + output_path.string());
-    }
-    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!output.good()) {
-        return std::unexpected("could not write output file: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, bytes, "could not write output file");
 }
 
 [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> read_bytes_file(
     const std::filesystem::path& input_path
 ) {
-    std::ifstream input(input_path, std::ios::binary);
-    if (!input) {
-        return std::unexpected("could not open input file: " + input_path.string());
-    }
-    input.seekg(0, std::ios::end);
-    const std::streamoff size = input.tellg();
-    if (size < 0) {
-        return std::unexpected("could not determine input file size: " + input_path.string());
-    }
-    input.seekg(0, std::ios::beg);
-    std::vector<uint8_t> bytes(static_cast<size_t>(size));
-    if (!bytes.empty()) {
-        input.read(reinterpret_cast<char*>(bytes.data()), size);
-        if (!input) {
-            return std::unexpected("could not read input file: " + input_path.string());
-        }
-    }
-    return bytes;
+    return io::read_file_bytes(input_path, "could not read input file");
 }
 
 [[nodiscard]] std::expected<std::vector<std::pair<std::filesystem::path, std::filesystem::path>>, std::string>
@@ -338,7 +306,7 @@ collect_directory_files(const std::filesystem::path& input_dir) {
         files.emplace_back(it->path(), relative.generic_string());
     }
     std::sort(files.begin(), files.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.second.generic_string() < rhs.second.generic_string();
+        return lhs.second.native() < rhs.second.native();
     });
     if (files.empty()) {
         return std::unexpected("input directory contains no files");

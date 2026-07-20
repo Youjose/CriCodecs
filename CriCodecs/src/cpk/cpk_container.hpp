@@ -163,6 +163,10 @@ public:
     std::expected<void, std::string> remove(size_t index);
     std::expected<void, std::string> move_file(size_t from_index, size_t to_index);
     std::expected<void, std::string> rename(size_t index, const std::string& cpk_path);
+    std::expected<void, std::string> set_dirname(size_t index, const std::string& dirname);
+    std::expected<void, std::string> set_filename(size_t index, const std::string& filename);
+    std::expected<void, std::string> set_request_compress(size_t index, bool compress);
+    void set_all_request_compress(bool compress) noexcept;
     std::expected<void, std::string> replace_file(
         size_t index,
         const std::filesystem::path& local_path,
@@ -271,17 +275,27 @@ private:
     std::vector<CpkEntry> m_files;
     std::vector<EntrySource> m_sources;
 
+    struct LoadedUtfChunk {
+        utf::UtfTable table;
+        std::vector<uint8_t> owned_payload;
+    };
+
     std::expected<void, std::string> parse();
-    std::expected<utf::UtfTable, std::string> load_chunk_utf(
+    std::expected<LoadedUtfChunk, std::string> load_chunk_utf(
         uint64_t offset,
         uint64_t chunk_size,
-        std::string_view expected_magic,
-        std::vector<uint8_t>* owned_payload = nullptr
+        std::string_view expected_magic
     ) const;
     std::expected<uint64_t, std::string> resolve_entry_offset(const CpkEntry& entry) const;
     std::expected<void, std::string> populate_file_entries();
     void normalize_entry_path(CpkEntry& entry, const std::string& cpk_path) const;
+    std::expected<std::span<const uint8_t>, std::string> packed_entry_span(const CpkEntry& entry) const;
+    std::expected<void, std::string> write_entry_to_file(
+        const CpkEntry& entry,
+        const std::filesystem::path& output_path
+    ) const;
     std::expected<std::vector<uint8_t>, std::string> raw_entry_bytes(size_t index) const;
+    std::expected<void, std::string> rebuild_state(bool encrypt_utf_chunks);
     std::expected<std::vector<uint8_t>, std::string> save_impl(bool encrypt_utf_chunks);
     std::expected<std::vector<PreparedEntry>, std::string> prepare_entries_for_save();
     std::expected<std::vector<uint8_t>, std::string> build_archive(

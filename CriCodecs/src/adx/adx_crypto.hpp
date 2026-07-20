@@ -14,7 +14,7 @@
 
 namespace cricodecs::adx {
 
-    inline constexpr auto KEY8_PRIMES = cricodecs::util::generate_primes_in_range<uint16_t, 0x401B, 0x683A>();
+    inline constexpr const auto& KEY8_PRIMES = cricodecs::util::cri_key_primes;
 
     struct AdxKeyState {
         uint16_t xor_value = 0;
@@ -26,10 +26,9 @@ namespace cricodecs::adx {
         }
     };
 
-    inline void key8_derive(std::string_view key_string, uint16_t& out_xor, uint16_t& out_mult, uint16_t& out_add) {
+    inline AdxKeyState key8_derive(std::string_view key_string) {
         if (key_string.empty()) {
-            out_xor = out_mult = out_add = 0;
-            return;
+            return {};
         }
 
         size_t len = key_string.size();
@@ -47,27 +46,41 @@ namespace cricodecs::adx {
             add = KEY8_PRIMES[(add * p) % 0x400];
         }
 
-        out_xor = start;
-        out_mult = mult;
-        out_add = add;
+        return {
+            .xor_value = start,
+            .mult = mult,
+            .add = add,
+        };
     }
 
-    inline void key9_derive(uint64_t key, uint16_t subkey, uint16_t& out_xor, uint16_t& out_mult, uint16_t& out_add) {
-        out_xor  = static_cast<uint16_t>(((key >> 48) & 0xFFFF) ^ ((key >> 16) & 0xFFFF));
-        out_mult = static_cast<uint16_t>(((key >> 32) & 0xFFFF) ^ ((key >>  0) & 0xFFFF));
-        out_add  = static_cast<uint16_t>((key >> 16) & 0xFFFF);
-
-        if (subkey != 0) {
-            uint16_t mul = ((subkey >> 8) | (subkey << 8)) & 0xFFFF;
-            uint16_t add = subkey;
-            out_xor = static_cast<uint16_t>((out_xor * mul + add) & 0x7FFF);
-            out_mult = static_cast<uint16_t>((out_mult * mul + add) & 0x7FFF);
-            out_add = static_cast<uint16_t>((out_add * mul + add) & 0x7FFF);
+    inline AdxKeyState key9_derive(uint64_t key, uint16_t subkey) {
+        if (key == 0) {
+            return {};
         }
 
-        if (out_xor == 0) out_xor = 1;
-        if (out_mult == 0) out_mult = 1;
-        if (out_add == 0) out_add = 1;
+        uint64_t packed = key;
+        if (subkey != 0) {
+            const uint64_t factor =
+                (static_cast<uint64_t>(subkey) << 16u) |
+                (static_cast<uint16_t>(~subkey + 2u));
+            packed *= factor;
+        }
+        --packed;
+        return {
+            .xor_value = static_cast<uint16_t>((packed >> 27u) & 0x7FFFu),
+            .mult = static_cast<uint16_t>(((packed >> 12u) & 0x7FFCu) | 1u),
+            .add = static_cast<uint16_t>(((packed << 1u) & 0x7FFFu) | 1u),
+        };
+    }
+
+    /// Return the canonical type-9 keycode for an effective LCG triplet.
+    /// Bits which type-9 does not expose are intentionally zeroed.
+    inline uint64_t key9_canonical_code(AdxKeyState state) noexcept {
+        const uint64_t packed =
+            (static_cast<uint64_t>(state.xor_value & 0x1FFFu) << 27u) |
+            (static_cast<uint64_t>(state.mult & 0x1FFCu) << 12u) |
+            (static_cast<uint64_t>(state.add & 0x1FFFu) >> 1u);
+        return packed + 1u;
     }
 
 } // namespace cricodecs::adx

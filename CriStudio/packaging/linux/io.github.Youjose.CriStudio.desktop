@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CriStudio
+Comment=Inspect, extract, build, and edit CRI codec and container files
+Exec=CriStudio
+Icon=io.github.Youjose.CriStudio
+Categories=AudioVideo;AudioVideoEditing;
+Terminal=false

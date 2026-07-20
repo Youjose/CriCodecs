@@ -69,6 +69,18 @@ public:
     [[nodiscard]] std::expected<void, std::string> save_to_file(const std::filesystem::path& output_path) const;
     [[nodiscard]] std::expected<void, std::string> export_adx(const std::filesystem::path& output_path) const;
 
+    [[nodiscard]] std::expected<void, std::string> add_segment(
+        std::span<const uint8_t> adx_data,
+        bool loop_segment = false
+    );
+    [[nodiscard]] std::expected<void, std::string> replace_segment(
+        uint32_t index,
+        std::span<const uint8_t> adx_data
+    );
+    [[nodiscard]] std::expected<void, std::string> remove_segment(uint32_t index);
+    [[nodiscard]] std::expected<void, std::string> move_segment(uint32_t from_index, uint32_t to_index);
+    [[nodiscard]] std::expected<void, std::string> set_loop_segment(uint32_t index, bool loop_segment);
+
 private:
     // Loaded AAX bytes stay owned by the container so UTF table storage and
     // per-segment spans remain valid for both path and byte-backed loads.
@@ -88,6 +100,8 @@ private:
     [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> raw_segment_data(uint32_t index) const;
     [[nodiscard]] std::expected<std::span<const uint8_t>, std::string> looped_segment_data(uint32_t index) const;
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> synthesized_adx_data() const;
+    [[nodiscard]] std::expected<std::vector<AaxBuildEntry>, std::string> build_entries() const;
+    [[nodiscard]] std::expected<void, std::string> replace_entries(std::vector<AaxBuildEntry> entries);
 };
 
 } // namespace cricodecs::aax

@@ -121,7 +121,8 @@ void transform_frames_in_place(
     const HcaHeader& info,
     std::span<const uint8_t, 256> table) noexcept {
     uint8_t* frame_data = hca_data.data() + info.file.header_size;
-    for (uint32_t frame_index = 0; frame_index < info.fmt.frame_count; ++frame_index) {
+    const uint32_t available_frames = info.available_frame_count(hca_data.size());
+    for (uint32_t frame_index = 0; frame_index < available_frames; ++frame_index) {
         auto* frame = frame_data + frame_index * info.codec.frame_size;
         transform_frame_payload(table, frame, info.codec.frame_size);
         write_be<uint16_t>(frame + info.codec.frame_size - 2, tables::crc16_checksum(frame, info.codec.frame_size - 2));

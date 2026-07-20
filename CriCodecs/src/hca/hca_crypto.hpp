@@ -53,6 +53,18 @@ namespace detail {
 
 namespace cipher {
 
+[[nodiscard]] constexpr std::array<uint8_t, 16> type56_nibble_row(uint8_t key) noexcept {
+    const int multiplier = ((key & 1) << 3) | 5;
+    const int addend = (key & 0x0E) | 1;
+    uint8_t state = key >> 4;
+    std::array<uint8_t, 16> row{};
+    for (auto& value : row) {
+        state = static_cast<uint8_t>((state * multiplier + addend) & 0x0F);
+        value = state;
+    }
+    return row;
+}
+
 inline void init_cipher_type0(std::span<uint8_t, 256> table) noexcept {
     for (int i = 0; i < 256; i++) {
         table[i] = static_cast<uint8_t>(i);
@@ -73,16 +85,6 @@ inline void init_cipher_type1(std::span<uint8_t, 256> table) noexcept {
 }
 
 inline void init_cipher_type56(std::span<uint8_t, 256> table, uint64_t keycode) noexcept {
-    auto create_nibble_table = [](std::span<uint8_t, 16> out, uint8_t key) noexcept {
-        const int mul = ((key & 1) << 3) | 5;
-        const int add = (key & 0xE) | 1;
-        key >>= 4;
-        for (int i = 0; i < 16; ++i) {
-            key = static_cast<uint8_t>((key * mul + add) & 0x0F);
-            out[i] = key;
-        }
-    };
-
     if (keycode != 0) {
         keycode--;
     }
@@ -114,9 +116,9 @@ inline void init_cipher_type56(std::span<uint8_t, 256> table, uint64_t keycode) 
     std::array<uint8_t, 256> base{};
     std::array<uint8_t, 16> base_r{};
     std::array<uint8_t, 16> base_c{};
-    create_nibble_table(base_r, kc[0]);
+    base_r = type56_nibble_row(kc[0]);
     for (int r = 0; r < 16; ++r) {
-        create_nibble_table(base_c, seed[r]);
+        base_c = type56_nibble_row(seed[r]);
         const uint8_t high = static_cast<uint8_t>(base_r[r] << 4);
         for (int c = 0; c < 16; ++c) {
             base[r * 16 + c] = static_cast<uint8_t>(high | base_c[c]);

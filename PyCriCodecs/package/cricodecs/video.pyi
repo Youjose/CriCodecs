@@ -1,4 +1,4 @@
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 
 class MpegVideoType:
     UNKNOWN: ClassVar["MpegVideoType"]
@@ -33,13 +33,19 @@ class MpegVideoSequenceHeader:
     frame_rate_code: int
     bit_rate_value: int
 
-class IvfFrame:
+class _IvfFrame(TypedDict):
+    size: int
     timestamp: int
+    is_keyframe: bool
     data: bytes
+    record_bytes: bytes
 
-class VideoFrame:
-    timestamp: int
+class _VideoFrame(TypedDict):
+    size: int
+    index: int
+    is_keyframe: bool
     data: bytes
+    record_bytes: bytes
 
 class IvfReader:
     header: IvfHeader
@@ -47,7 +53,7 @@ class IvfReader:
     has_frames: bool
     @staticmethod
     def load(path: str) -> "IvfReader": ...
-    def read_next_frame(self) -> IvfFrame | None: ...
+    def read_next_frame(self) -> _IvfFrame | None: ...
 
 class MpegVideoReader:
     video_type: MpegVideoType
@@ -57,7 +63,7 @@ class MpegVideoReader:
     has_frames: bool
     @staticmethod
     def load(path: str) -> "MpegVideoReader": ...
-    def read_next_frame(self) -> VideoFrame | None: ...
+    def read_next_frame(self) -> _VideoFrame | None: ...
 
 class H264VideoReader:
     sequence_parameter_set: H264SequenceParameterSet | None
@@ -66,7 +72,7 @@ class H264VideoReader:
     has_frames: bool
     @staticmethod
     def load(path: str) -> "H264VideoReader": ...
-    def read_next_frame(self) -> VideoFrame | None: ...
+    def read_next_frame(self) -> _VideoFrame | None: ...
 
 Ivf = IvfReader
 Mpeg = MpegVideoReader

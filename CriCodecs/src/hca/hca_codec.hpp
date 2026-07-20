@@ -9,6 +9,7 @@
  */
 
 #include "hca_header.hpp"
+#include "hca_key_recovery.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -103,20 +104,20 @@ public:
 
     [[nodiscard]] const HcaHeader& header() const noexcept { return m_header; }
     [[nodiscard]] const std::filesystem::path& source_path() const noexcept { return m_source_path; }
-    [[nodiscard]] std::span<const uint8_t> bytes() const noexcept { return m_bytes; }
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> bytes() const {
+        if (!m_bytes.empty() || m_source_path.empty()) {
+            return m_bytes;
+        }
+        return io::read_file_bytes(m_source_path, "HCA byte load failed");
+    }
 
     [[nodiscard]] std::expected<std::vector<int16_t>, std::string> decode(
         uint64_t keycode = 0,
         uint16_t subkey = 0
     ) const {
-        if (!m_bytes.empty() || m_source_path.empty()) {
-            return hca::decode(m_bytes, keycode, subkey);
-        }
-        auto source = path_source_bytes("HCA decode failed");
-        if (!source) {
-            return std::unexpected(source.error());
-        }
-        return hca::decode(*source, keycode, subkey);
+        return with_source("HCA decode failed", [=](std::span<const uint8_t> source) {
+            return hca::decode(source, keycode, subkey);
+        });
     }
 
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> encrypt(
@@ -124,39 +125,30 @@ public:
         uint64_t keycode = 0,
         uint16_t subkey = 0
     ) const {
-        if (!m_bytes.empty() || m_source_path.empty()) {
-            return hca::encrypt(m_bytes, cipher_type, keycode, subkey);
-        }
-        auto source = path_source_bytes("HCA encrypt failed");
-        if (!source) {
-            return std::unexpected(source.error());
-        }
-        return hca::encrypt(*source, cipher_type, keycode, subkey);
+        return with_source("HCA encrypt failed", [=](std::span<const uint8_t> source) {
+            return hca::encrypt(source, cipher_type, keycode, subkey);
+        });
     }
 
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> decrypt(
         uint64_t keycode = 0,
         uint16_t subkey = 0
     ) const {
-        if (!m_bytes.empty() || m_source_path.empty()) {
-            return hca::decrypt(m_bytes, keycode, subkey);
-        }
-        auto source = path_source_bytes("HCA decrypt failed");
-        if (!source) {
-            return std::unexpected(source.error());
-        }
-        return hca::decrypt(*source, keycode, subkey);
+        return with_source("HCA decrypt failed", [=](std::span<const uint8_t> source) {
+            return hca::decrypt(source, keycode, subkey);
+        });
     }
 
-    [[nodiscard]] std::vector<uint8_t> rebuild() const {
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> rebuild() const {
         if (!m_bytes.empty() || m_source_path.empty()) {
             return m_bytes;
         }
-        auto source = path_source_bytes("HCA rebuild failed");
-        return source ? std::move(*source) : std::vector<uint8_t>{};
+        return io::read_file_bytes(m_source_path, "HCA rebuild failed");
     }
 
 private:
+    friend std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> sources);
+
     [[nodiscard]] static std::expected<HcaHeader, std::string> parse_header(std::span<const uint8_t> data);
 
     Hca(std::vector<uint8_t> bytes, HcaHeader header)
@@ -168,8 +160,20 @@ private:
         , m_header(std::move(header))
         , m_source_path(std::move(source_path)) {}
 
-    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> path_source_bytes(std::string_view context) const {
-        return io::read_file_bytes(m_source_path, context);
+    template <typename Operation>
+    [[nodiscard]] auto with_source(std::string_view context, Operation&& operation) const
+        -> decltype(operation(std::span<const uint8_t>{})) {
+        if (!m_bytes.empty() || m_source_path.empty()) {
+            return operation(m_bytes);
+        }
+
+        io::reader reader;
+        if (auto result = reader.open(m_source_path); !result) {
+            return std::unexpected(
+                std::string(context) + ": failed to open " + m_source_path.string() +
+                " (" + result.error() + ")");
+        }
+        return operation(reader.data());
     }
 
     std::vector<uint8_t> m_bytes;

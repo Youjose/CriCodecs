@@ -11,6 +11,8 @@
 
 #include "../utilities/io.hpp"
 
+#include <unordered_map>
+
 namespace cricodecs::acb {
 
 namespace {
@@ -90,7 +92,7 @@ std::expected<awb::AacEncryptionState, std::string> AcbContainer::probe_waveform
         return std::unexpected(awb.error());
     }
 
-    const bool is_memory_bank = waveform.streaming != 1;
+    const bool is_memory_bank = uses_memory_bank_for_associated_awb(waveform);
     const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
     if (wave_id == invalid_wave_id) {
         return std::unexpected("ACB waveform AAC probe failed: waveform does not have a usable AWB ID");
@@ -110,6 +112,44 @@ std::expected<awb::AacEncryptionState, std::string> AcbContainer::probe_waveform
     return *state;
 }
 
+bool AcbContainer::has_aac_waveforms() const noexcept {
+    return std::ranges::any_of(m_waveforms, [](const WaveformInfo& waveform) {
+        return waveform.encode_type == 19;
+    });
+}
+
+std::expected<awb::KeyRecoveryResult, std::string> AcbContainer::recover_aac_key() const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+
+    std::vector<uint32_t> indices;
+    for (const auto& waveform : m_waveforms) {
+        if (waveform.encode_type != 19) {
+            continue;
+        }
+        const bool is_memory_bank = uses_memory_bank_for_associated_awb(waveform);
+        const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
+        if (wave_id == invalid_wave_id) {
+            continue;
+        }
+        const auto awb_index = awb->get().find_index_by_wave_id(wave_id);
+        if (awb_index && std::ranges::find(indices, *awb_index) == indices.end()) {
+            indices.push_back(*awb_index);
+        }
+    }
+    if (indices.empty()) {
+        return std::unexpected("ACB AAC key recovery failed: cue sheet contains no AAC/M4A waveforms");
+    }
+
+    auto recovered = awb->get().recover_aac_key(indices);
+    if (!recovered) {
+        return std::unexpected("ACB AAC key recovery failed: " + recovered.error());
+    }
+    return *recovered;
+}
+
 std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_data(
     uint32_t index,
     uint64_t aac_keycode) const {
@@ -120,15 +160,32 @@ std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_
     return extract_waveform_data_from_awb(index, awb->get(), aac_keycode);
 }
 
+std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_stream_data(
+    uint32_t index,
+    uint64_t aac_keycode) const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+    return extract_waveform_data_from_awb(index, awb->get(), aac_keycode, true);
+}
+
 std::expected<std::span<const uint8_t>, std::string> AcbContainer::waveform_data_from_awb(
     uint32_t index,
-    const awb::AwbContainer& awb) const {
+    const awb::AwbContainer& awb,
+    bool prefer_stream_bank) const {
     if (index >= m_waveforms.size()) {
         return std::unexpected("ACB waveform index is out of range");
     }
 
     const auto& waveform = m_waveforms[index];
-    const bool is_memory_bank = waveform.streaming != 1;
+    const bool can_use_stream_bank =
+        prefer_stream_bank &&
+        waveform.streaming != 0 &&
+        waveform.stream_awb_id != invalid_wave_id;
+    const bool is_memory_bank = can_use_stream_bank
+        ? false
+        : uses_memory_bank_for_associated_awb(waveform);
     const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
     if (wave_id == invalid_wave_id) {
         return std::unexpected("ACB waveform extract failed: waveform does not have a usable AWB ID");
@@ -150,8 +207,9 @@ std::expected<std::span<const uint8_t>, std::string> AcbContainer::waveform_data
 std::expected<std::vector<uint8_t>, std::string> AcbContainer::extract_waveform_data_from_awb(
     uint32_t index,
     const awb::AwbContainer& awb,
-    uint64_t aac_keycode) const {
-    auto data = waveform_data_from_awb(index, awb);
+    uint64_t aac_keycode,
+    bool prefer_stream_bank) const {
+    auto data = waveform_data_from_awb(index, awb, prefer_stream_bank);
     if (!data) {
         return std::unexpected(data.error());
     }
@@ -249,8 +307,16 @@ std::expected<void, std::string> AcbContainer::extract(
         return std::unexpected(awb.error());
     }
 
+    std::unordered_map<std::string, uint32_t> filename_counts;
+    filename_counts.reserve(waveform_count());
     for (uint32_t index = 0; index < waveform_count(); ++index) {
-        auto extracted = extract_file_from_awb(index, awb->get(), output_dir / waveform_filename(index), aac_keycode);
+        ++filename_counts[waveform_filename(index)];
+    }
+
+    for (uint32_t index = 0; index < waveform_count(); ++index) {
+        const auto unprefixed_name = waveform_filename(index);
+        const bool needs_prefix = filename_counts[unprefixed_name] > 1;
+        auto extracted = extract_file_from_awb(index, awb->get(), output_dir / waveform_filename(index, needs_prefix), aac_keycode);
         if (!extracted) {
             return std::unexpected(extracted.error());
         }

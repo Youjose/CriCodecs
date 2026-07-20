@@ -8,11 +8,13 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <expected>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -23,6 +25,8 @@
 #include "../utilities/io_reader.hpp"
 #include "../utilities/numeric.hpp"
 #include "awb_aac_encryption.hpp"
+#include "awb_aac_key_recovery.hpp"
+#include "awb_entry_codec.hpp"
 
 namespace cricodecs::awb {
 
@@ -107,6 +111,14 @@ public:
         return std::vector<uint8_t>(data->begin(), data->end());
     }
 
+    [[nodiscard]] std::expected<EntryCodec, std::string> entry_codec(uint32_t index) const {
+        auto data = file_data(index);
+        if (!data) {
+            return std::unexpected(data.error());
+        }
+        return probe_entry_codec(*data);
+    }
+
     [[nodiscard]] std::expected<void, std::string> extract_file(
         uint32_t index,
         const std::filesystem::path& output_path) const {
@@ -177,6 +189,126 @@ public:
         }
 
         return ::cricodecs::awb::probe_aac_encryption(*data, keycode);
+    }
+
+    /// Return true when the bank contains a group that can be tested as CRI's
+    /// encrypted M4A layout without treating unrelated AWB codecs as AAC.
+    [[nodiscard]] bool has_aac_key_recovery_candidates() const {
+        std::map<AacRecoverySignature, uint32_t> signatures;
+        for (uint32_t index = 0; index < m_entries.size(); ++index) {
+            auto data = file_data(index);
+            const auto signature = data ? aac_recovery_signature(*data) : std::nullopt;
+            if (!signature) {
+                continue;
+            }
+            if (m_entries.size() == 1 || !signatures.emplace(*signature, index).second) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Cheap encrypted-header grouping predicate used by frontends before they
+    /// expose recovery for an individual otherwise-untyped AWB entry.
+    [[nodiscard]] bool has_aac_key_recovery_candidate(uint32_t index) const {
+        auto data = file_data(index);
+        const auto signature = data ? aac_recovery_signature(*data) : std::nullopt;
+        if (!signature) {
+            return false;
+        }
+        if (m_entries.size() == 1) {
+            return true;
+        }
+        for (uint32_t other = 0; other < m_entries.size(); ++other) {
+            if (other == index) {
+                continue;
+            }
+            auto other_data = file_data(other);
+            if (other_data && aac_recovery_signature(*other_data) == signature) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Recover one effective AAC key from encrypted-M4A entry groups. Repeated
+    /// encrypted headers identify same-key AAC without feeding unrelated AWB
+    /// codecs into the solver; a one-entry bank is tested directly.
+    [[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_aac_key() const {
+        std::map<AacRecoverySignature, std::vector<uint32_t>> grouped_indices;
+        for (uint32_t index = 0; index < m_entries.size(); ++index) {
+            auto data = file_data(index);
+            const auto signature = data ? aac_recovery_signature(*data) : std::nullopt;
+            if (!signature) {
+                continue;
+            }
+            grouped_indices[*signature].push_back(index);
+        }
+        std::vector<std::vector<uint32_t>> groups;
+        groups.reserve(grouped_indices.size());
+        for (auto& [_, indices] : grouped_indices) {
+            groups.push_back(std::move(indices));
+        }
+
+        std::ranges::sort(groups, {}, [](const auto& group) { return group.size(); });
+        std::vector<KeyCandidate> candidates;
+        size_t evidence_count = 0;
+        for (auto group = groups.rbegin(); group != groups.rend(); ++group) {
+            if (group->size() == 1u && m_entries.size() != 1u) {
+                continue;
+            }
+            auto recovered = recover_aac_key(*group);
+            if (!recovered) {
+                continue;
+            }
+            evidence_count += recovered->evidence_count;
+            for (const auto& candidate : recovered->candidates) {
+                auto existing = std::ranges::find(candidates, candidate.key, &KeyCandidate::key);
+                if (existing == candidates.end()) {
+                    candidates.push_back(candidate);
+                } else if (candidate.validated_sources > existing->validated_sources ||
+                           (candidate.validated_sources == existing->validated_sources &&
+                            candidate.score > existing->score)) {
+                    *existing = candidate;
+                }
+            }
+        }
+        if (candidates.empty()) {
+            return std::unexpected(
+                "AWB AAC key recovery failed: bank contains no supported encrypted M4A entry group");
+        }
+        std::ranges::sort(candidates, [](const KeyCandidate& left, const KeyCandidate& right) {
+            if (left.validated_sources != right.validated_sources) {
+                return left.validated_sources > right.validated_sources;
+            }
+            if (left.score != right.score) return left.score > right.score;
+            return left.key < right.key;
+        });
+        if (candidates.size() > MaxKeyRecoveryCandidates) candidates.resize(MaxKeyRecoveryCandidates);
+        return KeyRecoveryResult{
+            .candidates = std::move(candidates),
+            .source_count = m_entries.size(),
+            .evidence_count = evidence_count,
+        };
+    }
+
+    /// Recover one effective AAC key from caller-selected same-key M4A entries.
+    [[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_aac_key(
+        std::span<const uint32_t> indices) const {
+        if (indices.empty()) {
+            return std::unexpected("AWB AAC key recovery failed: no entry indices were supplied");
+        }
+
+        std::vector<AacRecoverySource> sources;
+        sources.reserve(indices.size());
+        for (const uint32_t index : indices) {
+            auto data = file_data(index);
+            if (!data) {
+                return std::unexpected(data.error());
+            }
+            sources.push_back(AacRecoverySource{*data});
+        }
+        return ::cricodecs::awb::recover_aac_key(sources);
     }
 
     [[nodiscard]] std::expected<uint64_t, std::string> wave_id(uint32_t index) const {
@@ -359,9 +491,8 @@ public:
             payloads.push_back(*payload);
         }
 
-        // AFS2 stores header tables as an unaligned byte blob; offsets are
-        // applied after aligning to the file's alignment field before payloads,
-        // consistent with `ref/docs/afs_format_notes.md`.
+        // AFS2 stores header tables as an unaligned byte blob; align offsets
+        // using the file's alignment field before accessing payloads.
         const uint64_t header_raw = 16ull + (static_cast<uint64_t>(m_id_size) * num_files) +
                                     (static_cast<uint64_t>(m_offset_size) * (num_files + 1ull));
         const uint64_t header_aligned = align_up(header_raw, m_alignment);
@@ -381,9 +512,8 @@ public:
 
             uint64_t next_offset = raw_end;
             if (i + 1 < num_files) {
-                // CRI AFS2 archives keep each subsequent payload on alignment
-                // boundaries implied by the header alignment field; see
-                // `ref/docs/afs_format_notes.md`.
+                // CRI AFS2 archives keep each subsequent payload on boundaries
+                // implied by the header alignment field.
                 next_offset = align_up(raw_end, m_alignment);
             }
             actual_offsets.push_back(next_offset);
@@ -454,6 +584,27 @@ public:
     }
 
 private:
+    using AacRecoverySignature = std::array<uint8_t, 36>;
+
+    [[nodiscard]] static std::optional<AacRecoverySignature> aac_recovery_signature(
+        std::span<const uint8_t> data) {
+        if (data.size() < 40u) {
+            return std::nullopt;
+        }
+        const bool is_hca = (data[0] & 0x7Fu) == 'H' &&
+            (data[1] & 0x7Fu) == 'C' && (data[2] & 0x7Fu) == 'A' && data[3] == 0;
+        const bool is_adx_family = data[0] == 0x80u && data[1] == 0x00u;
+        const bool is_clear_m4a = std::equal(data.begin() + 4, data.begin() + 8, "ftyp");
+        if (is_hca || is_adx_family || is_clear_m4a) {
+            return std::nullopt;
+        }
+
+        AacRecoverySignature signature{};
+        std::copy_n(data.begin(), 32, signature.begin());
+        std::copy_n(data.begin() + 36, 4, signature.begin() + 32);
+        return signature;
+    }
+
     // Loaded source bytes stay owned by the container so entry spans remain
     // valid after path and byte-backed loads alike.
     std::span<const uint8_t> m_source;
@@ -520,9 +671,8 @@ private:
         m_file_data_overrides.clear();
         m_entries.resize(count);
         for (uint32_t i = 0; i < count; ++i) {
-            // Parse side follows the same AFS2 rule: table offset entries are
-            // aligned to the stored m_alignment value before payload access,
-            // as described in `ref/docs/afs_format_notes.md`.
+            // Parse side follows the same AFS2 rule: align table offsets to the
+            // stored m_alignment value before payload access.
             const uint64_t actual_offset = align_up(raw_offsets[i], m_alignment);
             const uint64_t raw_end = raw_offsets[i + 1];
             if (raw_end < actual_offset || raw_end > m_source.size()) {

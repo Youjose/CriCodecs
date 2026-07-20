@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, Sequence
+from typing import Any, ClassVar, Sequence, overload
 
 from .ahx import AhxKey
 from .wav import Wav
@@ -10,6 +10,24 @@ class AdxLoop:
     start_byte: int
     end_sample: int
     end_byte: int
+
+class AdxKey:
+    start: int
+    mult: int
+    add: int
+
+class KeyCandidate:
+    key: AdxKey
+    score: float
+    source_count: int
+    evidence_count: int
+    evidence_frames: int
+    canonical_type9_code: int
+
+class KeyRecoveryResult:
+    candidates: list[KeyCandidate]
+    source_count: int
+    evidence_count: int
 
 class AdxHeader:
     signature: int
@@ -61,12 +79,19 @@ class Adx:
     def load_bytes(data: bytes) -> "Adx": ...
     def info(self) -> AdxInfo: ...
     def decode(self) -> bytes: ...
+    def decrypt(self) -> bytes: ...
+    @overload
     def encode(self) -> bytes: ...
+    @overload
+    def encode(self, config: AdxEncodeConfig, loops: Any = None) -> bytes: ...
+    def rebuild(self) -> bytes: ...
+    def recover_key(self) -> KeyRecoveryResult: ...
     def set_key_type8(self, key: str | bytes) -> None: ...
     def set_key_type9(self, key: int, subkey: int = 0) -> None: ...
     def set_ahx_key(self, start: int, mult: int, add: int) -> None: ...
 
 def load(source: Any) -> Adx: ...
+def recover_key(source: Any | Sequence[Any], same_base_key: bool = True) -> KeyRecoveryResult: ...
 def decode(source: Any, key: AhxKey | bytes | Sequence[int] | str | int | None = None, subkey: int = 0) -> bytes: ...
 def encode(wav: Wav | Any, config: AdxEncodeConfig | None = None, loops: Any = None) -> bytes: ...
 

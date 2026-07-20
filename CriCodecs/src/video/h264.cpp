@@ -242,6 +242,57 @@ std::expected<void, std::string> skip_vui_prefix_before_timing(io::bit_reader& b
 
 } // namespace
 
+H264Structure inspect_h264_structure(std::span<const uint8_t> bytes) noexcept {
+    H264Structure structure;
+    const auto nals = find_annex_b_nals(bytes);
+    structure.nal_units = static_cast<uint32_t>(nals.size());
+
+    for (const auto& nal : nals) {
+        const uint8_t header = bytes[nal.payload_offset];
+        const uint8_t nal_ref_idc = static_cast<uint8_t>((header >> 5u) & 0x03u);
+        const uint8_t nal_type = static_cast<uint8_t>(header & 0x1Fu);
+        const bool reference_forbidden = nal_ref_idc != 0u &&
+            (nal_type == 6u || nal_type == 9u || nal_type == 10u ||
+             nal_type == 11u || nal_type == 12u);
+        const bool reserved_type = (nal_type >= 16u && nal_type <= 18u) ||
+            nal_type == 22u || nal_type == 23u;
+        const bool valid_header = (header & 0x80u) == 0 && nal_type >= 1u &&
+            nal_type <= 23u && !reserved_type && !reference_forbidden;
+        structure.valid_nal_headers += valid_header;
+
+        size_t payload_end = nal.end;
+        while (payload_end > nal.payload_offset + 1u && bytes[payload_end - 1u] == 0) {
+            --payload_end;
+        }
+
+        const auto ebsp = bytes.subspan(nal.payload_offset + 1u, payload_end - nal.payload_offset - 1u);
+        for (size_t offset = 2; offset < ebsp.size(); ++offset) {
+            if (ebsp[offset - 2u] != 0 || ebsp[offset - 1u] != 0) {
+                continue;
+            }
+            if (ebsp[offset] == 0x03u && offset + 1u < ebsp.size() && ebsp[offset + 1u] <= 0x03u) {
+                ++structure.emulation_prevention_bytes;
+            } else if (ebsp[offset] <= 0x02u || ebsp[offset] == 0x03u) {
+                ++structure.ebsp_violations;
+            }
+        }
+
+        if (!valid_header || !is_vcl_nal(nal_type) || ebsp.empty()) {
+            continue;
+        }
+        const auto rbsp = make_rbsp(ebsp);
+        io::bit_reader br(rbsp);
+        const auto first_mb_in_slice = read_ue(br);
+        const auto slice_type = read_ue(br);
+        const auto pic_parameter_set_id = read_ue(br);
+        if (first_mb_in_slice && slice_type && pic_parameter_set_id &&
+            *slice_type <= 9u && *pic_parameter_set_id <= 255u) {
+            ++structure.valid_slice_headers;
+        }
+    }
+    return structure;
+}
+
 std::expected<H264SequenceParameterSet, std::string> parse_h264_sequence_parameter_set(std::span<const uint8_t> bytes) {
     const auto nals = find_annex_b_nals(bytes);
     const auto sps_nal = std::ranges::find_if(nals, [](const NalUnit& nal) {
@@ -491,6 +542,7 @@ std::expected<void, std::string> H264VideoReader::parse_loaded_stream(std::strin
 std::vector<H264VideoReader::FrameRange> H264VideoReader::split_frames(std::span<const uint8_t> bytes) {
     const auto nals = find_annex_b_nals(bytes);
     std::vector<FrameRange> frames;
+    frames.reserve(nals.size());
     if (nals.empty()) {
         return frames;
     }

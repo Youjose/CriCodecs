@@ -367,7 +367,10 @@ std::expected<CvmContainer, std::string> CvmContainer::load(std::span<const uint
     CvmContainer container;
     container.m_owned_source.assign(data.begin(), data.end());
     container.m_source = container.m_owned_source;
-    if (auto parsed = container.parse(key); !parsed) {
+    const auto effective_key = key.empty()
+        ? std::optional<CvmKey>{}
+        : std::optional<CvmKey>{crypto::calc_key_from_string(key)};
+    if (auto parsed = container.parse(effective_key); !parsed) {
         return std::unexpected(parsed.error());
     }
     return container;
@@ -377,7 +380,10 @@ std::expected<CvmContainer, std::string> CvmContainer::load(std::vector<uint8_t>
     CvmContainer container;
     container.m_owned_source = std::move(data);
     container.m_source = container.m_owned_source;
-    if (auto parsed = container.parse(key); !parsed) {
+    const auto effective_key = key.empty()
+        ? std::optional<CvmKey>{}
+        : std::optional<CvmKey>{crypto::calc_key_from_string(key)};
+    if (auto parsed = container.parse(effective_key); !parsed) {
         return std::unexpected(parsed.error());
     }
     return container;
@@ -393,13 +399,52 @@ std::expected<CvmContainer, std::string> CvmContainer::load(const std::filesyste
     container.m_owned_source = std::move(*bytes);
     container.m_source_path = path;
     container.m_source = container.m_owned_source;
+    const auto effective_key = key.empty()
+        ? std::optional<CvmKey>{}
+        : std::optional<CvmKey>{crypto::calc_key_from_string(key)};
+    if (auto parsed = container.parse(effective_key); !parsed) {
+        return std::unexpected(parsed.error());
+    }
+    return container;
+}
+
+std::expected<CvmContainer, std::string> CvmContainer::load(std::span<const uint8_t> data, const CvmKey& key) {
+    CvmContainer container;
+    container.m_owned_source.assign(data.begin(), data.end());
+    container.m_source = container.m_owned_source;
     if (auto parsed = container.parse(key); !parsed) {
         return std::unexpected(parsed.error());
     }
     return container;
 }
 
-std::expected<void, std::string> CvmContainer::parse(std::string_view key) {
+std::expected<CvmContainer, std::string> CvmContainer::load(std::vector<uint8_t>&& data, const CvmKey& key) {
+    CvmContainer container;
+    container.m_owned_source = std::move(data);
+    container.m_source = container.m_owned_source;
+    if (auto parsed = container.parse(key); !parsed) {
+        return std::unexpected(parsed.error());
+    }
+    return container;
+}
+
+std::expected<CvmContainer, std::string> CvmContainer::load(const std::filesystem::path& path, const CvmKey& key) {
+    auto bytes = io::read_file_bytes(path, "CVM load failed");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+
+    CvmContainer container;
+    container.m_owned_source = std::move(*bytes);
+    container.m_source_path = path;
+    container.m_source = container.m_owned_source;
+    if (auto parsed = container.parse(key); !parsed) {
+        return std::unexpected(parsed.error());
+    }
+    return container;
+}
+
+std::expected<void, std::string> CvmContainer::parse(std::optional<CvmKey> key) {
     m_header = {};
     m_zone = {};
     m_primary_volume = {};
@@ -470,14 +515,17 @@ std::expected<void, std::string> CvmContainer::parse(std::string_view key) {
     }
 
     if (is_scrambled()) {
-        if (key.empty()) {
-            m_contents_accessible = false;
-            m_recording_date_text = format_recording_date(m_header.recording_date);
-            m_disc_name = default_disc_name(m_source_path, m_primary_volume);
-            return {};
+        if (!key) {
+            auto recovered_key = recover_key(m_source);
+            if (!recovered_key) {
+                m_contents_accessible = false;
+                m_recording_date_text = format_recording_date(m_header.recording_date);
+                m_disc_name = default_disc_name(m_source_path, m_primary_volume);
+                return {};
+            }
+            key = *recovered_key;
         }
-        auto scramble_key = crypto::calc_key_from_string(key);
-        auto toc_result = decrypt_scrambled_toc_in_place(m_owned_source, m_iso_offset, scramble_key);
+        auto toc_result = decrypt_scrambled_toc_in_place(m_owned_source, m_iso_offset, *key);
         if (!toc_result) {
             return std::unexpected(toc_result.error());
         }

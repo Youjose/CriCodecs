@@ -18,6 +18,7 @@
 #include <nanobind/stl/string.h>
 
 #include "../../CriCodecs/src/utilities/text_encoding.hpp"
+#include "../../CriCodecs/src/utilities/io_reader.hpp"
 #include "../../CriCodecs/src/wav/wav_container.hpp"
 
 namespace nb = nanobind;
@@ -280,6 +281,13 @@ inline void install_attr_repr(
     raise_type_error(std::string(argument_name) + " must be str or os.PathLike");
 }
 
+[[nodiscard]] inline nb::object path_or_none(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return nb::none();
+    }
+    return nb::cast(path.generic_string());
+}
+
 template <typename Loader>
 [[nodiscard]] inline auto load_path_or_borrowed_source(const nb::object& source, Loader&& loader) {
     if (auto path = python_text_path(source)) {
@@ -287,6 +295,39 @@ template <typename Loader>
     }
     auto borrowed = borrow_python_source(source);
     return loader(std::filesystem::path{}, borrowed.as_span());
+}
+
+[[nodiscard]] inline std::vector<std::vector<uint8_t>> copy_python_recovery_sources(
+    const nb::object& source,
+    std::string_view context)
+{
+    std::vector<nb::object> objects;
+    if (PyList_Check(source.ptr()) || PyTuple_Check(source.ptr())) {
+        const auto sequence = nb::borrow<nb::sequence>(source);
+        objects.reserve(nb::len(sequence));
+        for (const auto item : sequence) {
+            objects.push_back(nb::borrow<nb::object>(item));
+        }
+    } else {
+        objects.push_back(source);
+    }
+    if (objects.empty()) {
+        raise_value_error(std::string(context) + " requires at least one source");
+    }
+
+    std::vector<std::vector<uint8_t>> sources;
+    sources.reserve(objects.size());
+    for (const auto& object : objects) {
+        if (auto path = python_text_path(object)) {
+            sources.push_back(unwrap_expected(cricodecs::io::read_file_bytes(
+                std::filesystem::path(*path), std::string(context) + " failed")));
+            continue;
+        }
+        auto borrowed = borrow_python_source(object);
+        const auto bytes = borrowed.as_span();
+        sources.emplace_back(bytes.begin(), bytes.end());
+    }
+    return sources;
 }
 
 [[nodiscard]] inline std::string_view borrow_python_bytes(const nb::bytes& bytes) {
@@ -366,13 +407,29 @@ template <typename Loader>
     uint16_t channels,
     std::span<const cricodecs::wav::SampleLoop> loops = {})
 {
-    auto wav_bytes = unwrap_expected(cricodecs::wav::WavContainer::build_bytes(
+    const size_t output_size = unwrap_expected(cricodecs::wav::WavContainer::built_size(
         samples,
         sample_rate,
         channels,
         loops
     ));
-    return to_python_bytes(wav_bytes);
+    PyObject* object = PyBytes_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(output_size));
+    if (object == nullptr) {
+        throw nb::python_error();
+    }
+    auto bytes = nb::steal<nb::bytes>(object);
+    auto* output = reinterpret_cast<uint8_t*>(PyBytes_AsString(bytes.ptr()));
+    if (output == nullptr) {
+        throw nb::python_error();
+    }
+    unwrap_expected(cricodecs::wav::WavContainer::build_into(
+        std::span<uint8_t>(output, output_size),
+        samples,
+        sample_rate,
+        channels,
+        loops
+    ));
+    return bytes;
 }
 
 struct WavPcmInput {

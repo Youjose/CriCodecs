@@ -29,8 +29,10 @@
 #include "../acx/acx_builder.hpp"
 #include "../acx/acx_container.hpp"
 #include "../adx/adx_codec.hpp"
+#include "../adx/adx_key_recovery.hpp"
 #include "../afs/afs_container.hpp"
 #include "../ahx/ahx_codec.hpp"
+#include "../ahx/ahx_key_recovery.hpp"
 #include "../aix/aix_container.hpp"
 #include "../awb/awb_container.hpp"
 #include "../cpk/cpk_container.hpp"
@@ -41,6 +43,7 @@
 #include "../sfd/sfd_container.hpp"
 #include "../usm/usm_container.hpp"
 #include "../utf/utf_table.hpp"
+#include "../utilities/io.hpp"
 #include "../utilities/text_encoding.hpp"
 #include "../wav/wav_container.hpp"
 
@@ -91,6 +94,8 @@ struct Options {
     bool compress = false;
     bool encrypt = false;
     bool decrypt = false;
+    bool recover_key = false;
+    bool independent_key_recovery = false;
     bool show_version = false;
     std::optional<Format> force_type;
     std::optional<std::filesystem::path> output_path;
@@ -103,8 +108,9 @@ struct Options {
     std::optional<uint64_t> aac_keycode;
     std::vector<size_t> indexes;
     std::vector<std::filesystem::path> audio_paths;
+    std::vector<uint8_t> audio_channels;
     std::vector<MutationSpec> mutations;
-    std::optional<std::filesystem::path> input_path;
+    std::vector<std::filesystem::path> input_paths;
 };
 
 struct LoadedResult {
@@ -124,6 +130,31 @@ struct Failure {
     int score = 0;
 };
 
+struct HcaRecoveryOutput {
+    hca::KeyRecoveryResult recovery;
+    size_t hca_count = 0;
+};
+
+struct UsmRecoveryOutput {
+    std::filesystem::path input_path;
+    usm::KeyRecoveryResult recovery;
+};
+
+struct AdxRecoveryOutput {
+    adx::AdxRecoveryResult guess;
+    size_t source_count = 0;
+};
+
+struct AhxRecoveryOutput {
+    ahx::AhxRecoveryResult guess;
+    size_t source_count = 0;
+};
+
+struct AacRecoveryOutput {
+    awb::KeyRecoveryResult recovery;
+    size_t container_count = 0;
+};
+
 [[nodiscard]] std::string lower_ascii(std::string_view text);
 [[nodiscard]] std::string trim_ascii(std::string_view text);
 [[nodiscard]] std::expected<uint64_t, std::string> parse_u64(std::string_view text, std::string_view context);
@@ -139,8 +170,7 @@ void replace_all(std::string& text, std::string_view needle, std::string_view re
 [[nodiscard]] std::string bool_text(bool value);
 [[nodiscard]] std::string hex_text(uint64_t value);
 [[nodiscard]] std::string build_identity();
-[[nodiscard]] uint32_t be32(std::span<const uint8_t> bytes, size_t offset = 0);
-[[nodiscard]] bool has_magic_at(std::span<const uint8_t> bytes, size_t offset, std::string_view magic);
+[[nodiscard]] bool has_magic_at(std::span<const uint8_t> bytes, size_t offset, const io::FourCC& magic);
 [[nodiscard]] bool has_cvm_header(std::span<const uint8_t> bytes);
 [[nodiscard]] bool looks_like_acx(std::span<const uint8_t> bytes) noexcept;
 void push_unique(std::vector<Format>& formats, Format format);
@@ -208,6 +238,37 @@ void print_item_list(std::ostream& out, const std::vector<OutputItem>& items);
     const std::filesystem::path& input_path,
     const Options& options
 );
+[[nodiscard]] std::expected<HcaRecoveryOutput, std::string> perform_hca_key_recovery(
+    std::span<const std::filesystem::path> input_paths,
+    const Options& options
+);
+void print_hca_key_recovery_text(std::ostream& out, const HcaRecoveryOutput& result);
+void print_hca_key_recovery_json(std::ostream& out, const HcaRecoveryOutput& result);
+[[nodiscard]] std::expected<std::vector<UsmRecoveryOutput>, std::string> perform_usm_key_recovery(
+    std::span<const std::filesystem::path> input_paths,
+    const Options& options
+);
+void print_usm_key_recovery_text(std::ostream& out, std::span<const UsmRecoveryOutput> results);
+void print_usm_key_recovery_json(std::ostream& out, std::span<const UsmRecoveryOutput> results);
+[[nodiscard]] std::expected<AdxRecoveryOutput, std::string> perform_adx_key_recovery(
+    std::span<const std::filesystem::path> input_paths,
+    const Options& options
+);
+void print_adx_key_recovery_text(std::ostream& out, const AdxRecoveryOutput& result);
+void print_adx_key_recovery_json(std::ostream& out, const AdxRecoveryOutput& result);
+[[nodiscard]] std::expected<AhxRecoveryOutput, std::string> perform_ahx_key_recovery(
+    std::span<const std::filesystem::path> input_paths,
+    const Options& options
+);
+void print_ahx_key_recovery_text(std::ostream& out, const AhxRecoveryOutput& result);
+void print_ahx_key_recovery_json(std::ostream& out, const AhxRecoveryOutput& result);
+[[nodiscard]] std::expected<AacRecoveryOutput, std::string> perform_aac_key_recovery(
+    std::span<const std::filesystem::path> input_paths,
+    Format container_format,
+    const Options& options
+);
+void print_aac_key_recovery_text(std::ostream& out, const AacRecoveryOutput& result);
+void print_aac_key_recovery_json(std::ostream& out, const AacRecoveryOutput& result);
 [[nodiscard]] std::expected<Options, std::string> parse_options(std::span<const std::string> args);
 void print_usage(std::ostream& out, bool show_identity = true);
 

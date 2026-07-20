@@ -22,6 +22,35 @@
 
 namespace cricodecs::utf {
 
+namespace {
+
+[[nodiscard]] bool value_matches_type(const Value& value, ColumnType type) noexcept {
+    if (std::holds_alternative<std::monostate>(value)) {
+        return true;
+    }
+
+    switch (type) {
+        case ColumnType::UInt8: return std::holds_alternative<uint8_t>(value);
+        case ColumnType::SInt8: return std::holds_alternative<int8_t>(value);
+        case ColumnType::UInt16: return std::holds_alternative<uint16_t>(value);
+        case ColumnType::SInt16: return std::holds_alternative<int16_t>(value);
+        case ColumnType::UInt32: return std::holds_alternative<uint32_t>(value);
+        case ColumnType::SInt32: return std::holds_alternative<int32_t>(value);
+        case ColumnType::UInt64: return std::holds_alternative<uint64_t>(value);
+        case ColumnType::SInt64: return std::holds_alternative<int64_t>(value);
+        case ColumnType::Float: return std::holds_alternative<float>(value);
+        case ColumnType::Double: return std::holds_alternative<double>(value);
+        case ColumnType::String: return std::holds_alternative<std::string>(value);
+        case ColumnType::VLData:
+            return std::holds_alternative<std::vector<uint8_t>>(value) ||
+                std::holds_alternative<DataRef>(value);
+        case ColumnType::GUID: return std::holds_alternative<GUID>(value);
+    }
+    return false;
+}
+
+} // namespace
+
 using io::write_be;
 using util::align_up;
 
@@ -61,24 +90,52 @@ uint32_t UtfTable::add_row() {
     return row_idx;
 }
 
-void UtfTable::set(uint32_t row, uint32_t col, Value value) {
+std::expected<void, std::string> UtfTable::set(uint32_t row, uint32_t col, Value value) {
+    if (row >= row_count()) {
+        return std::unexpected("UTF set failed: row index is out of range");
+    }
+    if (col >= m_columns.size()) {
+        return std::unexpected("UTF set failed: column index is out of range");
+    }
+    if (!value_matches_type(value, m_columns[col].type)) {
+        return std::unexpected(
+            "UTF set failed: value type does not match column " + m_columns[col].name);
+    }
     if (m_values.empty() && m_num_rows > 0) {
         *this = editable_copy();
     }
-    if (row >= m_values.size() || col >= m_columns.size()) return;
+    if (has_flag(m_columns[col].flag, ColumnFlag::Default) &&
+        !has_flag(m_columns[col].flag, ColumnFlag::Row)) {
+        const auto default_value = col < m_default_values.size()
+            ? m_default_values[col]
+            : Value{std::monostate{}};
+        for (auto& values : m_values) {
+            values[col] = default_value;
+        }
+        m_columns[col].flag = ColumnFlag::Name | ColumnFlag::Row;
+        m_row_width = 0;
+    }
     m_values[row][col] = std::move(value);
+    return {};
 }
 
-void UtfTable::set_default_value(uint32_t col, Value value) {
+std::expected<void, std::string> UtfTable::set_default_value(uint32_t col, Value value) {
+    if (col >= m_columns.size()) {
+        return std::unexpected("UTF default set failed: column index is out of range");
+    }
+    if (!value_matches_type(value, m_columns[col].type)) {
+        return std::unexpected(
+            "UTF default set failed: value type does not match column " + m_columns[col].name);
+    }
     if (m_values.empty() && m_num_rows > 0) {
         *this = editable_copy();
     }
-    if (col >= m_columns.size()) return;
     if (col >= m_default_values.size()) {
         m_default_values.resize(m_columns.size(), std::monostate{});
     }
     m_default_values[col] = std::move(value);
     m_columns[col].flag = m_columns[col].flag | ColumnFlag::Default;
+    return {};
 }
 
 UtfTable UtfTable::editable_copy() const {
@@ -97,10 +154,13 @@ UtfTable UtfTable::editable_copy() const {
         if (has_flag(col.flag, ColumnFlag::Default)) {
             if (col.type == ColumnType::VLData) {
                 if (auto data = get_default_data(column)) {
-                    editable.set_default_value(column, std::vector<uint8_t>(data->begin(), data->end()));
+                    editable.set_default_value(
+                        column,
+                        std::vector<uint8_t>(data->begin(), data->end())
+                    ).value();
                 }
             } else if (auto value = get_default_value(column)) {
-                editable.set_default_value(column, *value);
+                editable.set_default_value(column, *value).value();
             }
         }
     }
@@ -114,10 +174,14 @@ UtfTable UtfTable::editable_copy() const {
             }
             if (col.type == ColumnType::VLData) {
                 if (auto data = get_data(row, column)) {
-                    editable.set(row, column, std::vector<uint8_t>(data->begin(), data->end()));
+                    editable.set(
+                        row,
+                        column,
+                        std::vector<uint8_t>(data->begin(), data->end())
+                    ).value();
                 }
             } else if (auto value = get_value(row, column)) {
-                editable.set(row, column, *value);
+                editable.set(row, column, *value).value();
             }
         }
     }

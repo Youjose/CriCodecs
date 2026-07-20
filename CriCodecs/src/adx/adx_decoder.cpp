@@ -14,6 +14,7 @@
 
 #include "adx_codec.hpp"
 
+#include "../utilities/io_endian.hpp"
 #include "../utilities/numeric.hpp"
 
 #include <algorithm>
@@ -105,13 +106,12 @@ using cricodecs::util::divide_round_up;
         return decoder.decode_into(pcm_output);
     }
 
-    std::vector<uint8_t> Adx::encode() const {
+    std::expected<std::vector<uint8_t>, AdxError> Adx::rebuild() const {
         if (!m_source_bytes.empty() || m_source_path.empty()) {
             return m_source_bytes;
         }
 
-        auto source = io::read_file_bytes(m_source_path, "ADX encode failed");
-        return source ? std::move(*source) : std::vector<uint8_t>{};
+        return io::read_file_bytes(m_source_path, "ADX rebuild failed");
     }
 
     std::expected<std::vector<uint8_t>, AdxError> Adx::decrypt() const {
@@ -179,10 +179,7 @@ using cricodecs::util::divide_round_up;
                     break;
                 }
 
-                const auto scale = static_cast<uint16_t>(
-                    (static_cast<uint16_t>((*bytes)[cursor]) << 8u) |
-                    static_cast<uint16_t>((*bytes)[cursor + 1u])
-                );
+                const auto scale = io::read_be<uint16_t>(bytes->data() + cursor);
                 if (scale == ADX_EOF_SCALE) {
                     reached_eof = true;
                     break;
@@ -192,9 +189,9 @@ using cricodecs::util::divide_round_up;
                     break;
                 }
 
-                const auto decrypted_scale = static_cast<uint16_t>((scale ^ key_state.xor_value) & 0x7FFFu);
-                (*bytes)[cursor] = static_cast<uint8_t>(decrypted_scale >> 8u);
-                (*bytes)[cursor + 1u] = static_cast<uint8_t>(decrypted_scale & 0xFFu);
+                const uint16_t mask = m_decoder.m_header.flags == 0x09 ? 0x1FFFu : 0x7FFFu;
+                const auto decrypted_scale = static_cast<uint16_t>((scale ^ key_state.xor_value) & mask);
+                io::write_be<uint16_t>(bytes->data() + cursor, decrypted_scale);
                 cursor += m_decoder.m_header.block_size;
                 key_state.advance();
             }
@@ -403,16 +400,24 @@ using cricodecs::util::divide_round_up;
     }
     
     void AdxDecoder::set_key_type8(std::string_view key) {
-        key8_derive(key, m_key_state.xor_value, m_key_state.mult, m_key_state.add);
+        m_key_state = key8_derive(key);
         m_key_set = true;
-        key8_derive(key, m_ahx_key.start, m_ahx_key.mult, m_ahx_key.add);
+        m_ahx_key = {
+            .start = m_key_state.xor_value,
+            .mult = m_key_state.mult,
+            .add = m_key_state.add,
+        };
         m_ahx_key_set = true;
     }
     
     void AdxDecoder::set_key_type9(uint64_t key, uint16_t subkey) {
-        key9_derive(key, subkey, m_key_state.xor_value, m_key_state.mult, m_key_state.add);
+        m_key_state = key9_derive(key, subkey);
         m_key_set = true;
-        key9_derive(key, subkey, m_ahx_key.start, m_ahx_key.mult, m_ahx_key.add);
+        m_ahx_key = {
+            .start = m_key_state.xor_value,
+            .mult = m_key_state.mult,
+            .add = m_key_state.add,
+        };
         m_ahx_key_set = true;
     }
 

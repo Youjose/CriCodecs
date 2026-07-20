@@ -10,7 +10,6 @@
 #include "csb_container.hpp"
 
 #include <algorithm>
-#include <fstream>
 
 #include "csb_format.hpp"
 #include "../aax/aax_container.hpp"
@@ -57,9 +56,8 @@ std::expected<std::vector<uint8_t>, std::string> build_hca_wrapper(std::span<con
     wrapper.add_column("lpflg", utf::ColumnType::UInt8);
 
     const uint32_t row = wrapper.add_row();
-    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end()));
-    wrapper.set(row, "lpflg", static_cast<uint8_t>(looped ? 1 : 0));
-
+    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end())).value();
+    wrapper.set(row, "lpflg", static_cast<uint8_t>(looped ? 1 : 0)).value();
     return wrapper.build();
 }
 
@@ -69,9 +67,8 @@ std::expected<std::vector<uint8_t>, std::string> build_aax_wrapper(std::span<con
     wrapper.add_column("lpflg", utf::ColumnType::UInt8);
 
     const uint32_t row = wrapper.add_row();
-    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end()));
-    wrapper.set(row, "lpflg", static_cast<uint8_t>(looped ? 1 : 0));
-
+    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end())).value();
+    wrapper.set(row, "lpflg", static_cast<uint8_t>(looped ? 1 : 0)).value();
     return wrapper.build();
 }
 
@@ -80,8 +77,7 @@ std::expected<std::vector<uint8_t>, std::string> build_ahx_wrapper(std::span<con
     wrapper.add_column("data", utf::ColumnType::VLData);
 
     const uint32_t row = wrapper.add_row();
-    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end()));
-
+    wrapper.set(row, "data", std::vector<uint8_t>(payload.begin(), payload.end())).value();
     return wrapper.build();
 }
 
@@ -261,13 +257,13 @@ std::expected<std::vector<uint8_t>, std::string> build_minimal_csb(const std::ve
         }
 
         const uint32_t row = sound_element.add_row();
-        sound_element.set(row, "name", stream.name_raw.empty() ? stream.name : stream.name_raw);
-        sound_element.set(row, "data", std::move(*wrapper));
-        sound_element.set(row, "fmt", stream.format);
-        sound_element.set(row, "nch", stream.channels);
-        sound_element.set(row, "stmflg", static_cast<uint8_t>(0));
-        sound_element.set(row, "sfreq", stream.sample_rate);
-        sound_element.set(row, "nsmpl", stream.sample_count);
+        sound_element.set(row, "name", stream.name_raw.empty() ? stream.name : stream.name_raw).value();
+        sound_element.set(row, "data", std::move(*wrapper)).value();
+        sound_element.set(row, "fmt", stream.format).value();
+        sound_element.set(row, "nch", stream.channels).value();
+        sound_element.set(row, "stmflg", static_cast<uint8_t>(0)).value();
+        sound_element.set(row, "sfreq", stream.sample_rate).value();
+        sound_element.set(row, "nsmpl", stream.sample_count).value();
     }
 
     std::vector<uint8_t> sound_element_bytes = sound_element.build();
@@ -278,11 +274,35 @@ std::expected<std::vector<uint8_t>, std::string> build_minimal_csb(const std::ve
     root.add_column("utf", utf::ColumnType::VLData);
 
     const uint32_t row = root.add_row();
-    root.set(row, "name", std::string("SOUND_ELEMENT"));
-    root.set(row, "ttype", static_cast<uint8_t>(4));
-    root.set(row, "utf", std::move(sound_element_bytes));
-
+    root.set(row, "name", std::string("SOUND_ELEMENT")).value();
+    root.set(row, "ttype", static_cast<uint8_t>(4)).value();
+    root.set(row, "utf", std::move(sound_element_bytes)).value();
     return root.build();
+}
+
+std::expected<void, std::string> set_stream_row(
+    utf::UtfTable& table,
+    uint32_t row,
+    const BuildStreamInfo& stream
+) {
+    auto wrapper = build_wrapper_for_stream(stream);
+    if (!wrapper) {
+        return std::unexpected("CSB edit failed: could not build stream wrapper: " + wrapper.error());
+    }
+    const auto set_required = [&table, row](std::string_view column, utf::Value value) -> std::expected<void, std::string> {
+        if (table.find_column(column) < 0) {
+            return std::unexpected("CSB edit failed: SOUND_ELEMENT is missing column '" + std::string(column) + "'");
+        }
+        return table.set(row, column, std::move(value));
+    };
+    if (auto result = set_required("name", stream.name_raw.empty() ? stream.name : stream.name_raw); !result) return result;
+    if (auto result = set_required("data", std::move(*wrapper)); !result) return result;
+    if (auto result = set_required("fmt", stream.format); !result) return result;
+    if (auto result = set_required("nch", stream.channels); !result) return result;
+    if (auto result = set_required("stmflg", static_cast<uint8_t>(0)); !result) return result;
+    if (auto result = set_required("sfreq", stream.sample_rate); !result) return result;
+    if (auto result = set_required("nsmpl", stream.sample_count); !result) return result;
+    return {};
 }
 
 } // namespace
@@ -329,9 +349,26 @@ std::expected<std::vector<uint8_t>, std::string> CsbContainer::build_from_direct
         return std::unexpected("CSB input directory contains no files");
     }
 
-    std::sort(entries.begin(), entries.end(), [](const CsbBuildEntry& lhs, const CsbBuildEntry& rhs) {
-        return normalize_archive_name(lhs.archive_path) < normalize_archive_name(rhs.archive_path);
+    struct KeyedEntry {
+        std::string key;
+        CsbBuildEntry entry;
+    };
+    std::vector<KeyedEntry> keyed_entries;
+    keyed_entries.reserve(entries.size());
+    for (auto& entry : entries) {
+        keyed_entries.push_back(KeyedEntry{
+            .key = normalize_archive_name(entry.archive_path),
+            .entry = std::move(entry),
+        });
+    }
+    std::sort(keyed_entries.begin(), keyed_entries.end(), [](const KeyedEntry& lhs, const KeyedEntry& rhs) {
+        return lhs.key < rhs.key;
     });
+    entries.clear();
+    entries.reserve(keyed_entries.size());
+    for (auto& entry : keyed_entries) {
+        entries.push_back(std::move(entry.entry));
+    }
 
     return build(entries, encoding);
 }
@@ -350,17 +387,157 @@ std::expected<void, std::string> CsbContainer::build_to_file(
         std::filesystem::create_directories(output_path.parent_path());
     }
 
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output.is_open()) {
-        return std::unexpected("CSB build failed: could not open output file: " + output_path.string());
-    }
+    return io::write_file_bytes(output_path, *bytes, "CSB build failed");
+}
 
-    output.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
-    if (!output.good()) {
-        return std::unexpected("CSB build failed: could not write output file: " + output_path.string());
+std::expected<void, std::string> CsbContainer::replace_sound_element(utf::UtfTable sound_element) {
+    const auto section = std::ranges::find_if(m_sections, [](const CsbSection& value) {
+        return value.name == "SOUND_ELEMENT";
+    });
+    if (section == m_sections.end()) {
+        return std::unexpected("CSB edit failed: SOUND_ELEMENT section is missing");
     }
-
+    auto header = m_header.editable_copy();
+    if (auto result = header.set(section->row_index, "utf", sound_element.build()); !result) {
+        return std::unexpected("CSB edit failed: could not update SOUND_ELEMENT section: " + result.error());
+    }
+    auto replacement = load(header.build(), m_encoding);
+    if (!replacement) {
+        return std::unexpected("CSB edit failed: rebuilt container did not reload: " + replacement.error());
+    }
+    replacement->m_source_path = m_source_path;
+    *this = std::move(*replacement);
     return {};
+}
+
+std::expected<void, std::string> CsbContainer::add_file(
+    std::span<const uint8_t> bytes,
+    const std::filesystem::path& archive_path
+) {
+    const auto name = normalize_archive_name(archive_path);
+    if (name.empty()) {
+        return std::unexpected("CSB add failed: archive path is empty");
+    }
+    if (std::ranges::any_of(m_elements, [&name](const CsbStreamInfo& element) { return element.name == name; })) {
+        return std::unexpected("CSB add failed: duplicate archive path: " + name);
+    }
+    auto raw_name = encode_cri_string_to_storage(name, m_encoding, "CSB archive path encode failed");
+    if (!raw_name) {
+        return std::unexpected(raw_name.error());
+    }
+    auto stream = inspect_stream_payload(
+        name,
+        std::move(*raw_name),
+        std::vector<uint8_t>(bytes.begin(), bytes.end()));
+    if (!stream) {
+        return std::unexpected(stream.error());
+    }
+    auto table = m_sound_element.editable_copy();
+    const auto row = table.add_row();
+    if (auto result = set_stream_row(table, row, *stream); !result) {
+        return result;
+    }
+    return replace_sound_element(std::move(table));
+}
+
+std::expected<void, std::string> CsbContainer::replace_file(uint32_t index, std::span<const uint8_t> bytes) {
+    if (index >= stream_count()) {
+        return std::unexpected("CSB replace failed: stream index is out of range");
+    }
+    const auto& current = stream(index);
+    auto stream_info = inspect_stream_payload(
+        current.name,
+        current.name_raw,
+        std::vector<uint8_t>(bytes.begin(), bytes.end()));
+    if (!stream_info) {
+        return std::unexpected(stream_info.error());
+    }
+    auto table = m_sound_element.editable_copy();
+    if (auto result = set_stream_row(table, current.row_index, *stream_info); !result) {
+        return result;
+    }
+    if (auto result = table.set(
+            current.row_index,
+            "stmflg",
+            static_cast<uint8_t>(current.streamed ? 1 : 0)); !result) {
+        return std::unexpected("CSB replace failed: could not preserve stream flag: " + result.error());
+    }
+    return replace_sound_element(std::move(table));
+}
+
+std::expected<void, std::string> CsbContainer::remove_file(uint32_t index) {
+    if (index >= stream_count()) {
+        return std::unexpected("CSB remove failed: stream index is out of range");
+    }
+    if (stream_count() == 1) {
+        return std::unexpected("CSB remove failed: a CSB must retain at least one embedded stream");
+    }
+    auto table = m_sound_element.editable_copy();
+    if (!table.remove_row(stream(index).row_index)) {
+        return std::unexpected("CSB remove failed: SOUND_ELEMENT row is out of range");
+    }
+    return replace_sound_element(std::move(table));
+}
+
+std::expected<void, std::string> CsbContainer::move_file(uint32_t from_index, uint32_t to_index) {
+    if (from_index >= stream_count() || to_index >= stream_count()) {
+        return std::unexpected("CSB move failed: stream index is out of range");
+    }
+    auto table = m_sound_element.editable_copy();
+    if (!table.move_row(stream(from_index).row_index, stream(to_index).row_index)) {
+        return std::unexpected("CSB move failed: SOUND_ELEMENT row is out of range");
+    }
+    return replace_sound_element(std::move(table));
+}
+
+std::expected<void, std::string> CsbContainer::rename_file(
+    uint32_t index,
+    const std::filesystem::path& archive_path
+) {
+    if (index >= stream_count()) {
+        return std::unexpected("CSB rename failed: stream index is out of range");
+    }
+    const auto name = normalize_archive_name(archive_path);
+    if (name.empty()) {
+        return std::unexpected("CSB rename failed: archive path is empty");
+    }
+    auto raw_name = encode_cri_string_to_storage(name, m_encoding, "CSB archive path encode failed");
+    if (!raw_name) {
+        return std::unexpected(raw_name.error());
+    }
+    auto table = m_sound_element.editable_copy();
+    if (auto result = table.set(stream(index).row_index, "name", std::move(*raw_name)); !result) {
+        return std::unexpected("CSB rename failed: " + result.error());
+    }
+    return replace_sound_element(std::move(table));
+}
+
+std::expected<void, std::string> CsbContainer::set_streamed(uint32_t index, bool streamed) {
+    if (index >= stream_count()) {
+        return std::unexpected("CSB stream flag edit failed: stream index is out of range");
+    }
+    const auto row_index = stream(index).row_index;
+    const auto element = std::ranges::find_if(m_elements, [row_index](const CsbStreamInfo& value) {
+        return value.row_index == row_index;
+    });
+    if (element == m_elements.end()) {
+        return std::unexpected("CSB stream flag edit failed: SOUND_ELEMENT row is missing");
+    }
+    return set_element_streamed(static_cast<uint32_t>(std::distance(m_elements.begin(), element)), streamed);
+}
+
+std::expected<void, std::string> CsbContainer::set_element_streamed(uint32_t index, bool streamed) {
+    if (index >= element_count()) {
+        return std::unexpected("CSB stream flag edit failed: element index is out of range");
+    }
+    auto table = m_sound_element.editable_copy();
+    if (auto result = table.set(
+            element(index).row_index,
+            "stmflg",
+            static_cast<uint8_t>(streamed ? 1 : 0)); !result) {
+        return std::unexpected("CSB stream flag edit failed: " + result.error());
+    }
+    return replace_sound_element(std::move(table));
 }
 
 std::expected<void, std::string> CsbContainer::build_to_file(
@@ -377,17 +554,7 @@ std::expected<void, std::string> CsbContainer::build_to_file(
         std::filesystem::create_directories(output_path.parent_path());
     }
 
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output.is_open()) {
-        return std::unexpected("CSB build failed: could not open output file: " + output_path.string());
-    }
-
-    output.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
-    if (!output.good()) {
-        return std::unexpected("CSB build failed: could not write output file: " + output_path.string());
-    }
-
-    return {};
+    return io::write_file_bytes(output_path, *bytes, "CSB build failed");
 }
 
 } // namespace cricodecs::csb

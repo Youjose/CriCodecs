@@ -23,6 +23,12 @@ std::expected<UtfTable, std::string> UtfTable::load(std::span<const uint8_t> dat
     return load(data, nullptr);
 }
 
+std::expected<UtfTable, std::string> UtfTable::load(std::vector<uint8_t>&& data) {
+    auto owner = std::make_shared<std::vector<uint8_t>>(std::move(data));
+    const std::span<const uint8_t> bytes = *owner;
+    return load(bytes, std::move(owner));
+}
+
 std::expected<UtfTable, std::string> UtfTable::load(std::span<const uint8_t> data, io::SourceView::Owner owner) {
     if (data.size() < HEADER_SIZE) {
         return std::unexpected("UTF parse failed: data is too small for header");
@@ -64,7 +70,7 @@ std::expected<void, std::string> UtfTable::parse_header() {
     m_strings_offset = read_be<uint32_t>(buf + 0x0C) + 0x08;
     m_data_offset    = read_be<uint32_t>(buf + 0x10) + 0x08;
     m_name_offset    = read_be<uint32_t>(buf + 0x14);
-    uint16_t num_columns = read_be<uint16_t>(buf + 0x18);
+    m_serialized_column_count = read_be<uint16_t>(buf + 0x18);
     m_row_width      = read_be<uint16_t>(buf + 0x1A);
     m_num_rows       = read_be<uint32_t>(buf + 0x1C);
 
@@ -89,7 +95,7 @@ std::expected<void, std::string> UtfTable::parse_header() {
     if (strings_size == 0 || m_name_offset >= strings_size) {
         return std::unexpected("UTF parse failed: invalid string table");
     }
-    if (num_columns == 0) {
+    if (m_serialized_column_count == 0) {
         return std::unexpected("UTF parse failed: table has no columns");
     }
 
@@ -101,7 +107,7 @@ std::expected<void, std::string> UtfTable::parse_header() {
     );
 
     m_table_name = string_at(m_name_offset);
-    m_columns.reserve(num_columns);
+    m_columns.reserve(m_serialized_column_count);
 
     return {};
 }
@@ -111,9 +117,7 @@ std::expected<void, std::string> UtfTable::parse_schema() {
     uint32_t pos = 0;
     uint32_t column_offset = 0;
 
-    uint16_t num_columns = static_cast<uint16_t>(m_columns.capacity());
-
-    for (uint16_t i = 0; i < num_columns; ++i) {
+    for (uint16_t i = 0; i < m_serialized_column_count; ++i) {
         if (pos + 5 > m_schema_buf.size()) {
             return std::unexpected("UTF parse failed: schema ended before column " + std::to_string(i));
         }

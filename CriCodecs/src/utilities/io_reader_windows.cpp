@@ -62,8 +62,12 @@ reader& reader::operator=(reader&& other) noexcept {
 }
 
 std::expected<void, const char*> reader::open(const std::filesystem::path& path) noexcept {
+    return open(path, access_pattern::sequential);
+}
+
+std::expected<void, const char*> reader::open(const std::filesystem::path& path, access_pattern pattern) noexcept {
     if (is_open()) return std::unexpected("I/O reader failed: already open");
-    return open_file_impl(path);
+    return open_file_impl(path, pattern);
 }
 
 std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) noexcept {
@@ -72,6 +76,7 @@ std::expected<void, const char*> reader::open(const uint8_t* data, size_t size) 
     m_data_ptr = data;
     m_data_size = size;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = true;
     return {};
@@ -94,6 +99,7 @@ void reader::close() noexcept {
     m_data_ptr = nullptr;
     m_data_size = 0;
     m_cursor = 0;
+    m_pattern = access_pattern::normal;
     m_owns_mapping = false;
     m_has_external_source = false;
 }
@@ -111,8 +117,14 @@ size_t reader::size() const noexcept {
     return m_data_size;
 }
 
-std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path) noexcept {
+std::expected<void, const char*> reader::open_file_impl(const std::filesystem::path& path, access_pattern pattern) noexcept {
     m_handles = std::make_unique<detail::win32_reader_handles>();
+    DWORD flags = FILE_ATTRIBUTE_NORMAL;
+    if (pattern == access_pattern::random) {
+        flags |= FILE_FLAG_RANDOM_ACCESS;
+    } else if (pattern == access_pattern::sequential) {
+        flags |= FILE_FLAG_SEQUENTIAL_SCAN;
+    }
 
     m_handles->file_handle = CreateFileW(
         path.c_str(),
@@ -120,7 +132,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
         FILE_SHARE_READ,
         NULL,
         OPEN_EXISTING,
-        FILE_FLAG_SEQUENTIAL_SCAN,
+        flags,
         NULL
     );
 
@@ -139,6 +151,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
     m_data_size = static_cast<size_t>(file_size_li.QuadPart);
     if (m_data_size == 0) {
         m_data_ptr = nullptr;
+        m_pattern = pattern;
         m_owns_mapping = false;
         m_cursor = 0;
         m_has_external_source = false;
@@ -167,6 +180,7 @@ std::expected<void, const char*> reader::open_file_impl(const std::filesystem::p
     }
 
     m_data_ptr = static_cast<const uint8_t*>(mapped_ptr);
+    m_pattern = pattern;
     m_owns_mapping = true;
     m_cursor = 0;
     m_has_external_source = false;

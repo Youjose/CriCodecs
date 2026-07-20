@@ -9,19 +9,26 @@ namespace cricodecs::video {
 
 namespace {
 
-bool is_vp9_keyframe(std::span<const uint8_t> frame_bytes) {
+constexpr io::FourCC IvfMagic{"DKIF"};
+
+struct Vp9HeaderProbe {
+    bool valid = false;
+    bool keyframe = false;
+};
+
+Vp9HeaderProbe probe_vp9_header(std::span<const uint8_t> frame_bytes) noexcept {
     if (frame_bytes.empty()) {
-        return false;
+        return {};
     }
 
     io::bit_reader reader(frame_bytes);
     if (reader.remaining() < 6u) {
-        return false;
+        return {};
     }
 
     const auto frame_marker = reader.read(2);
     if (frame_marker != 0x02) {
-        return false;
+        return {};
     }
 
     const auto profile_low = reader.read(1);
@@ -29,23 +36,29 @@ bool is_vp9_keyframe(std::span<const uint8_t> frame_bytes) {
     const auto profile = profile_low | (profile_high << 1u);
     if (profile == 3u) {
         if (reader.remaining() < 1u) {
-            return false;
+            return {};
         }
         const auto reserved_zero = reader.read(1);
-        (void)reserved_zero;
+        if (reserved_zero != 0u) {
+            return {};
+        }
     }
 
     if (reader.remaining() < 2u) {
-        return false;
+        return {};
     }
 
     const auto show_existing_frame = reader.read(1);
     if (show_existing_frame != 0u) {
-        return false;
+        return Vp9HeaderProbe{.valid = reader.remaining() >= 3u, .keyframe = false};
     }
 
     const auto frame_type = reader.read(1);
-    return frame_type == 0u;
+    return Vp9HeaderProbe{.valid = true, .keyframe = frame_type == 0u};
+}
+
+bool is_vp9_keyframe(std::span<const uint8_t> frame_bytes) noexcept {
+    return probe_vp9_header(frame_bytes).keyframe;
 }
 
 } // namespace
@@ -54,19 +67,28 @@ std::expected<void, std::string> IvfReader::open(const std::filesystem::path& pa
     if (auto result = m_reader.open(path); !result) {
         return std::unexpected("IVF load failed: could not open input file: " + path.string());
     }
+    return parse_header();
+}
 
+std::expected<void, std::string> IvfReader::open(std::span<const uint8_t> bytes) {
+    if (auto result = m_reader.open(bytes); !result) {
+        return std::unexpected("IVF load failed: could not open memory buffer");
+    }
+
+    return parse_header();
+}
+
+std::expected<void, std::string> IvfReader::parse_header() {
     if (m_reader.size() < 32) {
         return std::unexpected("IVF parse failed: file is too small for header");
     }
 
-    m_raw_header = m_reader.data().subspan(0, 32);
+    m_raw_header = m_reader.data().first(32);
     m_reader.seek(0);
-
     m_header.magic = m_reader.read_le<uint32_t>();
-    if (m_header.magic != 0x46494B44) { // DKIF
+    if (m_header.magic != IvfMagic.le_value()) {
         return std::unexpected("IVF parse failed: invalid magic");
     }
-
     m_header.version = m_reader.read_le<uint16_t>();
     m_header.header_size = m_reader.read_le<uint16_t>();
     m_header.fourcc = m_reader.read_le<uint32_t>();
@@ -76,7 +98,6 @@ std::expected<void, std::string> IvfReader::open(const std::filesystem::path& pa
     m_header.scale = m_reader.read_le<uint32_t>();
     m_header.num_frames = m_reader.read_le<uint32_t>();
     m_header.unused = m_reader.read_le<uint32_t>();
-
     m_current_frame = 0;
     return {};
 }
@@ -109,6 +130,50 @@ std::expected<IvfFrame, std::string> IvfReader::read_next_frame() {
 
     ++m_current_frame;
     return frame;
+}
+
+size_t vp9_subframe_count(std::span<const uint8_t> frame_bytes) noexcept {
+    if (!probe_vp9_header(frame_bytes).valid) {
+        return 0;
+    }
+
+    const uint8_t marker = frame_bytes.back();
+    if ((marker & 0xE0u) != 0xC0u) {
+        return 1;
+    }
+
+    const size_t frame_count = static_cast<size_t>(marker & 0x07u) + 1u;
+    const size_t magnitude = static_cast<size_t>((marker >> 3u) & 0x03u) + 1u;
+    const size_t index_size = 2u + frame_count * magnitude;
+    if (index_size > frame_bytes.size()) {
+        return 0;
+    }
+
+    const size_t index_offset = frame_bytes.size() - index_size;
+    if (frame_bytes[index_offset] != marker) {
+        return 0;
+    }
+
+    size_t payload_offset = 0;
+    size_t size_offset = index_offset + 1u;
+    for (size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
+        size_t subframe_size = 0;
+        for (size_t byte_index = 0; byte_index < magnitude; ++byte_index) {
+            subframe_size |= static_cast<size_t>(frame_bytes[size_offset++]) << (byte_index * 8u);
+        }
+        if (subframe_size == 0 || subframe_size > index_offset - payload_offset) {
+            return 0;
+        }
+        if (!probe_vp9_header(frame_bytes.subspan(payload_offset, subframe_size)).valid) {
+            return 0;
+        }
+        payload_offset += subframe_size;
+    }
+    return payload_offset == index_offset ? frame_count : 0;
+}
+
+bool is_valid_vp9_frame(std::span<const uint8_t> frame_bytes) noexcept {
+    return vp9_subframe_count(frame_bytes) != 0;
 }
 
 } // namespace cricodecs::video

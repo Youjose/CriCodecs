@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -32,6 +33,46 @@ constexpr uint64_t root_chunk_size = 0x800;
 constexpr uint32_t chunk_encrypted_flag = 0xFF;
 
 using util::align_up;
+
+template <unsigned Shift>
+void stable_mode0_radix_pass(
+    const CpkEntry* files,
+    const size_t* input,
+    size_t* output,
+    size_t count)
+{
+    std::array<size_t, 256> offsets{};
+    for (size_t position = 0; position < count; ++position) {
+        const size_t index = input[position];
+        ++offsets[(files[index].id >> Shift) & 0xFFu];
+    }
+    size_t position = 0;
+    for (size_t& offset : offsets) {
+        const size_t bucket_size = offset;
+        offset = position;
+        position += bucket_size;
+    }
+    for (size_t input_position = 0; input_position < count; ++input_position) {
+        const size_t index = input[input_position];
+        output[offsets[(files[index].id >> Shift) & 0xFFu]++] = index;
+    }
+}
+
+[[nodiscard]] std::vector<size_t> stable_mode0_id_order(std::span<const CpkEntry> files) {
+    std::vector<size_t> order(files.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    if (files.size() < 128) {
+        std::stable_sort(order.begin(), order.end(), [&](size_t lhs, size_t rhs) {
+            return files[lhs].id < files[rhs].id;
+        });
+        return order;
+    }
+
+    std::vector<size_t> scratch(files.size());
+    stable_mode0_radix_pass<0>(files.data(), order.data(), scratch.data(), files.size());
+    stable_mode0_radix_pass<8>(files.data(), scratch.data(), order.data(), files.size());
+    return order;
+}
 
 template<typename T>
 std::optional<T> value_to_unsigned(const utf::Value& value) {
@@ -468,6 +509,50 @@ std::expected<void, std::string> Cpk::rename(size_t index, const std::string& cp
     return {};
 }
 
+std::expected<void, std::string> Cpk::set_dirname(size_t index, const std::string& dirname) {
+    if (index >= m_files.size()) {
+        return std::unexpected("CPK file index out of range");
+    }
+
+    const auto normalized = std::filesystem::path(dirname).lexically_normal().generic_string();
+    auto& entry = m_files[index];
+    entry.dirname = normalized == "." ? std::string{} : normalized;
+    entry.dirname_raw.clear();
+    m_dirty = true;
+    return {};
+}
+
+std::expected<void, std::string> Cpk::set_filename(size_t index, const std::string& filename) {
+    if (index >= m_files.size()) {
+        return std::unexpected("CPK file index out of range");
+    }
+    if (filename.empty() || filename.find('/') != std::string::npos || filename.find('\\') != std::string::npos) {
+        return std::unexpected("CPK filename must be a non-empty leaf name without path separators");
+    }
+
+    auto& entry = m_files[index];
+    entry.filename = filename;
+    entry.filename_raw.clear();
+    m_dirty = true;
+    return {};
+}
+
+std::expected<void, std::string> Cpk::set_request_compress(size_t index, bool compress) {
+    if (index >= m_files.size()) {
+        return std::unexpected("CPK file index out of range");
+    }
+    m_files[index].request_compress = compress;
+    m_dirty = true;
+    return {};
+}
+
+void Cpk::set_all_request_compress(bool compress) noexcept {
+    for (auto& entry : m_files) {
+        entry.request_compress = compress;
+    }
+    m_dirty = true;
+}
+
 std::expected<void, std::string> Cpk::replace_file(
     size_t index,
     const std::filesystem::path& local_path,
@@ -510,7 +595,7 @@ std::expected<void, std::string> Cpk::replace_bytes(
     return {};
 }
 
-std::expected<std::vector<uint8_t>, std::string> Cpk::extract_to_memory(const CpkEntry& entry) const {
+std::expected<std::span<const uint8_t>, std::string> Cpk::packed_entry_span(const CpkEntry& entry) const {
     auto resolved_offset = resolve_entry_offset(entry);
     if (!resolved_offset) {
         return std::unexpected(resolved_offset.error());
@@ -523,20 +608,74 @@ std::expected<std::vector<uint8_t>, std::string> Cpk::extract_to_memory(const Cp
         return std::unexpected("CPK entry data exceeds the archive size");
     }
 
-    const auto packed_span = m_reader.subspan(
+    return m_reader.subspan(
         static_cast<size_t>(*resolved_offset),
         static_cast<size_t>(entry.file_size)
     );
+}
 
-    if (!entry.is_compressed) {
-        return std::vector<uint8_t>(packed_span.begin(), packed_span.end());
+std::expected<std::vector<uint8_t>, std::string> Cpk::extract_to_memory(const CpkEntry& entry) const {
+    auto packed_span = packed_entry_span(entry);
+    if (!packed_span) {
+        return std::unexpected(packed_span.error());
     }
 
-    auto decompressed = cricodecs::crilayla::decompress(packed_span);
+    if (!entry.is_compressed) {
+        return std::vector<uint8_t>(packed_span->begin(), packed_span->end());
+    }
+
+    auto decompressed = cricodecs::crilayla::decompress(*packed_span);
     if (!decompressed) {
         return std::unexpected("CPK extract failed: could not decompress CRILAYLA payload: " + decompressed.error());
     }
     return *decompressed;
+}
+
+std::expected<void, std::string> Cpk::write_entry_to_file(
+    const CpkEntry& entry,
+    const std::filesystem::path& output_path
+) const {
+    auto packed_span = packed_entry_span(entry);
+    if (!packed_span) {
+        return std::unexpected(packed_span.error());
+    }
+
+    std::vector<uint8_t> decompressed;
+    std::span<const uint8_t> output_bytes = *packed_span;
+    if (entry.is_compressed) {
+        auto result = cricodecs::crilayla::decompress(*packed_span);
+        if (!result) {
+            return std::unexpected(
+                "CPK extract failed: could not decompress CRILAYLA payload: " +
+                result.error());
+        }
+        decompressed = std::move(*result);
+        output_bytes = decompressed;
+    }
+
+    std::error_code error;
+    if (!output_path.parent_path().empty()) {
+        std::filesystem::create_directories(output_path.parent_path(), error);
+        if (error) {
+            return std::unexpected(
+                "CPK extract failed: could not create output directory: " +
+                output_path.parent_path().string());
+        }
+    }
+
+    io::writer writer;
+    if (auto result = writer.open(output_path); !result) {
+        return std::unexpected("CPK extract failed: could not open output: " + output_path.string());
+    }
+
+    if (auto result = writer.write(output_bytes); !result) {
+        return std::unexpected("CPK extract failed: could not write output: " + output_path.string());
+    }
+
+    if (auto result = writer.close(); !result) {
+        return std::unexpected("CPK extract failed: could not finalize output: " + output_path.string());
+    }
+    return {};
 }
 
 std::expected<std::vector<uint8_t>, std::string> Cpk::file_bytes(size_t index) const {
@@ -567,32 +706,8 @@ std::expected<void, std::string> Cpk::extract(
     const CpkEntry& entry,
     const std::filesystem::path& output_dir
 ) const {
-    auto bytes = extract_to_memory(entry);
-    if (!bytes) {
-        return std::unexpected(bytes.error());
-    }
-
     const auto output_path = output_dir / entry.full_path();
-    std::error_code error;
-    if (!output_path.parent_path().empty()) {
-        std::filesystem::create_directories(output_path.parent_path(), error);
-        if (error) {
-            return std::unexpected("CPK extract failed: could not create output directory: " + output_path.parent_path().string());
-        }
-    }
-
-    io::writer writer;
-    if (auto result = writer.open(output_path); !result) {
-        return std::unexpected("CPK extract failed: could not open output: " + output_path.string());
-    }
-    if (auto result = writer.write(*bytes); !result) {
-        return std::unexpected("CPK extract failed: could not write output: " + output_path.string());
-    }
-    if (auto result = writer.close(); !result) {
-        return std::unexpected("CPK extract failed: could not finalize output: " + output_path.string());
-    }
-
-    return {};
+    return write_entry_to_file(entry, output_path);
 }
 
 std::expected<void, std::string> Cpk::extract(
@@ -603,33 +718,12 @@ std::expected<void, std::string> Cpk::extract(
     used_paths.reserve(m_files.size());
 
     for (const auto& entry : m_files) {
-        auto bytes = extract_to_memory(entry);
-        if (!bytes) {
-            return std::unexpected(bytes.error());
-        }
-
         const auto relative_path = disambiguate_conflicts
             ? disambiguate_output_path(entry, used_paths)
             : entry.full_path();
         const auto output_path = output_dir / relative_path;
-
-        std::error_code error;
-        if (!output_path.parent_path().empty()) {
-            std::filesystem::create_directories(output_path.parent_path(), error);
-            if (error) {
-                return std::unexpected("CPK extract failed: could not create output directory: " + output_path.parent_path().string());
-            }
-        }
-
-        io::writer writer;
-        if (auto result = writer.open(output_path); !result) {
-            return std::unexpected("CPK extract failed: could not open output: " + output_path.string());
-        }
-        if (auto result = writer.write(*bytes); !result) {
-            return std::unexpected("CPK extract failed: could not write output: " + output_path.string());
-        }
-        if (auto result = writer.close(); !result) {
-            return std::unexpected("CPK extract failed: could not finalize output: " + output_path.string());
+        if (auto result = write_entry_to_file(entry, output_path); !result) {
+            return result;
         }
     }
 
@@ -692,11 +786,12 @@ std::expected<void, std::string> Cpk::parse() {
         return std::unexpected("CPK source is too small");
     }
 
-    auto cpk_header = load_chunk_utf(0, root_chunk_size, "CPK ", &m_cpk_header_storage);
+    auto cpk_header = load_chunk_utf(0, root_chunk_size, "CPK ");
     if (!cpk_header) {
         return std::unexpected(cpk_header.error());
     }
-    m_cpk_header = std::move(*cpk_header);
+    m_cpk_header_storage = std::move(cpk_header->owned_payload);
+    m_cpk_header = std::move(cpk_header->table);
 
     if (auto content_offset = get_optional_unsigned<uint64_t>(m_cpk_header, 0, "ContentOffset"); !content_offset) {
         return std::unexpected(content_offset.error());
@@ -737,11 +832,12 @@ std::expected<void, std::string> Cpk::parse() {
             return {};
         }
 
-        auto table = load_chunk_utf(chunk_offset, chunk_size, expected_magic, &storage);
-        if (!table) {
-            return std::unexpected(table.error());
+        auto chunk = load_chunk_utf(chunk_offset, chunk_size, expected_magic);
+        if (!chunk) {
+            return std::unexpected(chunk.error());
         }
-        destination = std::move(*table);
+        storage = std::move(chunk->owned_payload);
+        destination = std::move(chunk->table);
         return {};
     };
 
@@ -818,11 +914,10 @@ std::expected<void, std::string> Cpk::parse() {
     return {};
 }
 
-std::expected<utf::UtfTable, std::string> Cpk::load_chunk_utf(
+std::expected<Cpk::LoadedUtfChunk, std::string> Cpk::load_chunk_utf(
     uint64_t offset,
     uint64_t declared_chunk_size,
-    std::string_view expected_magic,
-    std::vector<uint8_t>* owned_payload
+    std::string_view expected_magic
 ) const {
     if (expected_magic.size() != 4) {
         return std::unexpected("CPK parse failed: expected chunk magic must be 4 bytes");
@@ -856,24 +951,25 @@ std::expected<utf::UtfTable, std::string> Cpk::load_chunk_utf(
     );
 
     if (enc_flag != chunk_encrypted_flag) {
-        if (owned_payload == nullptr) {
-            return std::unexpected("CPK parse failed: encrypted UTF chunk requires owned payload storage");
-        }
-        owned_payload->assign(payload.begin(), payload.end());
-        decrypt_utf_payload(*owned_payload);
+        LoadedUtfChunk chunk;
+        chunk.owned_payload.assign(payload.begin(), payload.end());
+        decrypt_utf_payload(chunk.owned_payload);
 
-        auto table = utf::UtfTable::load(std::span<const uint8_t>(*owned_payload));
+        auto table = utf::UtfTable::load(std::span<const uint8_t>(chunk.owned_payload));
         if (!table) {
             return std::unexpected(table.error());
         }
-        return *table;
+        chunk.table = std::move(*table);
+        return chunk;
     }
 
     auto table = utf::UtfTable::load(payload);
     if (!table) {
         return std::unexpected(table.error());
     }
-    return *table;
+    LoadedUtfChunk chunk;
+    chunk.table = std::move(*table);
+    return chunk;
 }
 
 std::expected<uint64_t, std::string> Cpk::resolve_entry_offset(const CpkEntry& entry) const {
@@ -1073,9 +1169,18 @@ std::expected<void, std::string> Cpk::populate_file_entries() {
         return std::unexpected(result.error());
     }
 
-    std::sort(m_files.begin(), m_files.end(), [](const CpkEntry& lhs, const CpkEntry& rhs) {
-        return lhs.id < rhs.id;
-    });
+    auto order = stable_mode0_id_order(m_files);
+
+    std::vector<CpkEntry> sorted_files;
+    std::vector<EntrySource> sorted_sources;
+    sorted_files.reserve(m_files.size());
+    sorted_sources.reserve(m_sources.size());
+    for (const size_t index : order) {
+        sorted_files.push_back(std::move(m_files[index]));
+        sorted_sources.push_back(std::move(m_sources[index]));
+    }
+    m_files = std::move(sorted_files);
+    m_sources = std::move(sorted_sources);
 
     uint64_t running_offset = m_content_offset;
     for (size_t index = 0; index < m_files.size(); ++index) {

@@ -12,6 +12,8 @@
 
 #include "../adx/adx_codec.hpp"
 
+#include <algorithm>
+
 namespace cricodecs::aax {
 
 namespace {
@@ -96,6 +98,109 @@ std::expected<AaxContainer, std::string> AaxContainer::load(std::span<const uint
     return aax;
 }
 
+std::expected<std::vector<AaxBuildEntry>, std::string> AaxContainer::build_entries() const {
+    std::vector<AaxBuildEntry> entries;
+    entries.reserve(m_segments.size());
+    for (uint32_t index = 0; index < m_segments.size(); ++index) {
+        auto data = raw_segment_data(index);
+        if (!data) {
+            return std::unexpected(data.error());
+        }
+        entries.push_back(AaxBuildEntry{
+            .adx_data = std::vector<uint8_t>(data->begin(), data->end()),
+            .loop_segment = m_segments[index].loop_segment,
+        });
+    }
+    return entries;
+}
+
+std::expected<void, std::string> AaxContainer::replace_entries(std::vector<AaxBuildEntry> entries) {
+    auto bytes = build(entries);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    auto replacement = load(*bytes);
+    if (!replacement) {
+        return std::unexpected("AAX edit failed: rebuilt container did not reload: " + replacement.error());
+    }
+    replacement->m_source_path = m_source_path;
+    *this = std::move(*replacement);
+    return {};
+}
+
+std::expected<void, std::string> AaxContainer::add_segment(
+    std::span<const uint8_t> adx_data,
+    bool loop_segment
+) {
+    auto entries = build_entries();
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    entries->push_back(AaxBuildEntry{
+        .adx_data = std::vector<uint8_t>(adx_data.begin(), adx_data.end()),
+        .loop_segment = loop_segment,
+    });
+    return replace_entries(std::move(*entries));
+}
+
+std::expected<void, std::string> AaxContainer::replace_segment(
+    uint32_t index,
+    std::span<const uint8_t> adx_data
+) {
+    auto entries = build_entries();
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    if (index >= entries->size()) {
+        return std::unexpected("AAX replace failed: segment index is out of range");
+    }
+    (*entries)[index].adx_data.assign(adx_data.begin(), adx_data.end());
+    return replace_entries(std::move(*entries));
+}
+
+std::expected<void, std::string> AaxContainer::remove_segment(uint32_t index) {
+    auto entries = build_entries();
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    if (index >= entries->size()) {
+        return std::unexpected("AAX remove failed: segment index is out of range");
+    }
+    if (entries->size() == 1) {
+        return std::unexpected("AAX remove failed: an AAX must retain at least one segment");
+    }
+    entries->erase(entries->begin() + static_cast<std::ptrdiff_t>(index));
+    return replace_entries(std::move(*entries));
+}
+
+std::expected<void, std::string> AaxContainer::move_segment(uint32_t from_index, uint32_t to_index) {
+    auto entries = build_entries();
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    if (from_index >= entries->size() || to_index >= entries->size()) {
+        return std::unexpected("AAX move failed: segment index is out of range");
+    }
+    if (from_index < to_index) {
+        std::rotate(entries->begin() + from_index, entries->begin() + from_index + 1, entries->begin() + to_index + 1);
+    } else if (from_index > to_index) {
+        std::rotate(entries->begin() + to_index, entries->begin() + from_index, entries->begin() + from_index + 1);
+    }
+    return replace_entries(std::move(*entries));
+}
+
+std::expected<void, std::string> AaxContainer::set_loop_segment(uint32_t index, bool loop_segment) {
+    auto entries = build_entries();
+    if (!entries) {
+        return std::unexpected(entries.error());
+    }
+    if (index >= entries->size()) {
+        return std::unexpected("AAX loop edit failed: segment index is out of range");
+    }
+    (*entries)[index].loop_segment = loop_segment;
+    return replace_entries(std::move(*entries));
+}
+
 std::expected<std::vector<uint8_t>, std::string> AaxContainer::build(std::span<const AaxBuildEntry> entries) {
     if (entries.empty()) {
         return std::unexpected("AAX build failed: no segments were provided");
@@ -130,8 +235,8 @@ std::expected<std::vector<uint8_t>, std::string> AaxContainer::build(std::span<c
         }
 
         const uint32_t row = table.add_row();
-        table.set(row, "data", entry.adx_data);
-        table.set(row, "lpflg", static_cast<uint8_t>(entry.loop_segment ? 1 : 0));
+        table.set(row, "data", entry.adx_data).value();
+        table.set(row, "lpflg", static_cast<uint8_t>(entry.loop_segment ? 1 : 0)).value();
     }
 
     return table.build();

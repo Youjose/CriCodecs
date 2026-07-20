@@ -4,271 +4,965 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create, for example v0.0.1b1"
+        description: "Release tag to create, for example v1.0.0"
         required: true
         type: string
+      draft:
+        description: "Create a draft GitHub release"
+        required: true
+        default: true
+        type: boolean
       publish_pypi:
-        description: "Publish artifacts to PyPI after building"
+        description: "Publish the sdist and wheels to PyPI"
+        required: true
+        default: false
+        type: boolean
+      include_experimental:
+        description: "Attempt experimental Windows ARM64 artifacts"
         required: true
         default: false
         type: boolean
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+  CMAKE_INSTALL_PARALLEL_LEVEL: "4"
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 jobs:
   validate:
     name: Validate release input
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release_version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Validate branch and tag
+      - name: Validate branch, tag, and versions
+        id: release_version
         env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           TAG: ${{ inputs.tag }}
+          DRAFT: ${{ inputs.draft }}
+          PUBLISH_PYPI: ${{ inputs.publish_pypi }}
         run: |
-          test "$GITHUB_REF_NAME" = "master"
-          version="$(python - <<'PY'
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "branch"
+          test "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([ab]|rc)[0-9]+$|^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          python_version="$(python - <<'PY'
           import tomllib
           with open("pyproject.toml", "rb") as file:
               print(tomllib.load(file)["project"]["version"])
           PY
           )"
-          test "${TAG#v}" = "$version"
+          cmake_version="$(sed -n 's/^set(CRICODECS_VERSION "\([^"]*\)".*$/\1/p' CMakeLists.txt)"
+          cristudio_version="$(sed -n 's/^set(CRISTUDIO_VERSION "\([^"]*\)".*$/\1/p' CriStudio/CMakeLists.txt)"
+          test "${TAG#v}" = "$python_version"
+          test "$python_version" = "$cmake_version"
+          test "$python_version" = "$cristudio_version"
+          echo "version=$python_version" >> "$GITHUB_OUTPUT"
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            tagged_commit="$(git rev-list -n 1 "$TAG")"
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "Tag $TAG points to $tagged_commit, not this release commit $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "Resuming release work for existing tag $TAG at $tagged_commit"
+          fi
+          if [[ "$PUBLISH_PYPI" = "true" && "$DRAFT" = "true" ]]; then
+            echo "PyPI publishing requires a non-draft GitHub release" >&2
+            exit 1
+          fi
 
   sdist:
-    name: Source distribution
+    name: Python source distribution
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - name: Build sdist
+      - name: Build and verify sdist
         run: |
           python -m pip install --upgrade pip build twine
           python -m build --sdist
-          python -m twine check dist/*
+          python -m twine check dist/*.tar.gz
+          python - <<'PY'
+          import tarfile
+          from pathlib import Path
 
-      - uses: actions/upload-artifact@v4
+          archive = next(Path("dist").glob("*.tar.gz"))
+          with tarfile.open(archive) as package:
+              names = package.getnames()
+          roots = {
+              parts[1]
+              for name in names
+              if len(parts := Path(name).parts) > 1
+          }
+          allowed = {
+              "CMakeLists.txt",
+              "CriCodecs",
+              "PKG-INFO",
+              "PyCriCodecs",
+              "README.md",
+              "USAGE.md",
+              "cricodecs_library.cmake",
+              "pyproject.toml",
+          }
+          unexpected = sorted(roots - allowed)
+          if unexpected:
+              raise SystemExit(f"unexpected top-level paths in sdist: {unexpected}")
+          PY
+
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
+          overwrite: true
 
-  wheels-native:
-    name: Wheels (${{ matrix.os }})
-    needs: validate
+  wheels:
+    name: Wheels (${{ matrix.artifact_name }})
+    needs: [validate, sdist]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         include:
-          - os: macos-26
-            archs: auto64
+          - os: ubuntu-24.04
+            arch: x86_64
+            artifact_name: linux-x86_64
+            manylinux_base: quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614
+            manylinux_image: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.28-x86_64
+            manylinux_image_env: CIBW_MANYLINUX_X86_64_IMAGE
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            artifact_name: linux-aarch64
+            manylinux_base: quay.io/pypa/manylinux_2_28_aarch64@sha256:d129a18d4aeecc9ce6db592474bdb127838339eed67cd7cd61617bb027b14c1e
+            manylinux_image: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.28-aarch64
+            manylinux_image_env: CIBW_MANYLINUX_AARCH64_IMAGE
           - os: macos-26-intel
-            archs: auto64
+            arch: x86_64
+            artifact_name: macos-x86_64
+          - os: macos-26
+            arch: arm64
+            artifact_name: macos-arm64
           - os: windows-2025-vs2026
-            archs: auto64
+            arch: AMD64
+            artifact_name: windows-x86_64
 
     env:
-      CIBW_ARCHS: ${{ matrix.archs }}
-      CIBW_TEST_COMMAND: python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert 'sample_rate=' in text; print(text)"
-      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      CIBW_ARCHS: ${{ matrix.arch }}
+      CIBW_TEST_COMMAND: >-
+        python -c "import cricodecs, cricodecs.adx;
+        text = repr(cricodecs.adx.AdxEncodeConfig());
+        assert 'sample_rate=' in text; print(text)"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v3.2
+      - uses: actions/download-artifact@v8
         with:
-          output-dir: wheelhouse
+          name: sdist
+          path: wheel-source
 
-      - name: Audit macOS wheels
+      - name: Set up Docker Buildx
+        if: runner.os == 'Linux'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build cached GCC 16 manylinux image
+        if: runner.os == 'Linux'
+        uses: docker/build-push-action@v7
+        with:
+          context: .github/manylinux-gcc16
+          build-args: MANYLINUX_IMAGE=${{ matrix.manylinux_base }}
+          load: true
+          tags: ${{ matrix.manylinux_image }}
+          cache-from: type=gha,scope=manylinux-gcc16-${{ matrix.arch }}
+          cache-to: type=gha,mode=min,scope=manylinux-gcc16-${{ matrix.arch }}
+
+      - name: Select GCC 16 manylinux image
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo '${{ matrix.manylinux_image_env }}=${{ matrix.manylinux_image }}' >> "$GITHUB_ENV"
+          echo 'CIBW_ENVIRONMENT_LINUX=LDFLAGS="-static-libstdc++ -static-libgcc" CMAKE_BUILD_PARALLEL_LEVEL=4' >> "$GITHUB_ENV"
+
+      - name: Build and repair wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install cibuildwheel==4.1.0
+          python - <<'PY'
+          import tarfile
+          from pathlib import Path
+
+          archive = next(Path("wheel-source").glob("*.tar.gz"))
+          with tarfile.open(archive) as package:
+              package.extractall("wheel-source", filter="data")
+          PY
+          source_dir="$(find wheel-source -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$source_dir"
+          cd "$source_dir"
+          python -m cibuildwheel --output-dir "$GITHUB_WORKSPACE/wheelhouse"
+
+      - name: Inspect Linux wheel policy
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install auditwheel
+          for wheel in wheelhouse/*.whl; do auditwheel show "$wheel"; done
+
+      - name: Inspect macOS wheel dependencies
         if: runner.os == 'macOS'
         run: |
           python -m pip install delocate
           delocate-listdeps --all wheelhouse/*.whl
 
-      - name: Audit Windows wheels
+      - name: Inspect Windows wheel dependencies
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           python -m pip install delvewheel
           Get-ChildItem wheelhouse/*.whl | ForEach-Object { delvewheel show $_.FullName }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-${{ matrix.artifact_name }}
           path: wheelhouse/*.whl
+          if-no-files-found: error
+          overwrite: true
 
-  cli-zip:
-    name: CLI zip (${{ matrix.artifact_name }})
+  wheels-windows-arm64:
+    name: Wheels (windows-arm64, experimental)
+    if: ${{ inputs.include_experimental }}
+    needs: [validate, sdist]
+    continue-on-error: true
+    runs-on: windows-11-arm
+    env:
+      CIBW_ARCHS: ARM64
+      CIBW_TEST_COMMAND: >-
+        python -c "import cricodecs, cricodecs.adx;
+        assert 'sample_rate=' in repr(cricodecs.adx.AdxEncodeConfig())"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          architecture: arm64
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: wheel-source
+
+      - name: Build wheels from sdist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install cibuildwheel==4.1.0
+          python - <<'PY'
+          import tarfile
+          from pathlib import Path
+
+          archive = next(Path("wheel-source").glob("*.tar.gz"))
+          with tarfile.open(archive) as package:
+              package.extractall("wheel-source", filter="data")
+          PY
+          source_dir="$(find wheel-source -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$source_dir"
+          cd "$source_dir"
+          python -m cibuildwheel --output-dir "$GITHUB_WORKSPACE/wheelhouse"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-windows-arm64
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          overwrite: true
+
+  cpp-sdk:
+    name: C++ SDK (${{ matrix.artifact_name }})
     needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         include:
-          - os: macos-26
+          - os: ubuntu-24.04
             generator: Ninja
-            platform: ""
-            artifact_name: macos-arm64
+            cmake_platform: ""
+            artifact_name: linux-x86_64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: ubuntu-24.04-arm
+            generator: Ninja
+            cmake_platform: ""
+            artifact_name: linux-aarch64
+            archive_format: gztar
+            archive_suffix: tar.gz
           - os: macos-26-intel
             generator: Ninja
-            platform: ""
+            cmake_platform: ""
             artifact_name: macos-x86_64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: macos-26
+            generator: Ninja
+            cmake_platform: ""
+            artifact_name: macos-arm64
+            archive_format: gztar
+            archive_suffix: tar.gz
           - os: windows-2025-vs2026
             generator: Visual Studio 18 2026
-            platform: "-A x64"
+            cmake_platform: -A x64
             artifact_name: windows-x86_64
-
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "14.0"
+            archive_format: zip
+            archive_suffix: zip
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Install build frontend
         run: python -m pip install --upgrade pip cmake ninja
 
-      - name: Resolve release version
-        id: release_version
+      - name: Configure static SDK
+        run: >-
+          cmake -S . -B build-sdk-static -G "${{ matrix.generator }}"
+          ${{ matrix.cmake_platform }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_VERSION=${{ needs.validate.outputs.version }}
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=OFF
+          -DCRICODECS_BUILD_CRISTUDIO=OFF
+          -DCRICODECS_INSTALL_CPP=ON
+          -DBUILD_SHARED_LIBS=OFF
+
+      - name: Configure shared SDK
+        run: >-
+          cmake -S . -B build-sdk-shared -G "${{ matrix.generator }}"
+          ${{ matrix.cmake_platform }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_VERSION=${{ needs.validate.outputs.version }}
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=OFF
+          -DCRICODECS_BUILD_CRISTUDIO=OFF
+          -DCRICODECS_INSTALL_CPP=ON
+          -DBUILD_SHARED_LIBS=ON
+
+      - name: Build and install both SDK linkages
+        run: |
+          cmake --build build-sdk-static --config Release --target CriCodecs --parallel 4
+          cmake --install build-sdk-static --config Release --prefix stage-sdk/static
+          cmake --build build-sdk-shared --config Release --target CriCodecs --parallel 4
+          cmake --install build-sdk-shared --config Release --prefix stage-sdk/shared
+
+      - name: Verify installed CMake package
+        run: >-
+          python -c "from pathlib import Path;
+          root = Path('stage-sdk');
+          assert (root / 'static').is_dir() and (root / 'shared').is_dir();
+          assert all(any(folder.rglob('CriCodecsConfig.cmake')) for folder in (root / 'static', root / 'shared'));
+          assert all(any(folder.rglob('cricodecs.hpp')) for folder in (root / 'static', root / 'shared'));
+          assert any(p.suffix in {'.a', '.lib'} for p in (root / 'static').rglob('*'));
+          assert any(p.suffix in {'.so', '.dylib', '.dll'} for p in (root / 'shared').rglob('*'))"
+
+      - name: Archive SDK
         shell: bash
         env:
-          TAG: ${{ inputs.tag }}
-        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          ARCHIVE_BASE: cricodecs-${{ needs.validate.outputs.version }}-cpp-sdk-${{ matrix.artifact_name }}
+          ARCHIVE_FORMAT: ${{ matrix.archive_format }}
+        run: >-
+          python -c "import os, shutil;
+          shutil.make_archive(os.environ['ARCHIVE_BASE'], os.environ['ARCHIVE_FORMAT'], root_dir='stage-sdk')"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cpp-sdk-${{ matrix.artifact_name }}
+          path: cricodecs-${{ needs.validate.outputs.version }}-cpp-sdk-${{ matrix.artifact_name }}.${{ matrix.archive_suffix }}
+          if-no-files-found: error
+          overwrite: true
+
+  cli:
+    name: CLI (${{ matrix.artifact_name }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            generator: Ninja
+            cmake_platform: ""
+            link_flags: -DCMAKE_EXE_LINKER_FLAGS=-static
+            artifact_name: linux-x86_64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: ubuntu-24.04-arm
+            generator: Ninja
+            cmake_platform: ""
+            link_flags: -DCMAKE_EXE_LINKER_FLAGS=-static
+            artifact_name: linux-aarch64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: macos-26-intel
+            generator: Ninja
+            cmake_platform: ""
+            link_flags: ""
+            artifact_name: macos-x86_64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: macos-26
+            generator: Ninja
+            cmake_platform: ""
+            link_flags: ""
+            artifact_name: macos-arm64
+            archive_format: gztar
+            archive_suffix: tar.gz
+          - os: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            cmake_platform: -A x64
+            link_flags: -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+            artifact_name: windows-x86_64
+            archive_format: zip
+            archive_suffix: zip
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja
 
       - name: Configure CLI
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_VERSION=${{ steps.release_version.outputs.version }} -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+        run: >-
+          cmake -S . -B build-cli -G "${{ matrix.generator }}"
+          ${{ matrix.cmake_platform }}
+          ${{ matrix.link_flags }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_VERSION=${{ needs.validate.outputs.version }}
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=ON
+          -DCRICODECS_BUILD_CRISTUDIO=OFF
+          -DCRICODECS_INSTALL_CPP=OFF
+          -DBUILD_SHARED_LIBS=OFF
 
       - name: Build CLI
-        run: cmake --build build --config Release --target cricodecs_cli --parallel
+        run: cmake --build build-cli --config Release --target cricodecs_cli --parallel 4
 
-      - name: Install CLI
-        run: cmake --install build --config Release --prefix stage
+      - name: Install stripped CLI (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --install build-cli --config Release --prefix stage-cli --strip
+
+      - name: Install CLI (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --install build-cli --config Release --prefix stage-cli
+
+      - name: Strip Windows CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $strip = (Get-Command llvm-strip.exe -ErrorAction Stop).Source
+          & $strip --strip-all stage-cli/cricodecs.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Get-ChildItem stage-cli -Recurse -Filter *.pdb) {
+              throw 'Windows CLI archive must not contain PDB files'
+          }
 
       - name: Smoke test CLI (Unix)
         if: runner.os != 'Windows'
-        run: ./stage/cricodecs --help >/dev/null
+        run: ./stage-cli/cricodecs --version
 
       - name: Smoke test CLI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\stage\cricodecs.exe --help | Out-Null
+        run: .\stage-cli\cricodecs.exe --version | Out-Null
 
-      - name: Archive CLI zip
-        run: cmake -E chdir stage cmake -E tar cf "../cricodecs-${{ steps.release_version.outputs.version }}-cli-${{ matrix.artifact_name }}.zip" --format=zip .
+      - name: Verify fully static Linux CLI
+        if: runner.os == 'Linux'
+        run: file stage-cli/cricodecs | grep -q "statically linked"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli-${{ matrix.artifact_name }}
-          path: cricodecs-${{ steps.release_version.outputs.version }}-cli-${{ matrix.artifact_name }}.zip
-
-  cli-zip-linux:
-    name: CLI zip (linux-x86_64)
-    needs: validate
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve release version
-        id: release_version
+      - name: Archive CLI
         shell: bash
         env:
-          TAG: ${{ inputs.tag }}
-        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          ARCHIVE_BASE: cricodecs-${{ needs.validate.outputs.version }}-cli-${{ matrix.artifact_name }}
+          ARCHIVE_FORMAT: ${{ matrix.archive_format }}
+        run: >-
+          python -c "import os, shutil;
+          shutil.make_archive(os.environ['ARCHIVE_BASE'], os.environ['ARCHIVE_FORMAT'], root_dir='stage-cli')"
 
-      - name: Build Linux CLI with GCC 16.1
-        env:
-          VERSION: ${{ steps.release_version.outputs.version }}
-        run: |
-          docker run --rm \
-            -e CC=gcc \
-            -e CXX=g++ \
-            -e CRICODECS_RELEASE_VERSION="${VERSION}" \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            gcc:16.1 \
-            bash -lc '
-              set -euo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends python3 python3-pip
-              python3 -m pip install --break-system-packages cmake ninja
-              c++ --version
-              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_VERSION="${CRICODECS_RELEASE_VERSION}" -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
-              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel
-              python3 -m cmake --install build-cli-linux --prefix stage-cli-linux
-              ./stage-cli-linux/cricodecs --help >/dev/null
-              python3 -m cmake -E chdir stage-cli-linux python3 -m cmake -E tar cf "../cricodecs-${CRICODECS_RELEASE_VERSION}-cli-linux-x86_64.zip" --format=zip .
-            '
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: cli-linux-x86_64
-          path: cricodecs-${{ steps.release_version.outputs.version }}-cli-linux-x86_64.zip
+          name: cli-${{ matrix.artifact_name }}
+          path: cricodecs-${{ needs.validate.outputs.version }}-cli-${{ matrix.artifact_name }}.${{ matrix.archive_suffix }}
+          if-no-files-found: error
+          overwrite: true
+
+  cristudio:
+    name: CriStudio (${{ matrix.artifact_name }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            generator: Ninja
+            cmake_platform: ""
+            qt_arch: linux_gcc_64
+            built_path: build-gui/CriStudio/CriStudio
+            artifact_name: linux-x86_64
+            deploy_qt: false
+            linuxdeploy_arch: x86_64
+            linuxdeploy_sha256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+            linuxdeploy_qt_sha256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
+          - os: ubuntu-24.04-arm
+            generator: Ninja
+            cmake_platform: ""
+            qt_arch: linux_gcc_arm64
+            built_path: build-gui/CriStudio/CriStudio
+            artifact_name: linux-aarch64
+            deploy_qt: false
+            linuxdeploy_arch: aarch64
+            linuxdeploy_sha256: 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+            linuxdeploy_qt_sha256: bf1c24aff6d749b5cf423afad6f15abd4440f81dec1aab95706b25f6667cdcf1
+          - os: macos-26-intel
+            generator: Ninja
+            cmake_platform: ""
+            qt_arch: clang_64
+            built_path: build-gui/CriStudio/CriStudio.app
+            artifact_name: macos-x86_64
+            deploy_qt: true
+          - os: macos-26
+            generator: Ninja
+            cmake_platform: ""
+            qt_arch: clang_64
+            built_path: build-gui/CriStudio/CriStudio.app
+            artifact_name: macos-arm64
+            deploy_qt: true
+          - os: windows-2025-vs2026
+            generator: Visual Studio 18 2026
+            cmake_platform: -A x64
+            qt_arch: win64_msvc2022_64
+            built_path: build-gui/CriStudio/Release/CriStudio.exe
+            artifact_name: windows-x86_64
+            deploy_qt: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.2"
+          arch: ${{ matrix.qt_arch }}
+          modules: qtmultimedia
+          cache: true
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja imageio-ffmpeg==0.6.0
+
+      - name: Configure CriStudio
+        run: >-
+          cmake -S . -B build-gui -G "${{ matrix.generator }}"
+          ${{ matrix.cmake_platform }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_BINDIR=.
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_VERSION=${{ needs.validate.outputs.version }}
+          -DCRISTUDIO_VERSION=${{ needs.validate.outputs.version }}
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=OFF
+          -DCRICODECS_BUILD_CRISTUDIO=ON
+          -DCRICODECS_INSTALL_CPP=OFF
+          -DCRISTUDIO_DEPLOY_QT=${{ matrix.deploy_qt }}
+          -DBUILD_SHARED_LIBS=OFF
+
+      - name: Build CriStudio
+        run: cmake --build build-gui --config Release --target CriStudio --parallel 4
+
+      - name: Build Windows portable launcher
+        if: runner.os == 'Windows'
+        run: cmake --build build-gui --config Release --target CriStudioLauncher --parallel 4
+
+      - name: Create versioned bundle folders
+        shell: bash
+        env:
+          BUILT_PATH: ${{ matrix.built_path }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          PLATFORM: ${{ matrix.artifact_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          source = Path(os.environ["BUILT_PATH"])
+          slim_root = Path(f"cricodecs-{os.environ['VERSION']}-cristudio-slim-{os.environ['PLATFORM']}")
+          portable_root = Path(f"cricodecs-{os.environ['VERSION']}-cristudio-portable-{os.environ['PLATFORM']}")
+          slim_root.mkdir()
+          portable_root.mkdir()
+          destination = slim_root / source.name
+          if source.is_dir():
+              shutil.copytree(source, destination, symlinks=True)
+          else:
+              shutil.copy2(source, destination)
+          PY
+          echo "SLIM_ROOT=cricodecs-${VERSION}-cristudio-slim-${PLATFORM}" >> "$GITHUB_ENV"
+          echo "PORTABLE_ROOT=cricodecs-${VERSION}-cristudio-portable-${PLATFORM}" >> "$GITHUB_ENV"
+
+      - name: Deploy Qt into the portable macOS application
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake --install build-gui --config Release --prefix "${PWD}/${PORTABLE_ROOT}"
+
+      - name: Deploy Windows application under _internal
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install build-gui --config Release --prefix "${PWD}/${PORTABLE_ROOT}/_internal"
+          launcher="$(find build-gui/CriStudio -type f -name CriStudioLauncher.exe -print -quit)"
+          test -n "$launcher"
+          cp "$launcher" "$PORTABLE_ROOT/CriStudio.exe"
+
+      - name: Add FFmpeg to the portable folder
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          import stat
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          import imageio_ffmpeg
+
+          source = Path(imageio_ffmpeg.get_ffmpeg_exe())
+          root = Path(os.environ["PORTABLE_ROOT"])
+          if sys.platform == "darwin":
+              destination = root / "CriStudio.app" / "Contents" / "MacOS" / "ffmpeg"
+              license_dir = root / "CriStudio.app" / "Contents" / "Resources" / "licenses"
+          else:
+              destination = root / "_internal" / "ffmpeg.exe"
+              license_dir = root / "_internal" / "licenses"
+          license_dir.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(source, destination)
+          destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+          license_text = subprocess.run(
+              [str(destination), "-L"], check=True, capture_output=True, text=True
+          ).stdout
+          (license_dir / "FFMPEG_LICENSE.txt").write_text(license_text, encoding="utf-8")
+          (license_dir / "FFMPEG_SOURCE.txt").write_text(
+              "Bundled from imageio-ffmpeg 0.6.0.\n"
+              "FFmpeg source and license information: https://ffmpeg.org/\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          ffmpeg="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          mkdir -p AppDir/usr/bin AppDir/usr/share/doc/CriStudio
+          strip --strip-unneeded build-gui/CriStudio/CriStudio
+          cp "$ffmpeg" AppDir/usr/bin/ffmpeg
+          chmod +x AppDir/usr/bin/ffmpeg
+          strip --strip-unneeded AppDir/usr/bin/ffmpeg
+          AppDir/usr/bin/ffmpeg -L > AppDir/usr/share/doc/CriStudio/FFMPEG_LICENSE.txt
+          printf '%s\n' \
+            'Bundled from imageio-ffmpeg 0.6.0.' \
+            'FFmpeg source and license information: https://ffmpeg.org/' \
+            > AppDir/usr/share/doc/CriStudio/FFMPEG_SOURCE.txt
+          curl --fail --location --retry 3 --output linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-${{ matrix.linuxdeploy_arch }}.AppImage
+          curl --fail --location --retry 3 --output linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-${{ matrix.linuxdeploy_arch }}.AppImage
+          echo "${{ matrix.linuxdeploy_sha256 }}  linuxdeploy.AppImage" | sha256sum --check
+          echo "${{ matrix.linuxdeploy_qt_sha256 }}  linuxdeploy-plugin-qt.AppImage" | sha256sum --check
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+          QMAKE="$(command -v qmake6 || command -v qmake)"
+          export QMAKE
+          export LDAI_OUTPUT="$PORTABLE_ROOT/CriStudio.AppImage"
+          ./linuxdeploy.AppImage --appimage-extract-and-run \
+            --appdir AppDir \
+            --executable build-gui/CriStudio/CriStudio \
+            --desktop-file CriStudio/packaging/linux/io.github.Youjose.CriStudio.desktop \
+            --icon-file CriStudio/packaging/linux/io.github.Youjose.CriStudio.svg \
+            --plugin qt \
+            --output appimage
+          test -x "$PORTABLE_ROOT/CriStudio.AppImage"
+
+      - name: Smoke test Linux AppImage
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes xauth xvfb
+          set +e
+          timeout 8 xvfb-run --auto-servernum "$PORTABLE_ROOT/CriStudio.AppImage" --appimage-extract-and-run
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 && "$status" -ne 124 ]]; then
+            echo "CriStudio AppImage exited unexpectedly with status $status" >&2
+            exit "$status"
+          fi
+
+      - name: Strip and sign staged Unix applications
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" = "Linux" ]]; then
+            strip "$SLIM_ROOT/CriStudio"
+          else
+            strip -S -x "$SLIM_ROOT/CriStudio.app/Contents/MacOS/CriStudio"
+            strip -S -x "$PORTABLE_ROOT/CriStudio.app/Contents/MacOS/CriStudio"
+            strip -S -x "$PORTABLE_ROOT/CriStudio.app/Contents/MacOS/ffmpeg"
+            codesign --force --deep --sign - "$PORTABLE_ROOT/CriStudio.app"
+          fi
+
+      - name: Strip Windows release executables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $strip = (Get-Command llvm-strip.exe -ErrorAction Stop).Source
+          $targets = @(
+              (Join-Path $env:SLIM_ROOT 'CriStudio.exe'),
+              (Join-Path $env:PORTABLE_ROOT 'CriStudio.exe'),
+              (Join-Path $env:PORTABLE_ROOT '_internal/CriStudio.exe'),
+              (Join-Path $env:PORTABLE_ROOT '_internal/ffmpeg.exe')
+          )
+          foreach ($target in $targets) {
+              & $strip --strip-all $target
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (Get-ChildItem $env:SLIM_ROOT,$env:PORTABLE_ROOT -Recurse -Filter *.pdb) {
+              throw 'CriStudio archives must not contain PDB files'
+          }
+
+      - name: Verify portable bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(os.environ["PORTABLE_ROOT"])
+          children = {path.name for path in root.iterdir()}
+          if sys.platform == "win32":
+              assert children == {"CriStudio.exe", "_internal"}, children
+              internal = root / "_internal"
+              assert (internal / "CriStudio.exe").is_file()
+              assert (internal / "ffmpeg.exe").is_file()
+              assert (internal / "Qt6Core.dll").is_file()
+              assert (internal / "share" / "qt6" / "plugins" / "platforms" / "qwindows.dll").is_file()
+              license_dir = internal / "licenses"
+          elif sys.platform == "darwin":
+              assert children == {"CriStudio.app"}, children
+              application = root / "CriStudio.app"
+              assert (application / "Contents" / "MacOS" / "CriStudio").is_file()
+              assert (application / "Contents" / "MacOS" / "ffmpeg").is_file()
+              license_dir = application / "Contents" / "Resources" / "licenses"
+          else:
+              assert children == {"CriStudio.AppImage"}, children
+              assert (root / "CriStudio.AppImage").is_file()
+              raise SystemExit(0)
+          assert (license_dir / "FFMPEG_LICENSE.txt").is_file()
+          assert (license_dir / "FFMPEG_SOURCE.txt").is_file()
+          PY
+
+      - name: Smoke test Windows portable launcher and Qt runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CRISTUDIO_RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Resolve-Path $env:PORTABLE_ROOT).Path
+          $launcher = Start-Process -FilePath (Join-Path $root 'CriStudio.exe') -PassThru
+          Start-Sleep -Seconds 8
+          if ($launcher.HasExited) {
+              throw "Portable CriStudio exited during startup with code $($launcher.ExitCode)"
+          }
+          $child = Get-CimInstance Win32_Process |
+              Where-Object { $_.ParentProcessId -eq $launcher.Id -and $_.Name -eq 'CriStudio.exe' } |
+              Select-Object -First 1
+          if ($null -eq $child) {
+              throw 'Portable launcher did not start _internal\\CriStudio.exe'
+          }
+          $window = $null
+          for ($attempt = 0; $attempt -lt 30; ++$attempt) {
+              $window = Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue
+              if ($null -ne $window -and $window.MainWindowHandle -ne 0) { break }
+              Start-Sleep -Milliseconds 500
+          }
+          if ($null -eq $window -or $window.MainWindowHandle -eq 0) {
+              throw 'Portable CriStudio did not create a main window'
+          }
+          $expectedTitle = "CriStudio $env:CRISTUDIO_RELEASE_VERSION"
+          if ($window.MainWindowTitle -ne $expectedTitle) {
+              throw "Unexpected CriStudio window title: $($window.MainWindowTitle)"
+          }
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class CriStudioWindowProbe {
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              public static extern IntPtr SendMessage(
+                  IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
+          }
+          '@
+          $smallIcon = [CriStudioWindowProbe]::SendMessage(
+              $window.MainWindowHandle, 0x007F, [IntPtr]::Zero, [IntPtr]::Zero)
+          $bigIcon = [CriStudioWindowProbe]::SendMessage(
+              $window.MainWindowHandle, 0x007F, [IntPtr]::new(1), [IntPtr]::Zero)
+          if ($smallIcon -eq [IntPtr]::Zero -and $bigIcon -eq [IntPtr]::Zero) {
+              throw 'Portable CriStudio main window has no application icon'
+          }
+          Stop-Process -Id $child.ProcessId -Force
+          if (-not $launcher.WaitForExit(5000)) {
+              Stop-Process -Id $launcher.Id -Force
+              throw 'Portable launcher did not exit after CriStudio closed'
+          }
+
+      - name: Archive both versioned GUI folders
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          for variable in ("SLIM_ROOT", "PORTABLE_ROOT"):
+              root = Path(os.environ[variable])
+              shutil.make_archive(root.name, "zip", root_dir=root.parent, base_dir=root.name)
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cristudio-${{ matrix.artifact_name }}
+          path: |
+            cricodecs-${{ needs.validate.outputs.version }}-cristudio-slim-${{ matrix.artifact_name }}.zip
+            cricodecs-${{ needs.validate.outputs.version }}-cristudio-portable-${{ matrix.artifact_name }}.zip
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Report bundle sizes
+        shell: bash
+        run: du -h "${SLIM_ROOT}.zip" "${PORTABLE_ROOT}.zip"
+
+      - name: Preserve portable macOS bundle signature details
+        if: runner.os == 'macOS'
+        run: |
+          codesign --display --verbose=2 "$PORTABLE_ROOT/CriStudio.app"
 
   release:
     name: GitHub release
-    needs: [sdist, wheels-native, cli-zip, cli-zip-linux]
-    runs-on: ubuntu-latest
+    needs: [validate, sdist, wheels, wheels-windows-arm64, cpp-sdk, cli, cristudio]
+    if: ${{ always() && needs.sdist.result == 'success' && needs.wheels.result == 'success' && (needs.wheels-windows-arm64.result == 'success' || needs.wheels-windows-arm64.result == 'skipped') && needs.cpp-sdk.result == 'success' && needs.cli.result == 'success' && needs.cristudio.result == 'success' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
-      - name: Check Python artifacts
+      - name: Verify artifacts and write checksums
         run: |
+          set -euo pipefail
           python -m pip install --upgrade twine
-          python -m twine check dist/*.tar.gz dist/*.whl
-          ls -lh dist
+          python -m twine check "dist/cricodecs-${{ needs.validate.outputs.version }}.tar.gz" dist/*.whl
+          test -n "$(find dist -maxdepth 1 -type f -name '*-cpp-*' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -type f -name '*-cli-*' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -type f -name '*-cristudio-*' -print -quit)"
+          (cd dist && sha256sum -- * > SHA256SUMS.txt)
+          find dist -maxdepth 1 -type f -printf '%f\n' | sort
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
+          DRAFT: ${{ inputs.draft }}
         run: |
-          git tag "$TAG" "$GITHUB_SHA"
-          git push origin "$TAG"
-          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            if [[ "$DRAFT" != "true" ]]; then
+              gh release edit "$TAG" --draft=false --title "$TAG"
+            fi
+          else
+            args=("$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes)
+            if [[ "$DRAFT" = "true" ]]; then args+=(--draft); fi
+            gh release create "${args[@]}"
+          fi
 
   publish-pypi:
     name: Publish to PyPI
     if: ${{ inputs.publish_pypi }}
     needs: release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: sdist
           merge-multiple: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: wheels-*

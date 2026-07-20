@@ -2,6 +2,22 @@
 
 namespace cricodecs::cli::detail {
 
+namespace {
+
+constexpr io::FourCC CpkMagic{"CPK "};
+constexpr io::FourCC CriDataMagic{"CRID"};
+constexpr io::FourCC SofdecHeaderMagic{"SFSH"};
+constexpr io::FourCC AwbMagic{"AFS2"};
+constexpr io::FourCC AfsMagic{"AFS\0"};
+constexpr io::FourCC AixMagic{"AIXF"};
+constexpr io::FourCC UtfMagic{"@UTF"};
+constexpr io::FourCC MpegPackMagic{0x00u, 0x00u, 0x01u, 0xBAu};
+constexpr io::FourCC HcaMagic{"HCA\0"};
+constexpr io::FourCC RiffMagic{"RIFF"};
+constexpr io::FourCC WaveMagic{"WAVE"};
+
+} // namespace
+
 template <typename T>
 [[nodiscard]] std::expected<T, std::string> wrap_expected(std::expected<T, std::string>&& result) {
     if (!result) {
@@ -310,40 +326,39 @@ std::vector<Format> sniff_format_order(std::span<const uint8_t> bytes, bool incl
     if (has_cvm_header(bytes)) {
         push_unique(order, Format::cvm);
     }
-    if (has_magic_at(bytes, 0, "CPK ")) {
+    if (has_magic_at(bytes, 0, CpkMagic)) {
         push_unique(order, Format::cpk);
     }
-    if (has_magic_at(bytes, 0, "CRID") || has_magic_at(bytes, 0, "SFSH")) {
+    if (has_magic_at(bytes, 0, CriDataMagic) || has_magic_at(bytes, 0, SofdecHeaderMagic)) {
         push_unique(order, Format::usm);
     }
-    if (has_magic_at(bytes, 0, "AFS2")) {
+    if (has_magic_at(bytes, 0, AwbMagic)) {
         push_unique(order, Format::awb);
     }
-    if (has_magic_at(bytes, 0, std::string_view("AFS\0", 4))) {
+    if (has_magic_at(bytes, 0, AfsMagic)) {
         push_unique(order, Format::afs);
     }
-    if (has_magic_at(bytes, 0, "AIXF")) {
+    if (has_magic_at(bytes, 0, AixMagic)) {
         push_unique(order, Format::aix);
     }
-    if (has_magic_at(bytes, 0, "@UTF")) {
+    if (has_magic_at(bytes, 0, UtfMagic)) {
         push_unique(order, Format::csb);
         push_unique(order, Format::acb);
         push_unique(order, Format::aax);
         push_unique(order, Format::utf);
     }
-    if (has_magic_at(bytes, 0, std::string_view("\x00\x00\x01\xBA", 4))) {
+    if (has_magic_at(bytes, 0, MpegPackMagic)) {
         push_unique(order, Format::sfd);
     }
     if (bytes.size() >= 4 && bytes[0] == 0x80 && bytes[1] == 0x00) {
         push_unique(order, Format::adx);
     }
-    if (bytes.size() >= 4 && (be32(bytes) & 0x7F7F7F7Fu) == 0x48434100u) {
+    if (bytes.size() >= 4 &&
+        (io::read_be<uint32_t>(bytes.data()) & 0x7F7F7F7Fu) == HcaMagic.be_value()) {
         push_unique(order, Format::hca);
     }
     if (include_riff_wave &&
-        bytes.size() >= 12 &&
-        bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
-        bytes[8] == 'W' && bytes[9] == 'A' && bytes[10] == 'V' && bytes[11] == 'E') {
+        has_magic_at(bytes, 0, RiffMagic) && has_magic_at(bytes, 8, WaveMagic)) {
         push_unique(order, Format::wav);
     }
     if (looks_like_acx(bytes)) {

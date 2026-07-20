@@ -45,6 +45,7 @@ public:
     IvfReader() = default;
 
     std::expected<void, std::string> open(const std::filesystem::path& path);
+    std::expected<void, std::string> open(std::span<const uint8_t> bytes);
 
     [[nodiscard]] const IvfHeader& get_header() const noexcept { return m_header; }
     [[nodiscard]] std::span<const uint8_t> get_raw_header() const noexcept { return m_raw_header; }
@@ -52,10 +53,17 @@ public:
     std::expected<IvfFrame, std::string> read_next_frame();
 
 private:
+    std::expected<void, std::string> parse_header();
+
     io::reader m_reader;
     IvfHeader m_header;
     std::span<const uint8_t> m_raw_header;
     uint32_t m_current_frame = 0;
 };
+
+/// Validate a VP9 frame, including a present superframe index and all indexed subframe headers.
+[[nodiscard]] bool is_valid_vp9_frame(std::span<const uint8_t> frame_bytes) noexcept;
+/// Return the number of structurally valid VP9 subframes, or zero for an invalid frame/index.
+[[nodiscard]] size_t vp9_subframe_count(std::span<const uint8_t> frame_bytes) noexcept;
 
 } // namespace cricodecs::video

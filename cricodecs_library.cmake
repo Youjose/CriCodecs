@@ -1,11 +1,33 @@
 function(cricodecs_add_library target_name)
+    include(GNUInstallDirs)
+
     if(NOT DEFINED CRICODECS_REPO_ROOT)
         message(FATAL_ERROR "CRICODECS_REPO_ROOT must be set before including cricodecs_library.cmake")
     endif()
 
     if(NOT DEFINED CRICODECS_VERSION)
-        set(CRICODECS_VERSION "0.0.1b1")
+        set(CRICODECS_VERSION "1.0.0")
     endif()
+    if(NOT DEFINED CRICODECS_VERSION_MAJOR)
+        set(CRICODECS_VERSION_MAJOR 1)
+    endif()
+    if(NOT DEFINED CRICODECS_VERSION_MINOR)
+        set(CRICODECS_VERSION_MINOR 0)
+    endif()
+    if(NOT DEFINED CRICODECS_VERSION_PATCH)
+        set(CRICODECS_VERSION_PATCH 0)
+    endif()
+
+    set(cricodecs_generated_include_dir "${CMAKE_CURRENT_BINARY_DIR}/cricodecs-generated")
+    set(cricodecs_generated_version_header
+        "${cricodecs_generated_include_dir}/cricodecs/version.hpp"
+    )
+    file(MAKE_DIRECTORY "${cricodecs_generated_include_dir}/cricodecs")
+    configure_file(
+        "${CRICODECS_REPO_ROOT}/CriCodecs/include/cricodecs/version.hpp.in"
+        "${cricodecs_generated_version_header}"
+        @ONLY
+    )
     set(CRICODECS_GIT_HASH "unknown")
     find_package(Git QUIET)
     if(Git_FOUND AND EXISTS "${CRICODECS_REPO_ROOT}/.git")
@@ -38,27 +60,24 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acx/acx_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_decoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_encoder.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_commands.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_container.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx/ahx_decoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx/ahx_encoder.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx/ahx_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/afs/afs_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/afs/afs_container.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/afs/afs_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/aix/aix_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/aix/aix_reader.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_maker.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_common.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_export.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_metadata.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_parse.cpp
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_probe.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/awb/awb_aac_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_build_script.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_container.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm/cvm_volume_set.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/sfd/sfd_container.cpp
@@ -73,12 +92,16 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_crypto.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_decoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_encoder.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_packing.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca/hca_transform.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_crypto.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_key_recovery.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_adx_key_recovery.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_reader.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm/usm_subtitle.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/video/h264.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/video/ivf.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/video/mpeg.cpp
@@ -90,38 +113,73 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities/io_writer_platform.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities/text_encoding.cpp
     )
+    if(CRICODECS_BUILD_CLI OR CRICODECS_BUILD_PYTHON)
+        list(APPEND cricodecs_sources
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_maker.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_common.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_export.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_metadata.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_parse.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_probe.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_key_recovery.cpp
+        )
+    endif()
 
-    add_library(${target_name} STATIC ${cricodecs_sources})
+    add_library(${target_name} ${cricodecs_sources})
+    if(target_name STREQUAL "CriCodecs" AND NOT TARGET CriCodecs::CriCodecs)
+        add_library(CriCodecs::CriCodecs ALIAS ${target_name})
+    endif()
+
+    find_package(Threads REQUIRED)
     target_compile_features(${target_name} PUBLIC cxx_std_23)
+    target_link_libraries(${target_name} PUBLIC Threads::Threads)
     target_compile_definitions(${target_name} PRIVATE
         CRICODECS_VERSION="${CRICODECS_VERSION}"
         CRICODECS_GIT_HASH="${CRICODECS_GIT_HASH}"
     )
     set_target_properties(${target_name} PROPERTIES
         POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+        CRICODECS_GENERATED_VERSION_HEADER "${cricodecs_generated_version_header}"
+        CRICODECS_PACKAGE_NEEDS_ICONV OFF
     )
 
+    if(BUILD_SHARED_LIBS)
+        set_target_properties(${target_name} PROPERTIES
+            VERSION "${CRICODECS_VERSION_MAJOR}.${CRICODECS_VERSION_MINOR}.${CRICODECS_VERSION_PATCH}"
+            SOVERSION "${CRICODECS_VERSION_MAJOR}"
+        )
+        if(WIN32)
+            set_target_properties(${target_name} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        endif()
+    endif()
+
     target_include_directories(${target_name} PUBLIC
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/aax
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/acx
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/afs
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/aix
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/awb
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/csb
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cpk
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/hca
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/sfd
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/usm
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/video
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/wav
-        ${CRICODECS_REPO_ROOT}/CriCodecs/src/utf
-        ${CRICODECS_REPO_ROOT}/include
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/include>
+        $<BUILD_INTERFACE:${cricodecs_generated_include_dir}>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/aax>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/acx>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/acb>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/adx>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/afs>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/aix>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/awb>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/cli>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/csb>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/cpk>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/cvm>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/key_recovery>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/hca>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/sfd>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/usm>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/video>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/wav>
+        $<BUILD_INTERFACE:${CRICODECS_REPO_ROOT}/CriCodecs/src/utf>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
 
     if(NOT MSVC)
@@ -129,8 +187,10 @@ function(cricodecs_add_library target_name)
         if(Iconv_FOUND)
             if(TARGET Iconv::Iconv)
                 target_link_libraries(${target_name} PUBLIC Iconv::Iconv)
+                set_target_properties(${target_name} PROPERTIES CRICODECS_PACKAGE_NEEDS_ICONV ON)
             elseif(Iconv_LIBRARIES)
                 target_link_libraries(${target_name} PUBLIC ${Iconv_LIBRARIES})
+                set_target_properties(${target_name} PROPERTIES CRICODECS_PACKAGE_NEEDS_ICONV ON)
             endif()
         endif()
     endif()

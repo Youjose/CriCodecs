@@ -45,6 +45,16 @@ struct MpegVideoFrame {
     std::span<const uint8_t> record_bytes;
 };
 
+struct MpegStructure {
+    uint32_t start_codes = 0;
+    uint32_t valid_start_codes = 0;
+    uint32_t pictures = 0;
+    uint32_t slices = 0;
+    uint32_t violations = 0;
+};
+
+[[nodiscard]] MpegStructure inspect_mpeg_structure(std::span<const uint8_t> bytes) noexcept;
+
 [[nodiscard]] constexpr std::pair<uint32_t, uint32_t> mpeg_frame_rate_ratio(uint8_t frame_rate_code) noexcept {
     switch (frame_rate_code) {
         case 1: return {24000, 1001};

@@ -2,6 +2,20 @@
 
 namespace cricodecs::cli::detail {
 
+namespace {
+
+std::string usm_stream_type_text(usm::UsmChunkType type) {
+    const auto raw = static_cast<uint32_t>(type);
+    std::string text(4, '\0');
+    text[0] = static_cast<char>((raw >> 24) & 0xFFu);
+    text[1] = static_cast<char>((raw >> 16) & 0xFFu);
+    text[2] = static_cast<char>((raw >> 8) & 0xFFu);
+    text[3] = static_cast<char>(raw & 0xFFu);
+    return text;
+}
+
+} // namespace
+
 template <typename T>
 void print_line(std::ostream& out, std::string_view key, const T& value) {
     out << key << ": " << value << '\n';
@@ -201,6 +215,17 @@ void print_metadata_text(std::ostream& out, Format format, const LoadedDocument&
             print_line(out, "stream_count", current.streams().size());
             print_line(out, "has_sfsh", bool_text(current.sfsh_header().has_value()));
             print_line(out, "crid_table", std::string(current.crid_header().table_name()));
+            out << "streams:\n";
+            for (size_t index = 0; index < current.streams().size(); ++index) {
+                const auto& stream = current.streams()[index];
+                out << "  [" << index << "] type=" << usm_stream_type_text(stream.stream_id)
+                    << " channel=" << static_cast<unsigned int>(stream.channel_no)
+                    << " filename=" << stream.filename;
+                if (stream.audio_codec.has_value()) {
+                    out << " audio_codec=" << usm::audio_codec_name(*stream.audio_codec);
+                }
+                out << '\n';
+            }
         } else if constexpr (std::same_as<T, utf::UtfTable>) {
             print_utf_text(out, current);
         }
@@ -294,7 +319,26 @@ void print_metadata_json(std::ostream& out, Format format, const LoadedDocument&
             out << ",\"container_filename\":" << quote_json(current.container_filename())
                 << ",\"stream_count\":" << current.streams().size()
                 << ",\"has_sfsh\":" << bool_text(current.sfsh_header().has_value())
-                << ",\"crid_table\":" << quote_json(current.crid_header().table_name());
+                << ",\"crid_table\":" << quote_json(current.crid_header().table_name())
+                << ",\"streams\":[";
+            for (size_t index = 0; index < current.streams().size(); ++index) {
+                if (index != 0) {
+                    out << ',';
+                }
+                const auto& stream = current.streams()[index];
+                out << "{\"index\":" << index
+                    << ",\"type\":" << quote_json(usm_stream_type_text(stream.stream_id))
+                    << ",\"channel\":" << static_cast<unsigned int>(stream.channel_no)
+                    << ",\"filename\":" << quote_json(stream.filename)
+                    << ",\"audio_codec\":";
+                if (stream.audio_codec.has_value()) {
+                    out << quote_json(usm::audio_codec_name(*stream.audio_codec));
+                } else {
+                    out << "null";
+                }
+                out << '}';
+            }
+            out << ']';
         } else if constexpr (std::same_as<T, utf::UtfTable>) {
             out << ",\"table_name\":" << quote_json(current.table_name())
                 << ",\"version\":" << current.version()

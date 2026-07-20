@@ -1,0 +1,16 @@
+#pragma once
+/**
+ * @file version.hpp
+ * @brief Compile-time CriCodecs version information.
+ */
+
+#include <string_view>
+
+namespace cricodecs {
+
+inline constexpr int version_major = @CRICODECS_VERSION_MAJOR@;
+inline constexpr int version_minor = @CRICODECS_VERSION_MINOR@;
+inline constexpr int version_patch = @CRICODECS_VERSION_PATCH@;
+inline constexpr std::string_view version = "@CRICODECS_VERSION@";
+
+} // namespace cricodecs

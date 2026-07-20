@@ -38,6 +38,25 @@ namespace {
     return aix;
 }
 
+[[nodiscard]] std::vector<std::vector<uint8_t>> copy_aix_payloads(
+    const nb::object& source,
+    const char* argument_name
+) {
+    if (!PySequence_Check(source.ptr())) {
+        raise_type_error(std::string(argument_name) + " must be a sequence of bytes-like ADX payloads");
+    }
+    std::vector<std::vector<uint8_t>> payloads;
+    const auto count = static_cast<size_t>(PySequence_Size(source.ptr()));
+    payloads.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+        auto item = nb::steal<nb::object>(PySequence_GetItem(source.ptr(), static_cast<Py_ssize_t>(index)));
+        auto borrowed = borrow_python_source(item);
+        const auto data = borrowed.as_span();
+        payloads.emplace_back(data.begin(), data.end());
+    }
+    return payloads;
+}
+
 } // namespace
 
 void bind_aix_module(nb::module_& module) {
@@ -81,11 +100,7 @@ void bind_aix_module(nb::module_& module) {
         .def_rw("layer_adx_data", &cricodecs::aix::AixBuildSegment::layer_adx_data);
 
     nb::class_<cricodecs::aix::Aix>(module, "Aix")
-        .def_static("load", [](const std::string& path) {
-            cricodecs::aix::Aix aix;
-            unwrap_expected(aix.load(std::filesystem::path(path)));
-            return aix;
-        }, nb::arg("path"))
+        .def_static("load", &load_aix_any, nb::arg("source"))
         .def_static("load_bytes", [](const nb::bytes& data) {
             cricodecs::aix::Aix aix;
             auto owned = copy_python_bytes(data);
@@ -93,7 +108,7 @@ void bind_aix_module(nb::module_& module) {
             return aix;
         }, nb::arg("data"))
         .def_prop_ro("source_path", [](const cricodecs::aix::Aix& self) {
-            return self.source_path().empty() ? std::string() : self.source_path().string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("segments", [](const cricodecs::aix::Aix& self) {
             return segments_list(self);
@@ -126,7 +141,38 @@ void bind_aix_module(nb::module_& module) {
         }, nb::arg("segment_index"), nb::arg("layer_index"), nb::arg("output_path"))
         .def("extract", [](const cricodecs::aix::Aix& self, const std::string& output_dir) {
             unwrap_expected(self.extract(output_dir));
-        }, nb::arg("output_dir"));
+        }, nb::arg("output_dir"))
+        .def("save", [](const cricodecs::aix::Aix& self) {
+            return to_python_bytes(unwrap_expected(self.save()));
+        })
+        .def("save_to_file", [](const cricodecs::aix::Aix& self, const nb::object& output_path) {
+            unwrap_expected(self.save_to_file(require_python_path(output_path, "output_path")));
+        }, nb::arg("output_path"))
+        .def("add_segment", [](cricodecs::aix::Aix& self, cricodecs::aix::AixBuildSegment segment) {
+            unwrap_expected(self.add_segment(std::move(segment)));
+        }, nb::arg("segment"))
+        .def("replace_segment", [](cricodecs::aix::Aix& self, size_t index, cricodecs::aix::AixBuildSegment segment) {
+            unwrap_expected(self.replace_segment(index, std::move(segment)));
+        }, nb::arg("index"), nb::arg("segment"))
+        .def("remove_segment", [](cricodecs::aix::Aix& self, size_t index) {
+            unwrap_expected(self.remove_segment(index));
+        }, nb::arg("index"))
+        .def("move_segment", [](cricodecs::aix::Aix& self, size_t from_index, size_t to_index) {
+            unwrap_expected(self.move_segment(from_index, to_index));
+        }, nb::arg("from_index"), nb::arg("to_index"))
+        .def("add_layer", [](cricodecs::aix::Aix& self, const nb::object& segment_adx_data) {
+            unwrap_expected(self.add_layer(copy_aix_payloads(segment_adx_data, "segment_adx_data")));
+        }, nb::arg("segment_adx_data"))
+        .def("replace_layer", [](cricodecs::aix::Aix& self, size_t segment_index, size_t layer_index, const nb::object& data) {
+            auto borrowed = borrow_python_source(data);
+            unwrap_expected(self.replace_layer(segment_index, layer_index, borrowed.as_span()));
+        }, nb::arg("segment_index"), nb::arg("layer_index"), nb::arg("data"))
+        .def("remove_layer", [](cricodecs::aix::Aix& self, size_t index) {
+            unwrap_expected(self.remove_layer(index));
+        }, nb::arg("index"))
+        .def("move_layer", [](cricodecs::aix::Aix& self, size_t from_index, size_t to_index) {
+            unwrap_expected(self.move_layer(from_index, to_index));
+        }, nb::arg("from_index"), nb::arg("to_index"));
 
     install_attr_repr(module, "AixSegment", {"offset", "size", "sample_count", "sample_rate"});
     install_attr_repr(module, "AixLayer", {"sample_rate", "channel_count"});

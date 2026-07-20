@@ -692,8 +692,57 @@ namespace cricodecs::wav {
             loops
         );
         append_bytes(output, pcm_bytes(pcm_data));
-
         return output;
+    }
+
+    std::expected<size_t, std::string> WavContainer::built_size(
+        std::span<const int16_t> pcm_data,
+        uint32_t sample_rate,
+        uint16_t channels,
+        std::span<const SampleLoop> loops)
+    {
+        auto layout = make_write_layout(pcm_data, sample_rate, channels, loops);
+        if (!layout) {
+            return std::unexpected(layout.error());
+        }
+        return static_cast<size_t>(layout->riff_size) + 8;
+    }
+
+    std::expected<void, std::string> WavContainer::build_into(
+        std::span<uint8_t> output,
+        std::span<const int16_t> pcm_data,
+        uint32_t sample_rate,
+        uint16_t channels,
+        std::span<const SampleLoop> loops)
+    {
+        auto layout = make_write_layout(pcm_data, sample_rate, channels, loops);
+        if (!layout) {
+            return std::unexpected(layout.error());
+        }
+        const size_t required_size = static_cast<size_t>(layout->riff_size) + 8;
+        if (output.size() != required_size) {
+            return std::unexpected("WAV build failed: output span has the wrong size");
+        }
+
+        size_t offset = 0;
+        emit_wave_header(
+            [&](uint16_t value) {
+                io::write_le<uint16_t>(output.data() + offset, value);
+                offset += sizeof(value);
+            },
+            [&](uint32_t value) {
+                io::write_le<uint32_t>(output.data() + offset, value);
+                offset += sizeof(value);
+            },
+            *layout,
+            sample_rate,
+            channels,
+            loops
+        );
+        const auto samples = pcm_bytes(pcm_data);
+        std::memcpy(output.data() + offset, samples.data(), samples.size());
+
+        return {};
     }
 
     std::expected<void, std::string> WavContainer::write(

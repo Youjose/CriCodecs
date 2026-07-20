@@ -8,8 +8,6 @@
 
 #include "acx_container.hpp"
 
-#include <fstream>
-
 #include "../utilities/io.hpp"
 
 namespace cricodecs::acx {
@@ -21,7 +19,7 @@ using io::read_be;
 constexpr uint32_t max_reasonable_entries = 0x10000;
 constexpr uint32_t adx_signature_mask = 0xFFFF0000u;
 constexpr uint32_t adx_signature_value = 0x80000000u;
-constexpr uint32_t ogg_magic = 0x4F676753u;
+constexpr uint32_t ogg_magic = io::FourCC{"OggS"}.be_value();
 
 [[nodiscard]] AcxEntryType detect_entry_type(std::span<const uint8_t> source, uint32_t offset, uint32_t size) {
     if (offset > source.size() || size > source.size() - offset || size < sizeof(uint32_t)) {
@@ -132,17 +130,7 @@ std::expected<void, std::string> AcxContainer::export_stream(
         return std::unexpected(data.error());
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("ACX export failed: could not open output: " + output_path.string());
-    }
-
-    file.write(reinterpret_cast<const char*>(data->data()), static_cast<std::streamsize>(data->size()));
-    if (!file) {
-        return std::unexpected("ACX export failed: could not write output: " + output_path.string());
-    }
-
-    return {};
+    return io::write_file_bytes(output_path, *data, "ACX export failed");
 }
 
 std::expected<void, std::string> AcxContainer::export_all(const std::filesystem::path& output_dir) const {

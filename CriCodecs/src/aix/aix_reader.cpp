@@ -20,9 +20,9 @@ namespace {
 
 using io::read_be;
 
-constexpr std::array<uint8_t, 4> aixf_magic = {'A', 'I', 'X', 'F'};
-constexpr uint32_t aixp_magic = 0x41495850u;
-constexpr uint32_t aixe_magic = 0x41495845u;
+constexpr io::FourCC aixf_magic{"AIXF"};
+constexpr uint32_t aixp_magic = io::FourCC{"AIXP"}.be_value();
+constexpr uint32_t aixe_magic = io::FourCC{"AIXE"}.be_value();
 constexpr uint32_t supported_version = 0x01000014u;
 constexpr size_t fixed_header_size = 0x20;
 constexpr size_t segment_entry_size = 0x10;

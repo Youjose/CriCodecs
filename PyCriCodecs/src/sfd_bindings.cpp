@@ -158,15 +158,13 @@ void bind_sfd_module(nb::module_& module) {
         );
 
     nb::class_<cricodecs::sfd::SfdContainer>(module, "Sfd")
-        .def_static("load", [](const std::string& path) {
-            return unwrap_expected(cricodecs::sfd::SfdContainer::load(std::filesystem::path(path)));
-        }, nb::arg("path"))
+        .def_static("load", &load_sfd_any, nb::arg("source"))
         .def_static("load_bytes", [](const nb::bytes& data) {
             auto owned = copy_python_bytes(data);
             return unwrap_expected(cricodecs::sfd::SfdContainer::load(std::move(owned)));
         }, nb::arg("data"))
         .def_prop_ro("source_path", [](const cricodecs::sfd::SfdContainer& self) {
-            return self.source_path().generic_string();
+            return path_or_none(self.source_path());
         })
         .def_prop_ro("stream_count", &cricodecs::sfd::SfdContainer::stream_count)
         .def_prop_ro("streams", [](const cricodecs::sfd::SfdContainer& self) {

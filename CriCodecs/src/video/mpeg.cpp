@@ -146,6 +146,55 @@ struct MpegScanResult {
 
 } // namespace
 
+MpegStructure inspect_mpeg_structure(std::span<const uint8_t> bytes) noexcept {
+    MpegStructure structure;
+    for (size_t offset = find_start_code3(bytes); offset != npos; offset = find_start_code3(bytes, offset + 3u)) {
+        ++structure.start_codes;
+        const uint8_t code = bytes[offset + 3u];
+        const bool is_slice = code >= 0x01u && code <= 0xAFu;
+        const bool is_known = code == 0x00u || is_slice || code == 0xB2u ||
+            code == 0xB3u || code == 0xB5u || code == 0xB7u || code == 0xB8u;
+        structure.valid_start_codes += is_known;
+        structure.slices += is_slice;
+        structure.violations += !is_known;
+
+        if (code == 0x00u) {
+            if (offset + 6u > bytes.size()) {
+                ++structure.violations;
+                continue;
+            }
+            const uint8_t coding_type = static_cast<uint8_t>((bytes[offset + 5u] >> 3u) & 0x07u);
+            if (coding_type >= 1u && coding_type <= 4u) {
+                ++structure.pictures;
+            } else {
+                ++structure.violations;
+            }
+        } else if (code == 0xB3u) {
+            if (offset + 12u > bytes.size()) {
+                ++structure.violations;
+                continue;
+            }
+            const auto header = read_sequence_header_at(bytes, offset);
+            if (header.width == 0 || header.height == 0 || header.aspect_ratio_code == 0 ||
+                header.frame_rate_code == 0 || header.frame_rate_code > 8u ||
+                (bytes[offset + 10u] & 0x20u) == 0) {
+                ++structure.violations;
+            }
+        } else if (code == 0xB5u) {
+            if (offset + 5u > bytes.size()) {
+                ++structure.violations;
+                continue;
+            }
+            const uint8_t extension_id = static_cast<uint8_t>(bytes[offset + 4u] >> 4u);
+            const bool valid_extension = extension_id == 1u || extension_id == 2u ||
+                extension_id == 3u || extension_id == 4u || extension_id == 5u ||
+                extension_id == 7u || extension_id == 8u || extension_id == 9u || extension_id == 10u;
+            structure.violations += !valid_extension;
+        }
+    }
+    return structure;
+}
+
 std::expected<MpegVideoSequenceHeader, std::string> parse_mpeg_sequence_header(std::span<const uint8_t> bytes) {
     for (size_t offset = find_start_code3(bytes); offset != npos; offset = find_start_code3(bytes, offset + 3u)) {
         if (offset + 12u > bytes.size() || bytes[offset + 3u] != 0xB3) {

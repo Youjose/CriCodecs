@@ -16,7 +16,9 @@
 #include <sstream>
 
 #include "afs_format.hpp"
-#include "../utilities/io.hpp"
+#include "../utilities/io_endian.hpp"
+#include "../utilities/io_reader.hpp"
+#include "../utilities/io_writer.hpp"
 #include "../utilities/numeric.hpp"
 #include "../utilities/string.hpp"
 
@@ -292,9 +294,7 @@ std::expected<AfsContainer, std::string> AfsContainer::create_from_als(
                 directory_text.empty() ? std::filesystem::path{} : normalize_generic_tool_path(directory_text);
             if (current_header_source_dir.empty()) {
                 current_lookup_dir = source_lookup_root;
-            } else if (current_header_source_dir.is_absolute()) {
-                current_lookup_dir = current_header_source_dir;
-            } else if (source_lookup_root.empty()) {
+            } else if (current_header_source_dir.is_absolute() || source_lookup_root.empty()) {
                 current_lookup_dir = current_header_source_dir;
             } else {
                 current_lookup_dir = (source_lookup_root / current_header_source_dir).lexically_normal();
@@ -448,10 +448,9 @@ std::expected<std::vector<uint8_t>, std::string> AfsContainer::build() {
         }
 
         if (preserve_layout && include_directory_table) {
-            if (!m_directory_table_offset || !m_directory_table_size) {
-                preserve_layout = false;
-            } else if (*m_directory_table_offset < *previous_present_end ||
-                       *m_directory_table_size < m_entries.size() * detail::directory_entry_size) {
+            if (!m_directory_table_offset || !m_directory_table_size ||
+                *m_directory_table_offset < *previous_present_end ||
+                *m_directory_table_size < m_entries.size() * detail::directory_entry_size) {
                 preserve_layout = false;
             }
         }
@@ -461,11 +460,6 @@ std::expected<std::vector<uint8_t>, std::string> AfsContainer::build() {
     uint32_t directory_size = 0;
     uint64_t total_size = 0;
     if (preserve_layout) {
-        for (const auto& entry : m_entries) {
-            if (entry.present) {
-                payload_end = entry.offset + entry.size;
-            }
-        }
         final_directory_offset = include_directory_table ? *m_directory_table_offset : 0;
         directory_size = include_directory_table ? *m_directory_table_size : 0;
         total_size = m_source.size();
@@ -529,7 +523,7 @@ std::expected<std::vector<uint8_t>, std::string> AfsContainer::build() {
             continue;
         }
         const auto payload = payloads[index];
-        std::copy(payload.begin(), payload.end(), output.begin() + entry.offset);
+        std::copy(payload.begin(), payload.end(), output.data() + entry.offset);
     }
 
     if (include_directory_table) {
@@ -540,12 +534,12 @@ std::expected<std::vector<uint8_t>, std::string> AfsContainer::build() {
             const size_t record_offset = static_cast<size_t>(final_directory_offset) + index * detail::directory_entry_size;
             const std::string record_name = detail::directory_record_name(m_entries[index].name);
             if (!record_name.empty()) {
-                std::copy(record_name.begin(), record_name.end(), output.begin() + record_offset);
+                std::copy(record_name.begin(), record_name.end(), output.data() + record_offset);
             }
             std::copy(
                 m_entries[index].directory_metadata.begin(),
                 m_entries[index].directory_metadata.end(),
-                output.begin() + record_offset + detail::directory_name_size
+                output.data() + record_offset + detail::directory_name_size
             );
             io::write_le<uint32_t>(
                 output.data() + record_offset + detail::directory_name_size + m_entries[index].directory_metadata.size(),
@@ -577,17 +571,7 @@ std::expected<void, std::string> AfsContainer::build_to_file(const std::filesyst
         return std::unexpected(built.error());
     }
 
-    std::ofstream file(output_path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("AFS build failed: could not open output: " + output_path.string());
-    }
-
-    file.write(reinterpret_cast<const char*>(built->data()), static_cast<std::streamsize>(built->size()));
-    if (!file) {
-        return std::unexpected("AFS build failed: could not write output: " + output_path.string());
-    }
-
-    return {};
+    return io::write_file_bytes(output_path, *built, "AFS build failed");
 }
 
 std::expected<std::string, std::string> AfsContainer::build_file_id_header(

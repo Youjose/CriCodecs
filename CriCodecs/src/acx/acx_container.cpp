@@ -8,9 +8,8 @@
 
 #include "acx_container.hpp"
 
-#include <fstream>
-
 #include "acx_builder.hpp"
+#include "../utilities/io.hpp"
 
 namespace cricodecs::acx {
 
@@ -45,15 +44,7 @@ std::expected<void, std::string> AcxContainer::save_to_file(const std::filesyste
         return std::unexpected(bytes.error());
     }
 
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output) {
-        return std::unexpected("ACX save failed: could not open output: " + output_path.string());
-    }
-    output.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
-    if (!output) {
-        return std::unexpected("ACX save failed: could not write output: " + output_path.string());
-    }
-    return {};
+    return io::write_file_bytes(output_path, *bytes, "ACX save failed");
 }
 
 std::expected<void, std::string> AcxContainer::replace_payloads(std::vector<std::vector<uint8_t>> payloads) {

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <flat_set>
+#include <limits>
 
 namespace cricodecs::usm {
 
@@ -226,7 +227,11 @@ std::expected<SfshHeader, std::string> read_sfsh_header(std::span<const uint8_t>
     return header;
 }
 
-UsmStreamInfo make_stream_info(const utf::UtfTable& table, uint32_t row, const text::EncodingOptions& encoding) {
+std::expected<UsmStreamInfo, std::string> make_stream_info(
+    const utf::UtfTable& table,
+    uint32_t row,
+    const text::EncodingOptions& encoding
+) {
     UsmStreamInfo info;
     if (auto filename = table.get_string(row, "filename"); filename) {
         info.filename_raw = std::string(*filename);
@@ -240,7 +245,12 @@ UsmStreamInfo make_stream_info(const utf::UtfTable& table, uint32_t row, const t
         info.stream_id = static_cast<UsmChunkType>(*stream_id);
     }
     if (auto channel_no = table.get<uint16_t>(row, "chno"); channel_no) {
-        info.channel_no = *channel_no;
+        if (*channel_no > std::numeric_limits<uint8_t>::max()) {
+            return std::unexpected(
+                "USM parse failed: CRID stream channel exceeds the chunk-header field width"
+            );
+        }
+        info.channel_no = static_cast<uint8_t>(*channel_no);
     }
     if (auto fmtver = table.get<uint32_t>(row, "fmtver"); fmtver) {
         info.fmtver = *fmtver;
@@ -263,13 +273,7 @@ UsmStreamInfo make_stream_info(const utf::UtfTable& table, uint32_t row, const t
 } // namespace
 
 std::string_view audio_codec_name(uint8_t codec) noexcept {
-    switch (static_cast<UsmAudioCodec>(codec)) {
-    case UsmAudioCodec::Adx:
-        return "adx";
-    case UsmAudioCodec::Hca:
-        return "hca";
-    }
-    return "unknown";
+    return audio_codec_name(static_cast<UsmAudioCodec>(codec));
 }
 
 std::expected<void, std::string> UsmReader::load(const std::filesystem::path& path) {
@@ -290,6 +294,15 @@ std::expected<void, std::string> UsmReader::load(std::span<const uint8_t> data) 
     return parse_file();
 }
 
+std::expected<void, std::string> UsmReader::load(std::vector<uint8_t>&& data) {
+    m_source_path.clear();
+    m_owned_source = std::move(data);
+    if (auto result = m_reader.open(std::span<const uint8_t>(m_owned_source)); !result) {
+        return std::unexpected("USM load failed: could not open owned memory buffer: " + std::string(result.error()));
+    }
+    return parse_file();
+}
+
 std::expected<void, std::string> UsmReader::parse_file() {
     m_reader.seek(0);
     m_container_filename.clear();
@@ -300,6 +313,7 @@ std::expected<void, std::string> UsmReader::parse_file() {
     m_output_name_error.clear();
     m_output_names_ready = false;
     m_chunks.clear();
+    m_audio_codecs.clear();
 
     if (m_reader.size() >= sizeof(uint32_t) &&
         m_reader.read_be_at<uint32_t>(0) == static_cast<uint32_t>(UsmChunkType::SFSH)) {
@@ -333,9 +347,18 @@ std::expected<void, std::string> UsmReader::parse_file() {
         }
         m_container_filename = std::string(basename_of(*decoded));
     }
+    std::flat_set<UsmStreamId> stream_ids;
     for (uint32_t row = 1; row < m_crid_header.row_count(); ++row) {
-        m_streams.push_back(make_stream_info(m_crid_header, row, m_encoding));
+        auto stream = make_stream_info(m_crid_header, row, m_encoding);
+        if (!stream) {
+            return std::unexpected(stream.error());
+        }
+        if (!stream_ids.insert(stream->id()).second) {
+            return std::unexpected("USM parse failed: CRID contains a duplicate stream id and channel");
+        }
+        m_streams.push_back(std::move(*stream));
     }
+    refresh_audio_codecs();
 
     return {};
 }
@@ -362,6 +385,7 @@ std::expected<void, std::string> UsmReader::parse_sfsh_file() {
         .filename_raw = "sfsh_ch0",
         .stream_id = UsmChunkType::SFSH,
         .channel_no = 0,
+        .audio_codec = std::nullopt,
         .fmtver = header->version,
         .filesize = header->payload_size,
     });
@@ -424,12 +448,13 @@ std::string UsmReader::describe_stream(UsmStreamId id) const {
     return fallback_stream_name(id);
 }
 
-UsmReader::AudioCodecMap UsmReader::collect_audio_codecs() const {
-    AudioCodecMap audio_codecs;
+void UsmReader::refresh_audio_codecs() {
+    m_audio_codecs.clear();
     for (const auto& chunk : m_chunks) {
         if (
             chunk.payload_type() != UsmPayloadType::Header ||
-            chunk.header.magic != static_cast<uint32_t>(UsmChunkType::SFA) ||
+            (chunk.header.magic != static_cast<uint32_t>(UsmChunkType::SFA) &&
+             chunk.header.magic != static_cast<uint32_t>(UsmChunkType::AHX)) ||
             !chunk.is_utf_payload()
         ) {
             continue;
@@ -440,10 +465,16 @@ UsmReader::AudioCodecMap UsmReader::collect_audio_codecs() const {
             continue;
         }
         if (auto codec = table->get<uint8_t>(0, "audio_codec"); codec) {
-            audio_codecs.insert_or_assign(chunk.header.channel_no, *codec);
+            const auto value = static_cast<UsmAudioCodec>(*codec);
+            m_audio_codecs.insert_or_assign(chunk.stream_id(), value);
         }
     }
-    return audio_codecs;
+
+    for (auto& stream : m_streams) {
+        if (const auto codec = m_audio_codecs.find(stream.id()); codec != m_audio_codecs.end()) {
+            stream.audio_codec = codec->second;
+        }
+    }
 }
 
 bool UsmReader::chunk_needs_masking(const UsmChunk& chunk, const AudioCodecMap& audio_codecs) const {
@@ -460,22 +491,23 @@ bool UsmReader::chunk_needs_masking(const UsmChunk& chunk, const AudioCodecMap& 
         return false;
     }
 
-    const auto codec = audio_codecs.find(chunk.header.channel_no);
-    return codec != audio_codecs.end() && codec->second == static_cast<uint8_t>(UsmAudioCodec::Adx);
+    const auto codec = audio_codecs.find(chunk.stream_id());
+    return codec != audio_codecs.end() && codec->second == UsmAudioCodec::Adx;
 }
 
 std::vector<uint8_t> UsmReader::decrypt_chunk_payload(const UsmChunk& chunk) const {
     std::vector<uint8_t> padded_payload(chunk.payload.begin(), chunk.payload.end());
     padded_payload.insert(padded_payload.end(), chunk.padding.begin(), chunk.padding.end());
 
-    auto chunk_bytes =
-        chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA)
-            ? m_crypto.decrypt_audio(padded_payload)
-            : m_crypto.decrypt_video(padded_payload);
-    if (chunk.padding.size() > 0 && chunk.padding.size() <= chunk_bytes.size()) {
-        chunk_bytes.resize(chunk_bytes.size() - chunk.padding.size());
+    if (chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA)) {
+        m_crypto.decrypt_audio(padded_payload);
+    } else {
+        m_crypto.decrypt_video(padded_payload);
     }
-    return chunk_bytes;
+    if (chunk.padding.size() > 0 && chunk.padding.size() <= padded_payload.size()) {
+        padded_payload.resize(padded_payload.size() - chunk.padding.size());
+    }
+    return padded_payload;
 }
 
 std::expected<void, std::string> UsmReader::visit_demuxed_payloads_impl(
@@ -486,7 +518,7 @@ std::expected<void, std::string> UsmReader::visit_demuxed_payloads_impl(
     if (!output_names) {
         return std::unexpected(output_names.error());
     }
-    const auto audio_codecs = collect_audio_codecs();
+    const auto& audio_codecs = m_audio_codecs;
 
     for (const auto& chunk : m_chunks) {
         if (chunk.payload_type() != UsmPayloadType::Stream) {
@@ -526,8 +558,13 @@ std::expected<void, std::string> UsmReader::visit_demuxed_payloads_impl(
 std::expected<void, std::string> UsmReader::append_stream_payloads(
     UsmStreamId id,
     const AudioCodecMap& audio_codecs,
-    std::vector<uint8_t>& output
+    std::vector<uint8_t>& output,
+    size_t max_bytes
 ) const {
+    if (max_bytes == 0) {
+        return {};
+    }
+
     for (const auto& chunk : m_chunks) {
         if (chunk.stream_id() != id || chunk.payload_type() != UsmPayloadType::Stream) {
             continue;
@@ -535,9 +572,16 @@ std::expected<void, std::string> UsmReader::append_stream_payloads(
 
         if (chunk_needs_masking(chunk, audio_codecs)) {
             const auto chunk_bytes = decrypt_chunk_payload(chunk);
-            output.insert(output.end(), chunk_bytes.begin(), chunk_bytes.end());
+            const auto remaining = max_bytes - output.size();
+            const auto count = std::min(chunk_bytes.size(), remaining);
+            output.insert(output.end(), chunk_bytes.begin(), chunk_bytes.begin() + static_cast<std::ptrdiff_t>(count));
         } else {
-            output.insert(output.end(), chunk.payload.begin(), chunk.payload.end());
+            const auto remaining = max_bytes - output.size();
+            const auto count = std::min(chunk.payload.size(), remaining);
+            output.insert(output.end(), chunk.payload.begin(), chunk.payload.begin() + static_cast<std::ptrdiff_t>(count));
+        }
+        if (output.size() >= max_bytes) {
+            break;
         }
     }
     return {};
@@ -593,7 +637,25 @@ std::expected<std::vector<uint8_t>, std::string> UsmReader::extract_stream(uint3
     if (m_streams[index].filesize != 0) {
         output.reserve(m_streams[index].filesize);
     }
-    auto result = append_stream_payloads(m_streams[index].id(), collect_audio_codecs(), output);
+    auto result = append_stream_payloads(m_streams[index].id(), m_audio_codecs, output);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return output;
+}
+
+std::expected<std::vector<uint8_t>, std::string> UsmReader::extract_stream_sample(
+    uint32_t index,
+    size_t max_bytes
+) const {
+    if (index >= m_streams.size()) {
+        return std::unexpected("USM stream index is out of range");
+    }
+
+    std::vector<uint8_t> output;
+    const auto declared_size = static_cast<size_t>(m_streams[index].filesize);
+    output.reserve(std::min(declared_size, max_bytes));
+    auto result = append_stream_payloads(m_streams[index].id(), m_audio_codecs, output, max_bytes);
     if (!result) {
         return std::unexpected(result.error());
     }
@@ -613,51 +675,42 @@ std::expected<std::vector<uint8_t>, std::string> UsmReader::transform_container(
         return std::unexpected("USM " + std::string(encrypt ? "encrypt" : "decrypt") + " requires a key");
     }
 
-    const auto audio_codecs = collect_audio_codecs();
+    const auto& audio_codecs = m_audio_codecs;
 
-    std::vector<uint8_t> output;
-    if (m_reader.is_open()) {
-        output.reserve(m_reader.size());
-    }
-
-    for (const auto& chunk : m_chunks) {
+    const auto source = m_reader.data();
+    std::vector<uint8_t> output(source.begin(), source.end());
+    for (auto chunk : chunk_views(std::span<uint8_t>(output.data(), output.size()))) {
+        const auto& header = chunk.header();
         const bool should_transform =
             chunk.payload_type() == UsmPayloadType::Stream &&
-            ((chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFV) ||
-              chunk.header.magic == static_cast<uint32_t>(UsmChunkType::ALP)) ||
-             (chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA) &&
+            ((header.magic == static_cast<uint32_t>(UsmChunkType::SFV) ||
+              header.magic == static_cast<uint32_t>(UsmChunkType::ALP)) ||
+             (header.magic == static_cast<uint32_t>(UsmChunkType::SFA) &&
               [&]() {
-                  const auto codec = audio_codecs.find(chunk.header.channel_no);
+                  const auto codec = audio_codecs.find(UsmStreamId{
+                      .stream_id = UsmChunkType::SFA,
+                      .channel_no = header.channel_no,
+                  });
                   return codec != audio_codecs.end() &&
-                      codec->second != static_cast<uint8_t>(UsmAudioCodec::Hca);
+                      codec->second != UsmAudioCodec::Hca;
               }()));
 
         if (!should_transform) {
-            const auto packed = chunk.pack();
-            output.insert(output.end(), packed.begin(), packed.end());
             continue;
         }
 
-        std::vector<uint8_t> padded_payload(chunk.payload.begin(), chunk.payload.end());
-        padded_payload.insert(padded_payload.end(), chunk.padding.begin(), chunk.padding.end());
-
-        auto transformed =
-            chunk.header.magic == static_cast<uint32_t>(UsmChunkType::SFA)
-                ? (encrypt ? m_crypto.encrypt_audio(padded_payload) : m_crypto.decrypt_audio(padded_payload))
-                : (encrypt ? m_crypto.encrypt_video(padded_payload) : m_crypto.decrypt_video(padded_payload));
-
-        UsmChunk rewritten = chunk;
-        rewritten.payload = std::vector<uint8_t>(
-            transformed.begin(),
-            transformed.begin() + static_cast<std::ptrdiff_t>(chunk.payload.size())
-        );
-        rewritten.padding = std::vector<uint8_t>(
-            transformed.begin() + static_cast<std::ptrdiff_t>(chunk.payload.size()),
-            transformed.end()
-        );
-
-        const auto packed = rewritten.pack();
-        output.insert(output.end(), packed.begin(), packed.end());
+        auto payload = chunk.payload_with_padding();
+        if (header.magic == static_cast<uint32_t>(UsmChunkType::SFA)) {
+            if (encrypt) {
+                m_crypto.encrypt_audio(payload);
+            } else {
+                m_crypto.decrypt_audio(payload);
+            }
+        } else if (encrypt) {
+            m_crypto.encrypt_video(payload);
+        } else {
+            m_crypto.decrypt_video(payload);
+        }
     }
 
     return output;
@@ -670,7 +723,7 @@ std::expected<void, std::string> UsmReader::extract_file(
     if (index >= m_streams.size()) {
         return std::unexpected("USM stream index is out of range");
     }
-    return write_stream_payloads(m_streams[index].id(), collect_audio_codecs(), output_path);
+    return write_stream_payloads(m_streams[index].id(), m_audio_codecs, output_path);
 }
 
 std::expected<void, std::string> UsmReader::extract(const std::filesystem::path& output_dir) {
@@ -684,7 +737,7 @@ std::expected<void, std::string> UsmReader::extract(const std::filesystem::path&
     if (!output_names) {
         return std::unexpected(output_names.error());
     }
-    const auto audio_codecs = collect_audio_codecs();
+    const auto& audio_codecs = m_audio_codecs;
 
     for (const auto& stream : m_streams) {
         const auto output_name = (*output_names)->find(stream.id());
@@ -708,7 +761,7 @@ std::expected<std::map<std::string, std::vector<uint8_t>>, std::string> UsmReade
     if (!output_names) {
         return std::unexpected(output_names.error());
     }
-    const auto audio_codecs = collect_audio_codecs();
+    const auto& audio_codecs = m_audio_codecs;
 
     for (const auto& stream : m_streams) {
         const auto output_name = (*output_names)->find(stream.id());

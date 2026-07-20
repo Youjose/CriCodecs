@@ -358,7 +358,10 @@ template <typename Int>
         const auto& column_info = table.column(column);
         editable.add_column(column_info.name, column_info.type, column_info.flag);
         if (cricodecs::utf::has_flag(column_info.flag, cricodecs::utf::ColumnFlag::Default)) {
-            editable.set_default_value(column, materialized_default_value(table, column, column_info));
+            unwrap_expected(editable.set_default_value(
+                column,
+                materialized_default_value(table, column, column_info)
+            ));
         }
     }
 
@@ -369,7 +372,11 @@ template <typename Int>
             if (!cricodecs::utf::has_flag(column_info.flag, cricodecs::utf::ColumnFlag::Row)) {
                 continue;
             }
-            editable.set(row, column, materialized_value(table, row, column, column_info));
+            unwrap_expected(editable.set(
+                row,
+                column,
+                materialized_value(table, row, column, column_info)
+            ));
         }
     }
 
@@ -612,6 +619,15 @@ void bind_utf_module(nb::module_& module) {
         .def_prop_ro("table_name_raw", [](const cricodecs::utf::UtfTable& self) {
             return string_view_to_python_bytes(self.table_name_bytes());
         })
+        .def_prop_rw(
+            "text_encoding",
+            [](const cricodecs::utf::UtfTable& self) -> nb::object {
+                return self.text_encoding() ? nb::cast(*self.text_encoding()) : nb::none();
+            },
+            [](cricodecs::utf::UtfTable& self, const nb::object& encoding) {
+                set_text_encoding_from_python(self, encoding);
+            }
+        )
         .def(
             "table_name_text",
             [](const cricodecs::utf::UtfTable& self, const nb::object& encoding) {
@@ -763,6 +779,82 @@ void bind_utf_module(nb::module_& module) {
             }
         )
         .def(
+            "remove_row",
+            [](cricodecs::utf::UtfTable& self, uint32_t row) {
+                ensure_editable(self);
+                static_cast<void>(checked_row_index(self, row));
+                if (!self.remove_row(row)) {
+                    raise_value_error("UTF row index is out of range");
+                }
+            },
+            nb::arg("row")
+        )
+        .def(
+            "remove_column",
+            [](cricodecs::utf::UtfTable& self, const nb::object& column, const nb::object& encoding) {
+                ensure_editable(self);
+                const auto effective_encoding = effective_encoding_object(self, encoding);
+                const auto index = checked_column_key(self, column, effective_encoding);
+                if (!self.remove_column(index)) {
+                    raise_value_error("UTF column index is out of range");
+                }
+            },
+            nb::arg("column"),
+            nb::arg("encoding") = nb::none()
+        )
+        .def(
+            "rename_column",
+            [](cricodecs::utf::UtfTable& self, const nb::object& column, const nb::object& name, const nb::object& encoding) {
+                ensure_editable(self);
+                const auto effective_encoding = effective_encoding_object(self, encoding);
+                const auto index = checked_column_key(self, column, effective_encoding);
+                const auto raw_name = raw_cri_string_from_python(name, effective_encoding);
+                if (!self.rename_column(index, raw_name)) {
+                    raise_value_error("UTF column index is out of range");
+                }
+            },
+            nb::arg("column"),
+            nb::arg("name"),
+            nb::arg("encoding") = nb::none()
+        )
+        .def(
+            "set_column_type",
+            [](cricodecs::utf::UtfTable& self, const nb::object& column, cricodecs::utf::ColumnType type, const nb::object& encoding) {
+                ensure_editable(self);
+                const auto index = checked_column_key(self, column, effective_encoding_object(self, encoding));
+                if (!self.set_column_type(index, type)) {
+                    raise_value_error("UTF column type update failed");
+                }
+            },
+            nb::arg("column"),
+            nb::arg("type"),
+            nb::arg("encoding") = nb::none()
+        )
+        .def(
+            "set_column_flag",
+            [](cricodecs::utf::UtfTable& self, const nb::object& column, const nb::object& flag, const nb::object& encoding) {
+                ensure_editable(self);
+                const auto index = checked_column_key(self, column, effective_encoding_object(self, encoding));
+                const auto bits = column_flag_bits_from_python(flag);
+                if (!self.set_column_flag(index, static_cast<cricodecs::utf::ColumnFlag>(bits))) {
+                    raise_value_error("UTF column flag update failed");
+                }
+            },
+            nb::arg("column"),
+            nb::arg("flag"),
+            nb::arg("encoding") = nb::none()
+        )
+        .def(
+            "set_table_name",
+            [](cricodecs::utf::UtfTable& self, const nb::object& name, const nb::object& encoding) {
+                ensure_editable(self);
+                const auto effective_encoding = effective_encoding_object(self, encoding);
+                self.set_table_name(raw_cri_string_from_python(name, effective_encoding));
+            },
+            nb::arg("name"),
+            nb::arg("encoding") = nb::none()
+        )
+        .def(
             "set",
             [](cricodecs::utf::UtfTable& self, uint32_t row, const nb::object& column, const nb::object& value, const nb::object& encoding) {
                 ensure_editable(self);
@@ -770,7 +862,11 @@ void bind_utf_module(nb::module_& module) {
                 const auto row_index = checked_row_index(self, row);
                 const auto column_index = checked_column_key(self, column, effective_encoding);
                 const auto column_type = self.column(column_index).type;
-                self.set(row_index, column_index, python_to_utf_value(value, column_type, effective_encoding));
+                unwrap_expected(self.set(
+                    row_index,
+                    column_index,
+                    python_to_utf_value(value, column_type, effective_encoding)
+                ));
             },
             nb::arg("row"),
             nb::arg("column"),
@@ -784,7 +880,10 @@ void bind_utf_module(nb::module_& module) {
                 const auto effective_encoding = effective_encoding_object(self, encoding);
                 const auto column_index = checked_column_key(self, column, effective_encoding);
                 const auto column_type = self.column(column_index).type;
-                self.set_default_value(column_index, python_to_utf_value(value, column_type, effective_encoding));
+                unwrap_expected(self.set_default_value(
+                    column_index,
+                    python_to_utf_value(value, column_type, effective_encoding)
+                ));
             },
             nb::arg("column"),
             nb::arg("value"),
@@ -817,7 +916,7 @@ void bind_utf_module(nb::module_& module) {
     install_attr_repr(module, "DataRef", {"offset", "size"});
     install_attr_repr(module, "Guid", {"bytes"});
     install_attr_repr(module, "Column", {"name", "type", "flag", "flag_bits", "has_default", "has_row", "offset", "default_offset", "row_offset"});
-    install_attr_repr(module, "Utf", {"table_name", "row_count", "column_count", "version", "table_size", "row_width", "data_alignment", "is_loaded", "columns"});
+    install_attr_repr(module, "Utf", {"table_name", "text_encoding", "row_count", "column_count", "version", "table_size", "row_width", "data_alignment", "is_loaded", "columns"});
 
     module.def("load", &load_utf_any_with_encoding, nb::arg("source"), nb::arg("encoding") = nb::none());
     module.def(

@@ -26,9 +26,9 @@ using io::write_be;
 using io::write_le;
 using util::align_up;
 
-constexpr std::array<uint8_t, 4> aixf_magic = {'A', 'I', 'X', 'F'};
-constexpr uint32_t aixp_magic = 0x41495850u;
-constexpr uint32_t aixe_magic = 0x41495845u;
+constexpr io::FourCC aixf_magic{"AIXF"};
+constexpr uint32_t aixp_magic = io::FourCC{"AIXP"}.be_value();
+constexpr uint32_t aixe_magic = io::FourCC{"AIXE"}.be_value();
 constexpr uint32_t supported_version = 0x01000014u;
 constexpr uint32_t expected_header_size = 0x800u;
 constexpr uint32_t first_segment_offset = 0x1800u;
@@ -432,6 +432,184 @@ std::expected<void, AixError> Aix::build_to_file(
     }
 
     return {};
+}
+
+std::expected<std::vector<AixBuildSegment>, AixError> Aix::build_segments() const {
+    std::vector<AixBuildSegment> result;
+    result.reserve(m_segments.size());
+    for (size_t segment_index = 0; segment_index < m_segments.size(); ++segment_index) {
+        AixBuildSegment segment;
+        segment.layer_adx_data.reserve(m_layers.size());
+        for (size_t layer_index = 0; layer_index < m_layers.size(); ++layer_index) {
+            auto bytes = segment_bytes(segment_index, layer_index);
+            if (!bytes) {
+                return std::unexpected(bytes.error());
+            }
+            segment.layer_adx_data.push_back(std::move(*bytes));
+        }
+        result.push_back(std::move(segment));
+    }
+    return result;
+}
+
+std::expected<void, AixError> Aix::replace_segments(std::vector<AixBuildSegment> segments) {
+    auto bytes = build(segments);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+
+    const auto original_path = m_source_path;
+    Aix replacement;
+    if (auto loaded = replacement.load(std::move(*bytes)); !loaded) {
+        return std::unexpected("AIX edit failed: rebuilt container did not reload: " + loaded.error());
+    }
+    replacement.m_source_path = original_path;
+    *this = std::move(replacement);
+    return {};
+}
+
+std::expected<std::vector<uint8_t>, AixError> Aix::save() const {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    return build(*segments);
+}
+
+std::expected<void, AixError> Aix::save_to_file(const std::filesystem::path& output_path) const {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    return build_to_file(*segments, output_path);
+}
+
+std::expected<void, AixError> Aix::add_segment(AixBuildSegment segment) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    segments->push_back(std::move(segment));
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::replace_segment(size_t segment_index, AixBuildSegment segment) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (segment_index >= segments->size()) {
+        return std::unexpected("AIX replace failed: segment index is out of range");
+    }
+    (*segments)[segment_index] = std::move(segment);
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::remove_segment(size_t segment_index) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (segment_index >= segments->size()) {
+        return std::unexpected("AIX remove failed: segment index is out of range");
+    }
+    if (segments->size() == 1) {
+        return std::unexpected("AIX remove failed: an AIX must retain at least one segment");
+    }
+    segments->erase(segments->begin() + static_cast<std::ptrdiff_t>(segment_index));
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::move_segment(size_t from_index, size_t to_index) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (from_index >= segments->size() || to_index >= segments->size()) {
+        return std::unexpected("AIX move failed: segment index is out of range");
+    }
+    if (from_index < to_index) {
+        std::rotate(segments->begin() + static_cast<std::ptrdiff_t>(from_index),
+            segments->begin() + static_cast<std::ptrdiff_t>(from_index + 1),
+            segments->begin() + static_cast<std::ptrdiff_t>(to_index + 1));
+    } else if (from_index > to_index) {
+        std::rotate(segments->begin() + static_cast<std::ptrdiff_t>(to_index),
+            segments->begin() + static_cast<std::ptrdiff_t>(from_index),
+            segments->begin() + static_cast<std::ptrdiff_t>(from_index + 1));
+    }
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::add_layer(std::vector<std::vector<uint8_t>> segment_adx_data) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (segment_adx_data.size() != segments->size()) {
+        return std::unexpected("AIX add layer failed: provide one ADX payload for every segment");
+    }
+    for (size_t segment_index = 0; segment_index < segments->size(); ++segment_index) {
+        (*segments)[segment_index].layer_adx_data.push_back(std::move(segment_adx_data[segment_index]));
+    }
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::replace_layer(
+    size_t segment_index,
+    size_t layer_index,
+    std::span<const uint8_t> adx_data
+) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (segment_index >= segments->size() ||
+        layer_index >= (*segments)[segment_index].layer_adx_data.size()) {
+        return std::unexpected("AIX replace failed: segment or layer index is out of range");
+    }
+    (*segments)[segment_index].layer_adx_data[layer_index].assign(adx_data.begin(), adx_data.end());
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::remove_layer(size_t layer_index) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (layer_index >= m_layers.size()) {
+        return std::unexpected("AIX remove failed: layer index is out of range");
+    }
+    if (m_layers.size() == 1) {
+        return std::unexpected("AIX remove failed: an AIX must retain at least one layer");
+    }
+    for (auto& segment : *segments) {
+        segment.layer_adx_data.erase(
+            segment.layer_adx_data.begin() + static_cast<std::ptrdiff_t>(layer_index));
+    }
+    return replace_segments(std::move(*segments));
+}
+
+std::expected<void, AixError> Aix::move_layer(size_t from_index, size_t to_index) {
+    auto segments = build_segments();
+    if (!segments) {
+        return std::unexpected(segments.error());
+    }
+    if (from_index >= m_layers.size() || to_index >= m_layers.size()) {
+        return std::unexpected("AIX move failed: layer index is out of range");
+    }
+    for (auto& segment : *segments) {
+        auto& layers = segment.layer_adx_data;
+        if (from_index < to_index) {
+            std::rotate(layers.begin() + static_cast<std::ptrdiff_t>(from_index),
+                layers.begin() + static_cast<std::ptrdiff_t>(from_index + 1),
+                layers.begin() + static_cast<std::ptrdiff_t>(to_index + 1));
+        } else if (from_index > to_index) {
+            std::rotate(layers.begin() + static_cast<std::ptrdiff_t>(to_index),
+                layers.begin() + static_cast<std::ptrdiff_t>(from_index),
+                layers.begin() + static_cast<std::ptrdiff_t>(from_index + 1));
+        }
+    }
+    return replace_segments(std::move(*segments));
 }
 
 } // namespace cricodecs::aix
