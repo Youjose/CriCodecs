@@ -5,8 +5,9 @@
 namespace cristudio::modules::acx {
 namespace {
 
-QString optional_number(const std::optional<uint32_t>& value) {
-    return value ? QString::number(*value) : QStringLiteral("-");
+template <typename T>
+QString optional_number(const std::optional<T>& value) {
+    return value ? QString::number(static_cast<qulonglong>(*value)) : QStringLiteral("-");
 }
 
 } // namespace

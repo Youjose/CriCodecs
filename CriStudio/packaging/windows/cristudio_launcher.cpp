@@ -55,10 +55,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int show_command) {
         return show_error(L"Could not determine the CriStudio installation directory.");
     }
 
-    const auto application = launcher.substr(0, separator) + L"\\_internal\\CriStudio.exe";
+    const auto application = launcher.substr(0, separator) + L"\\_internal\\bin\\CriStudio.exe";
     if (GetFileAttributesW(application.c_str()) == INVALID_FILE_ATTRIBUTES) {
         const auto error = GetLastError();
-        return show_error(L"The _internal\\CriStudio.exe application could not be accessed.", error);
+        return show_error(L"The _internal\\bin\\CriStudio.exe application could not be accessed.", error);
     }
 
     std::wstring command_line;

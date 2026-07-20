@@ -337,30 +337,35 @@ jobs:
           - os: ubuntu-24.04
             generator: Ninja
             cmake_platform: ""
+            shared_ipo: ON
             artifact_name: linux-x86_64
             archive_format: gztar
             archive_suffix: tar.gz
           - os: ubuntu-24.04-arm
             generator: Ninja
             cmake_platform: ""
+            shared_ipo: ON
             artifact_name: linux-aarch64
             archive_format: gztar
             archive_suffix: tar.gz
           - os: macos-26-intel
             generator: Ninja
             cmake_platform: ""
+            shared_ipo: ON
             artifact_name: macos-x86_64
             archive_format: gztar
             archive_suffix: tar.gz
           - os: macos-26
             generator: Ninja
             cmake_platform: ""
+            shared_ipo: ON
             artifact_name: macos-arm64
             archive_format: gztar
             archive_suffix: tar.gz
           - os: windows-2025-vs2026
             generator: Visual Studio 18 2026
             cmake_platform: -A x64
+            shared_ipo: OFF
             artifact_name: windows-x86_64
             archive_format: zip
             archive_suffix: zip
@@ -409,7 +414,7 @@ jobs:
           cmake -S . -B build-sdk-shared -G "${{ matrix.generator }}"
           ${{ matrix.cmake_platform }}
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.shared_ipo }}
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=OFF
@@ -663,7 +668,7 @@ jobs:
           sudo apt-get install --yes software-properties-common
           sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install --yes gcc-15 g++-15
+          sudo apt-get install --yes gcc-15 g++-15 libgstreamer-plugins-bad1.0-0
           echo 'CC=/usr/bin/gcc-15' >> "$GITHUB_ENV"
           echo 'CXX=/usr/bin/g++-15' >> "$GITHUB_ENV"
           /usr/bin/g++-15 --version
@@ -676,7 +681,7 @@ jobs:
           cmake -S . -B build-gui -G "${{ matrix.generator }}"
           ${{ matrix.cmake_platform }}
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_INSTALL_BINDIR=.
+          -DCMAKE_INSTALL_BINDIR=bin
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
           "-DCRISTUDIO_VERSION=${{ needs.validate.outputs.version }}"
