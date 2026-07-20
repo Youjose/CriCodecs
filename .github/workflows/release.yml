@@ -136,82 +136,9 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  linux-gcc16:
-    name: Linux GCC 16.1 toolchain (${{ matrix.arch }})
-    needs: validate
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            runner_arch: X64
-            manylinux_base: quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614
-            image: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.28-x86_64
-          - os: ubuntu-24.04-arm
-            arch: aarch64
-            runner_arch: ARM64
-            manylinux_base: quay.io/pypa/manylinux_2_28_aarch64@sha256:d129a18d4aeecc9ce6db592474bdb127838339eed67cd7cd61617bb027b14c1e
-            image: cricodecs-manylinux-gcc16:gcc16.1-manylinux2.28-aarch64
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Restore extracted GCC 16.1 toolchain
-        id: gcc16-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/gcc-16.1
-          key: gcc16-prefix-${{ matrix.runner_arch }}-${{ hashFiles('.github/manylinux-gcc16/Dockerfile') }}
-
-      - name: Set up Docker Buildx
-        if: steps.gcc16-cache.outputs.cache-hit != 'true'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build cached GCC 16.1 image
-        if: steps.gcc16-cache.outputs.cache-hit != 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .github/manylinux-gcc16
-          build-args: MANYLINUX_IMAGE=${{ matrix.manylinux_base }}
-          load: true
-          tags: ${{ matrix.image }}
-          cache-from: type=gha,scope=manylinux-gcc16-${{ matrix.arch }}
-          cache-to: type=gha,mode=min,scope=manylinux-gcc16-${{ matrix.arch }}
-
-      - name: Extract GCC 16.1 toolchain
-        if: steps.gcc16-cache.outputs.cache-hit != 'true'
-        env:
-          IMAGE: ${{ matrix.image }}
-        run: |
-          set -euo pipefail
-          container="$(docker create "$IMAGE")"
-          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
-          mkdir -p "$RUNNER_TEMP/gcc-16.1"
-          docker cp "$container:/opt/gcc-16.1/." "$RUNNER_TEMP/gcc-16.1"
-
-      - name: Verify extracted GCC 16.1 toolchain
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /opt
-          sudo ln -sfnT "$RUNNER_TEMP/gcc-16.1" /opt/gcc-16.1
-          export LD_LIBRARY_PATH=/opt/gcc-16.1/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-          /opt/gcc-16.1/bin/g++ --version
-          printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
-            | /opt/gcc-16.1/bin/g++ -std=c++23 -x c++ - -o "$RUNNER_TEMP/flat-map-smoke"
-          "$RUNNER_TEMP/flat-map-smoke"
-
-      - name: Save extracted GCC 16.1 toolchain
-        if: steps.gcc16-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ runner.temp }}/gcc-16.1
-          key: gcc16-prefix-${{ matrix.runner_arch }}-${{ hashFiles('.github/manylinux-gcc16/Dockerfile') }}
-
   wheels:
     name: Wheels (${{ matrix.artifact_name }})
-    needs: [validate, sdist, linux-gcc16]
+    needs: [validate, sdist]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -400,7 +327,7 @@ jobs:
 
   cpp-sdk:
     name: C++ SDK (${{ matrix.artifact_name }})
-    needs: [validate, linux-gcc16]
+    needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -448,24 +375,21 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade pip cmake ninja
 
-      - name: Restore GCC 16.1 toolchain
-        if: runner.os == 'Linux'
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/gcc-16.1
-          key: gcc16-prefix-${{ runner.arch }}-${{ hashFiles('.github/manylinux-gcc16/Dockerfile') }}
-          fail-on-cache-miss: true
-
-      - name: Activate GCC 16.1 toolchain
+      - name: Install GCC 15
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo mkdir -p /opt
-          sudo ln -sfnT "$RUNNER_TEMP/gcc-16.1" /opt/gcc-16.1
-          echo 'CC=/opt/gcc-16.1/bin/gcc' >> "$GITHUB_ENV"
-          echo 'CXX=/opt/gcc-16.1/bin/g++' >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/opt/gcc-16.1/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-          /opt/gcc-16.1/bin/g++ --version
+          sudo apt-get update
+          sudo apt-get install --yes software-properties-common
+          sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install --yes gcc-15 g++-15
+          echo 'CC=/usr/bin/gcc-15' >> "$GITHUB_ENV"
+          echo 'CXX=/usr/bin/g++-15' >> "$GITHUB_ENV"
+          /usr/bin/g++-15 --version
+          printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
+            | /usr/bin/g++-15 -std=c++23 -O3 -flto -x c++ - -o "$RUNNER_TEMP/flat-map-smoke"
+          "$RUNNER_TEMP/flat-map-smoke"
 
       - name: Configure static SDK
         run: >-
@@ -528,7 +452,7 @@ jobs:
 
   cli:
     name: CLI (${{ matrix.artifact_name }})
-    needs: [validate, linux-gcc16]
+    needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -581,24 +505,21 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade pip cmake ninja
 
-      - name: Restore GCC 16.1 toolchain
-        if: runner.os == 'Linux'
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/gcc-16.1
-          key: gcc16-prefix-${{ runner.arch }}-${{ hashFiles('.github/manylinux-gcc16/Dockerfile') }}
-          fail-on-cache-miss: true
-
-      - name: Activate GCC 16.1 toolchain
+      - name: Install GCC 15
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo mkdir -p /opt
-          sudo ln -sfnT "$RUNNER_TEMP/gcc-16.1" /opt/gcc-16.1
-          echo 'CC=/opt/gcc-16.1/bin/gcc' >> "$GITHUB_ENV"
-          echo 'CXX=/opt/gcc-16.1/bin/g++' >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/opt/gcc-16.1/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-          /opt/gcc-16.1/bin/g++ --version
+          sudo apt-get update
+          sudo apt-get install --yes software-properties-common
+          sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install --yes gcc-15 g++-15
+          echo 'CC=/usr/bin/gcc-15' >> "$GITHUB_ENV"
+          echo 'CXX=/usr/bin/g++-15' >> "$GITHUB_ENV"
+          /usr/bin/g++-15 --version
+          printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
+            | /usr/bin/g++-15 -std=c++23 -O3 -flto -x c++ - -o "$RUNNER_TEMP/flat-map-smoke"
+          "$RUNNER_TEMP/flat-map-smoke"
 
       - name: Configure CLI
         run: >-
@@ -667,7 +588,7 @@ jobs:
 
   cristudio:
     name: CriStudio (${{ matrix.artifact_name }})
-    needs: [validate, linux-gcc16]
+    needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -734,24 +655,21 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade pip cmake ninja imageio-ffmpeg==0.6.0
 
-      - name: Restore GCC 16.1 toolchain
-        if: runner.os == 'Linux'
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/gcc-16.1
-          key: gcc16-prefix-${{ runner.arch }}-${{ hashFiles('.github/manylinux-gcc16/Dockerfile') }}
-          fail-on-cache-miss: true
-
-      - name: Activate GCC 16.1 toolchain
+      - name: Install GCC 15
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo mkdir -p /opt
-          sudo ln -sfnT "$RUNNER_TEMP/gcc-16.1" /opt/gcc-16.1
-          echo 'CC=/opt/gcc-16.1/bin/gcc' >> "$GITHUB_ENV"
-          echo 'CXX=/opt/gcc-16.1/bin/g++' >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/opt/gcc-16.1/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-          /opt/gcc-16.1/bin/g++ --version
+          sudo apt-get update
+          sudo apt-get install --yes software-properties-common
+          sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install --yes gcc-15 g++-15
+          echo 'CC=/usr/bin/gcc-15' >> "$GITHUB_ENV"
+          echo 'CXX=/usr/bin/g++-15' >> "$GITHUB_ENV"
+          /usr/bin/g++-15 --version
+          printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
+            | /usr/bin/g++-15 -std=c++23 -O3 -flto -x c++ - -o "$RUNNER_TEMP/flat-map-smoke"
+          "$RUNNER_TEMP/flat-map-smoke"
 
       - name: Configure CriStudio
         run: >-

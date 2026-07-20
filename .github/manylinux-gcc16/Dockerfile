@@ -55,6 +55,6 @@ ENV CC=/opt/gcc-16.1/bin/gcc
 ENV CXX=/opt/gcc-16.1/bin/g++
 
 RUN printf '#include <flat_map>\nint main() { std::flat_map<int, int> value; value[1] = 2; }\n' \
-        | g++ -std=c++23 -x c++ - -o /tmp/flat_map \
+        | g++ -std=c++23 -O3 -flto -x c++ - -o /tmp/flat_map \
     && /tmp/flat_map \
     && rm -f /tmp/flat_map
