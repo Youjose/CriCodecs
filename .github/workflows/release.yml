@@ -1078,7 +1078,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    if: ${{ inputs.publish_pypi }}
+    if: ${{ always() && inputs.publish_pypi && inputs.draft == false && needs.release.result == 'success' }}
     needs: release
     runs-on: ubuntu-24.04
     environment: pypi
