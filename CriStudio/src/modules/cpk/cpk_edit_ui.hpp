@@ -28,7 +28,6 @@ struct EntryProperties {
 
 struct BuildOptionsSelection {
     cricodecs::cpk::CpkOptions options;
-    std::optional<bool> compress_all;
     bool obfuscate_utf = false;
 };
 
@@ -44,5 +43,6 @@ struct BuildOptionsSelection {
 );
 
 void populate_editor_archive_table(QTableWidget* table, const cricodecs::cpk::Cpk& cpk);
+void configure_editor_archive_table(QTableWidget* table);
 
 } // namespace cristudio::modules::cpk

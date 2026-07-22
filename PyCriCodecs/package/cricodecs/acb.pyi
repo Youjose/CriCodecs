@@ -8,6 +8,20 @@ class AcbWaveformInfo:
     name: str
     name_raw: bytes
     filename: str
+    id: int
+    memory_awb_id: int
+    stream_awb_id: int
+    port_no: int
+    streaming: int
+    encode_type: int
+    loop_flag: bool
+    extension_data: int
+
+class WaveformAwbEntry:
+    waveform_index: int
+    wave_id: int
+    awb_index: int
+    stream_bank: bool
 
 class AcbInfo:
     source_path: str | None
@@ -36,6 +50,9 @@ class Acb:
     def load_bytes(data: bytes, encoding: str | None = None) -> "Acb": ...
     def info(self) -> AcbInfo: ...
     def waveform(self, index: int) -> AcbWaveformInfo: ...
+    def waveform_awb_entry(self, index: int, awb: Awb | None = None, prefer_stream_bank: bool = False) -> WaveformAwbEntry: ...
+    def replace_waveform_bytes(self, index: int, awb: Awb, data: bytes, prefer_stream_bank: bool = False) -> WaveformAwbEntry: ...
+    def replace_waveform_file(self, index: int, awb: Awb, input_path: Any, prefer_stream_bank: bool = False) -> WaveformAwbEntry: ...
     def waveform_name(self, index: int) -> str: ...
     def waveform_name_raw(self, index: int) -> bytes: ...
     def waveform_filename(self, index: int, include_index_prefix: bool = True) -> str: ...

@@ -179,6 +179,7 @@ void bind_awb_module(nb::module_& module) {
             },
             nb::arg("index")
         )
+        .def("find_index_by_wave_id", &cricodecs::awb::AwbContainer::find_index_by_wave_id, nb::arg("wave_id"))
         .def(
             "entry_info",
             [](const cricodecs::awb::AwbContainer& self, uint32_t index) {

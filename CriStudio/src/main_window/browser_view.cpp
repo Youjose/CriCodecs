@@ -174,6 +174,7 @@ bool MainWindow::open_first_entry_in_editor() {
 
 void MainWindow::clear_loaded_files() {
     ++m_preview_request_id;
+    m_hca_key_recovery_stop_source.request_stop();
     ++m_hca_key_recovery_request_id;
     ++m_usm_key_recovery_request_id;
     ++m_adx_key_recovery_request_id;

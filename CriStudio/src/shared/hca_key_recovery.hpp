@@ -41,4 +41,10 @@ struct HcaKeyRecoveryResult {
     cricodecs::KeyRecoveryMode mode = cricodecs::KeyRecoveryMode::SharedBaseKey
 );
 
+[[nodiscard]] std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
+    std::span<const HcaRecoverySource> sources,
+    const DecryptionKeys& keys,
+    const cricodecs::hca::KeyRecoveryOptions& options
+);
+
 } // namespace cristudio

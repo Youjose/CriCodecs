@@ -75,6 +75,17 @@ constexpr io::FourCC CvmZoneMagic{"ZONE"};
     return static_cast<uint16_t>(*parsed);
 }
 
+[[nodiscard]] std::expected<uint32_t, std::string> parse_u32(std::string_view text, std::string_view context) {
+    auto parsed = parse_u64(text, context);
+    if (!parsed) {
+        return std::unexpected(parsed.error());
+    }
+    if (*parsed > std::numeric_limits<uint32_t>::max()) {
+        return std::unexpected(std::string(context) + " is out of range for uint32");
+    }
+    return static_cast<uint32_t>(*parsed);
+}
+
 [[nodiscard]] std::optional<size_t> parse_index_target(std::string_view text) {
     const std::string trimmed = trim_ascii(text);
     if (trimmed.empty()) {

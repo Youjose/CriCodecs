@@ -48,6 +48,7 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
 
     uint32_t frames = 0;
     uint64_t parsed_size = header.header_size;
+    cricodecs::video::IvfTimeline timeline;
     while (reader.has_frames()) {
         auto frame = reader.read_next_frame();
         if (!frame) {
@@ -55,6 +56,9 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
         }
         if (require_vp9_payloads && !cricodecs::video::is_valid_vp9_frame(frame->data)) {
             return std::unexpected("IVF contains an invalid VP9 frame at index " + std::to_string(frames));
+        }
+        if (auto observed = timeline.observe(frame->timestamp); !observed) {
+            return std::unexpected(observed.error() + " at frame index " + std::to_string(frames));
         }
         parsed_size += frame->record_bytes.size();
         ++frames;
@@ -73,7 +77,7 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
 
     return PreparedVideoInfo{
         .frame_count = frames,
-        .duration_ms = duration_ms(frames, header.rate, header.scale),
+        .duration_ms = timeline.duration_milliseconds(header.rate, header.scale),
         .width = header.width,
         .height = header.height,
     };

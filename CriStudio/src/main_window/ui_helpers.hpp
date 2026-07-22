@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
@@ -99,7 +100,11 @@ void fade_widget_in(QWidget* widget, int duration_ms = 140);
     QWidget* parent,
     QString title,
     size_t source_count);
-void begin_key_recovery_progress(QWidget* parent, QString title, size_t source_count);
+void begin_key_recovery_progress(
+    QWidget* parent,
+    QString title,
+    size_t source_count,
+    std::function<void()> cancel = {});
 void update_key_recovery_progress(
     QWidget* parent,
     std::vector<KeyRecoveryGroup> groups,

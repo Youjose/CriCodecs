@@ -147,6 +147,7 @@ public:
     }
 
 private:
+    friend struct HcaRecoveryAccess;
     friend std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> sources);
 
     [[nodiscard]] static std::expected<HcaHeader, std::string> parse_header(std::span<const uint8_t> data);

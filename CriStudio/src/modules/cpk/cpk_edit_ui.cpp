@@ -9,12 +9,19 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStyledItemDelegate>
+#include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -27,6 +34,67 @@
 
 namespace cristudio::modules::cpk {
 namespace {
+
+class CompressionStateDelegate final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        const auto state = index.data(Qt::CheckStateRole);
+        if (!state.isValid()) {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+
+        auto background = option;
+        background.features &= ~QStyleOptionViewItem::HasCheckIndicator;
+        background.text.clear();
+        QStyledItemDelegate::paint(painter, background, index);
+
+        const bool checked = state.toInt() == Qt::Checked;
+        constexpr int toggle_width = 42;
+        constexpr int toggle_height = 20;
+        const QRect toggle_rect(
+            option.rect.center().x() - toggle_width / 2,
+            option.rect.center().y() - toggle_height / 2,
+            toggle_width,
+            toggle_height);
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        const auto& palette = option.palette;
+        painter->setPen(palette.color(QPalette::Mid));
+        painter->setBrush(checked ? palette.color(QPalette::Highlight) : palette.color(QPalette::Button));
+        painter->drawRoundedRect(toggle_rect, 4, 4);
+        painter->setPen(checked ? palette.color(QPalette::HighlightedText) : palette.color(QPalette::ButtonText));
+        painter->drawText(toggle_rect, Qt::AlignCenter, checked ? QStringLiteral("On") : QStringLiteral("Off"));
+        painter->restore();
+    }
+
+    bool editorEvent(
+        QEvent* event,
+        QAbstractItemModel* model,
+        const QStyleOptionViewItem& option,
+        const QModelIndex& index
+    ) override {
+        if (!(index.flags() & Qt::ItemIsEnabled) || !(index.flags() & Qt::ItemIsUserCheckable)) {
+            return false;
+        }
+        bool activate = false;
+        if (event->type() == QEvent::MouseButtonRelease) {
+            const auto* mouse = static_cast<QMouseEvent*>(event);
+            activate = mouse->button() == Qt::LeftButton && option.rect.contains(mouse->position().toPoint());
+        } else if (event->type() == QEvent::KeyPress) {
+            const auto* key = static_cast<QKeyEvent*>(event);
+            activate = key->key() == Qt::Key_Space || key->key() == Qt::Key_Select;
+        }
+        if (!activate) {
+            return false;
+        }
+        const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
+        return model->setData(index, checked ? Qt::Unchecked : Qt::Checked, Qt::CheckStateRole);
+    }
+};
 
 std::string qstring_to_utf8(const QString& text) {
     const auto utf8 = text.toUtf8();
@@ -95,7 +163,16 @@ QWidget* switch_row(ToggleSwitch*& control, QString text, QString tooltip, QWidg
 
 } // namespace
 
+void configure_editor_archive_table(QTableWidget* table) {
+    table->setItemDelegateForColumn(12, new CompressionStateDelegate(table));
+}
+
 void populate_editor_archive_table(QTableWidget* table, const cricodecs::cpk::Cpk& cpk) {
+    const QSignalBlocker signal_blocker(table);
+    const bool sorting_enabled = table->isSortingEnabled();
+    const bool updates_enabled = table->updatesEnabled();
+    table->setSortingEnabled(false);
+    table->setUpdatesEnabled(false);
     table->clear();
     table->setColumnCount(17);
     table->setHorizontalHeaderLabels({
@@ -137,27 +214,16 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::cpk::Cp
         compress_item->setFlags(
             (compress_item->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
         compress_item->setCheckState(entry.request_compress ? Qt::Checked : Qt::Unchecked);
+        compress_item->setTextAlignment(Qt::AlignCenter);
         compress_item->setToolTip(QStringLiteral("Compress this entry with CRILAYLA on save when compression reduces its size."));
         table->setItem(row, 12, compress_item);
-        auto* compression_cell = new QWidget(table);
-        auto* compression_layout = new QHBoxLayout(compression_cell);
-        compression_layout->setContentsMargins(6, 1, 6, 1);
-        compression_layout->setAlignment(Qt::AlignCenter);
-        auto* compression_switch = new ToggleSwitch(compression_cell);
-        compression_switch->setAccessibleName(QStringLiteral("Compress CPK entry %1 on save").arg(row));
-        compression_switch->setToolTip(compress_item->toolTip());
-        compression_switch->setChecked(entry.request_compress);
-        compression_layout->addWidget(compression_switch);
-        table->setCellWidget(row, 12, compression_cell);
-        QObject::connect(compression_switch, &QAbstractButton::toggled, table, [table, row, compress_item](bool checked) {
-            table->setCurrentCell(row, 12);
-            compress_item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
-        });
         set_table_item(table, row, 13, utf8_to_qstring(entry.group), true);
         set_table_item(table, row, 14, utf8_to_qstring(entry.attribute), true);
         set_table_item(table, row, 15, utf8_to_qstring(entry.user_string), true);
         set_table_item(table, row, 16, QString::number(static_cast<qulonglong>(entry.update_date_time)), true);
     }
+    table->setSortingEnabled(sorting_enabled);
+    table->setUpdatesEnabled(updates_enabled);
 }
 
 std::expected<std::optional<EntryProperties>, QString> choose_entry_properties(
@@ -286,11 +352,6 @@ std::optional<BuildOptionsSelection> choose_build_options(
     auto* crc_check = new QCheckBox(QStringLiteral("Emit standard CPK CRC tables and row CRCs"), &dialog);
     crc_check->setChecked(options.enable_crc);
 
-    auto* compression_combo = new QComboBox(&dialog);
-    compression_combo->addItem(QStringLiteral("Keep per-entry settings"));
-    compression_combo->addItem(QStringLiteral("Compress all entries on save"));
-    compression_combo->addItem(QStringLiteral("Store all entries uncompressed"));
-
     ToggleSwitch* obfuscate_switch = nullptr;
     auto* obfuscate_row = switch_row(
         obfuscate_switch,
@@ -334,7 +395,6 @@ std::optional<BuildOptionsSelection> choose_build_options(
     form->addRow(QStringLiteral("ETOC chunk"), etoc_combo);
     form->addRow(QStringLiteral("Alignment"), align_spin);
     form->addRow(QStringLiteral("CRC"), crc_check);
-    form->addRow(QStringLiteral("Entry compression"), compression_combo);
     form->addRow(QStringLiteral("UTF metadata"), obfuscate_row);
     form->addRow(QStringLiteral("Text encoding"), encoding_combo);
     form->addRow(QStringLiteral("TVER"), tver_edit);
@@ -373,15 +433,8 @@ std::optional<BuildOptionsSelection> choose_build_options(
     options.comment = qstring_to_utf8(comment_edit->text());
     options.tver = qstring_to_utf8(tver_edit->text());
     options.etoc_local_dir = qstring_to_utf8(local_dir_edit->text());
-    std::optional<bool> compress_all;
-    if (compression_combo->currentIndex() == 1) {
-        compress_all = true;
-    } else if (compression_combo->currentIndex() == 2) {
-        compress_all = false;
-    }
     return BuildOptionsSelection{
         .options = std::move(options),
-        .compress_all = compress_all,
         .obfuscate_utf = obfuscate_switch->isChecked(),
     };
 }

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create, for example v1.0.0"
+        description: "CriCodecs release tag to create, for example v1.1.0"
         required: true
         type: string
       draft:
@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.release_version.outputs.version }}
+      cristudio_version: ${{ steps.release_version.outputs.cristudio_version }}
 
     steps:
       - uses: actions/checkout@v7
@@ -70,8 +71,9 @@ jobs:
           cristudio_version="$(sed -n 's/^set(CRISTUDIO_VERSION "\([^"]*\)".*$/\1/p' CriStudio/CMakeLists.txt)"
           test "${TAG#v}" = "$python_version"
           test "$python_version" = "$cmake_version"
-          test "$python_version" = "$cristudio_version"
+          [[ "$cristudio_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([ab]|rc)[0-9]+$|^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "version=$python_version" >> "$GITHUB_OUTPUT"
+          echo "cristudio_version=$cristudio_version" >> "$GITHUB_OUTPUT"
           if git show-ref --verify --quiet "refs/tags/$TAG"; then
             tagged_commit="$(git rev-list -n 1 "$TAG")"
             if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
@@ -703,7 +705,7 @@ jobs:
           -DCMAKE_INSTALL_BINDIR=bin
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
-          "-DCRISTUDIO_VERSION=${{ needs.validate.outputs.version }}"
+          "-DCRISTUDIO_VERSION=${{ needs.validate.outputs.cristudio_version }}"
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=OFF
           -DCRICODECS_BUILD_CRISTUDIO=ON
@@ -722,7 +724,7 @@ jobs:
         shell: bash
         env:
           BUILT_PATH: ${{ matrix.built_path }}
-          VERSION: ${{ needs.validate.outputs.version }}
+          VERSION: ${{ needs.validate.outputs.cristudio_version }}
           PLATFORM: ${{ matrix.artifact_name }}
         run: |
           python - <<'PY'
@@ -918,7 +920,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          CRISTUDIO_RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          CRISTUDIO_RELEASE_VERSION: ${{ needs.validate.outputs.cristudio_version }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = (Resolve-Path $env:PORTABLE_ROOT).Path
@@ -985,8 +987,8 @@ jobs:
         with:
           name: cristudio-${{ matrix.artifact_name }}
           path: |
-            cricodecs-${{ needs.validate.outputs.version }}-cristudio-slim-${{ matrix.artifact_name }}.zip
-            cricodecs-${{ needs.validate.outputs.version }}-cristudio-portable-${{ matrix.artifact_name }}.zip
+            cricodecs-${{ needs.validate.outputs.cristudio_version }}-cristudio-slim-${{ matrix.artifact_name }}.zip
+            cricodecs-${{ needs.validate.outputs.cristudio_version }}-cristudio-portable-${{ matrix.artifact_name }}.zip
           if-no-files-found: error
           overwrite: true
 

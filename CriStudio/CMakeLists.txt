@@ -1,7 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent)
 include(GNUInstallDirs)
 
-set(CRISTUDIO_VERSION "1.0.0" CACHE STRING "CriStudio release version")
+set(CRISTUDIO_VERSION "1.0.1" CACHE STRING "CriStudio release version")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" cristudio_numeric_version "${CRISTUDIO_VERSION}")
 if(NOT cristudio_numeric_version)
     message(FATAL_ERROR "CRISTUDIO_VERSION must begin with major.minor.patch")

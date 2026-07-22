@@ -49,12 +49,25 @@ WAV input can be encoded as HCA, ADX, or AHX:
 cricodecs --encode -f hca input.wav -o output.hca
 cricodecs --encode -f adx input.wav -o output.adx
 cricodecs --encode -f ahx input.wav -o output.ahx
+
+# Select HCA encoder behavior explicitly.
+cricodecs --encode -f hca input.wav -o output.hca \
+  --header-version 3.00 --quality low --bitrate 192000 --ms-stereo
+
+# ADX supports modes 2/3/4 and header versions 3/4/5.
+cricodecs --encode -f adx input.wav -o output.adx \
+  --mode 4 --header-version 3 --highpass 500 --trim-after-loop
+
+# AHX supports modes 0x10/0x11 and the built-in allocation profiles.
+cricodecs --encode -f ahx input.wav -o output.ahx \
+  --mode 0x11 --profile 22050
 ```
 
 Format-specific profiles, header versions, keys, subkeys, and cipher types are
 selected with `--profile`, `--header-version`, `--key`, `--subkey`, and
 `--cipher-type` where supported. Run `cricodecs --help` for the authoritative
-option list in the installed build.
+option list in the installed build. HCA encoding also preserves the first valid
+sampler loop declared by the input WAV.
 
 ### Build archives and stream containers
 
@@ -64,6 +77,10 @@ SFD accept prepared video plus supported audio inputs.
 ```sh
 cricodecs --build -f cpk input_directory -o archive.cpk
 cricodecs --build -f awb waveforms -o sound.awb
+cricodecs --build -f awb waveforms -o sound.awb \
+  --header-version 2 --alignment 32 --subkey 0
+cricodecs --build -f cpk input_directory -o archive.cpk \
+  --profile filename-id --alignment 2048
 
 cricodecs --build -f usm movie.ivf \
   --audio dialogue.adx \
@@ -293,6 +310,7 @@ bytes only for preview, extraction, or mutation.
 ```sh
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCRICODECS_BUILD_TESTS=OFF \
   -DCRICODECS_INSTALL_CPP=ON
 cmake --build build --parallel 4
 cmake --install build --prefix ./install

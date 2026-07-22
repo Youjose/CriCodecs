@@ -34,6 +34,14 @@ namespace cricodecs::cli::detail {
             options.compress = true;
             continue;
         }
+        if (arg == "--ms-stereo") {
+            options.ms_stereo = true;
+            continue;
+        }
+        if (arg == "--trim-after-loop") {
+            options.trim_after_loop = true;
+            continue;
+        }
         if (arg == "--encrypt") {
             options.encrypt = true;
             continue;
@@ -144,6 +152,48 @@ namespace cricodecs::cli::detail {
                 return std::unexpected(parsed.error());
             }
             options.aac_keycode = *parsed;
+            continue;
+        }
+        if (arg == "--alignment") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u32(*value, "--alignment");
+            if (!parsed) return std::unexpected(parsed.error());
+            if (*parsed == 0) return std::unexpected("`--alignment` must be non-zero");
+            options.alignment = *parsed;
+            continue;
+        }
+        if (arg == "--bitrate") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u32(*value, "--bitrate");
+            if (!parsed) return std::unexpected(parsed.error());
+            options.bitrate = *parsed;
+            continue;
+        }
+        if (arg == "--highpass") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u16(*value, "--highpass");
+            if (!parsed) return std::unexpected(parsed.error());
+            options.highpass = *parsed;
+            continue;
+        }
+        if (arg == "--mode") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u16(*value, "--mode");
+            if (!parsed) return std::unexpected(parsed.error());
+            if (*parsed > std::numeric_limits<uint8_t>::max()) {
+                return std::unexpected("`--mode` must be in the range 0..255");
+            }
+            options.mode = *parsed;
+            continue;
+        }
+        if (arg == "--quality") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            options.quality = *value;
             continue;
         }
         if (arg == "--encoding") {
@@ -295,7 +345,9 @@ namespace cricodecs::cli::detail {
             || options.subkey.has_value() || options.cipher_type.has_value()
             || options.aac_keycode.has_value() || !options.indexes.empty()
             || !options.audio_paths.empty() || !options.audio_channels.empty() || !options.mutations.empty()
-            || options.compress)) {
+            || options.alignment.has_value() || options.bitrate.has_value()
+            || options.highpass.has_value() || options.mode.has_value() || options.quality.has_value()
+            || options.ms_stereo || options.trim_after_loop || options.compress)) {
         return std::unexpected(
             "`--recover-key` cannot be combined with metadata/export/build/encode/crypto/mutation options");
     }
@@ -317,14 +369,77 @@ namespace cricodecs::cli::detail {
     if (options.build && (options.encode || options.metadata_only || options.json || options.raw || options.list_only || options.encrypt || options.decrypt || !options.indexes.empty())) {
         return std::unexpected("`--build` cannot be combined with encode/export/list/metadata/crypto selection flags");
     }
-    if (!options.build && (!options.audio_paths.empty() || !options.audio_channels.empty() || options.profile.has_value() || options.version.has_value())) {
-        return std::unexpected("`--audio`, `--audio-channel`, `--profile`, and `--header-version` are only valid with `--build`");
+    if (!options.build && !options.encode &&
+        (!options.audio_paths.empty() || !options.audio_channels.empty() || options.profile.has_value()
+         || options.version.has_value() || options.alignment.has_value() || options.bitrate.has_value()
+         || options.highpass.has_value() || options.mode.has_value() || options.quality.has_value()
+         || options.ms_stereo || options.trim_after_loop)) {
+        return std::unexpected("encoder and builder configuration options require `--encode` or `--build`");
     }
     if (!options.audio_channels.empty() && options.audio_channels.size() != options.audio_paths.size()) {
         return std::unexpected("repeat `--audio-channel` once per `--audio`, or omit it for automatic channels");
     }
     if (!options.audio_channels.empty() && options.force_type != Format::usm) {
         return std::unexpected("`--audio-channel` is only supported for USM builds");
+    }
+    if (options.encode) {
+        const Format format = *options.force_type;
+        if (options.alignment.has_value() || !options.audio_paths.empty() || !options.audio_channels.empty()) {
+            return std::unexpected("`--alignment`, `--audio`, and `--audio-channel` are builder options");
+        }
+        if ((options.quality.has_value() || options.bitrate.has_value() || options.ms_stereo) && format != Format::hca) {
+            return std::unexpected("`--quality`, `--bitrate`, and `--ms-stereo` are only supported for HCA encoding");
+        }
+        if (options.version.has_value() && format != Format::hca && format != Format::adx) {
+            return std::unexpected("`--header-version` is only supported for HCA and ADX encoding");
+        }
+        if (options.mode.has_value() && format != Format::adx && format != Format::ahx) {
+            return std::unexpected("`--mode` is only supported for ADX and AHX encoding");
+        }
+        if ((options.highpass.has_value() || options.trim_after_loop) && format != Format::adx) {
+            return std::unexpected("`--highpass` and `--trim-after-loop` are only supported for ADX encoding");
+        }
+        if (options.profile.has_value() && format != Format::ahx) {
+            return std::unexpected("`--profile` is only supported for AHX encoding");
+        }
+        if (options.encoding.has_value() || options.aac_keycode.has_value()) {
+            return std::unexpected("`--encoding` and `--aac-keycode` are not codec encoder options");
+        }
+    }
+    if (options.build) {
+        const Format format = *options.force_type;
+        if (options.quality.has_value() || options.bitrate.has_value() || options.highpass.has_value()
+            || options.mode.has_value() || options.ms_stereo || options.trim_after_loop) {
+            return std::unexpected("codec encoder options cannot be combined with `--build`");
+        }
+        if (options.alignment.has_value() && format != Format::afs && format != Format::awb
+            && format != Format::cpk && format != Format::acx) {
+            return std::unexpected("`--alignment` is only supported for AFS, AWB, CPK, and ACX builds");
+        }
+        if (options.profile.has_value() && format != Format::cpk && format != Format::sfd) {
+            return std::unexpected("`--profile` is only supported for CPK and SFD builds");
+        }
+        if (options.version.has_value() && format != Format::awb && format != Format::sfd) {
+            return std::unexpected("`--header-version` is only supported for AWB and SFD builds");
+        }
+        if (options.subkey.has_value() && format != Format::awb) {
+            return std::unexpected("`--subkey` is only supported for AWB builds");
+        }
+        if (options.cipher_type.has_value() || options.aac_keycode.has_value()) {
+            return std::unexpected("`--cipher-type` and `--aac-keycode` are not builder options");
+        }
+        if (options.key.has_value() && format != Format::cvm && format != Format::usm) {
+            return std::unexpected("`--key` is only supported for CVM and USM builds");
+        }
+        if (options.compress && format != Format::cpk) {
+            return std::unexpected("`--compress` is only supported for CPK builds");
+        }
+        if (!options.audio_paths.empty() && format != Format::usm && format != Format::sfd) {
+            return std::unexpected("`--audio` is only supported for USM and SFD builds");
+        }
+        if (options.encoding.has_value() && format != Format::cpk && format != Format::csb && format != Format::usm) {
+            return std::unexpected("`--encoding` is only supported for CPK, CSB, and USM builds");
+        }
     }
     if (!options.mutations.empty() && !options.output_path.has_value()) {
         return std::unexpected("mutation commands require `-o`/`--output`");
@@ -371,14 +486,23 @@ void print_usage(std::ostream& out, bool show_identity) {
         "       cricodecs --recover-key -f hca|usm|adx|ahx|awb|acb <input> [input ...] [--json] [-q]\n"
         "                 [--index N] [--key VALUE] [--subkey VALUE] [--cipher-type VALUE] [--aac-keycode VALUE]\n"
         "                 [--encoding NAME] [--audio PATH] [--audio-channel 0..255] [--profile NAME] [--header-version VALUE]\n"
+        "                 [--quality NAME] [--bitrate BPS] [--ms-stereo] [--mode VALUE] [--highpass HZ]\n"
+        "                 [--trim-after-loop] [--alignment BYTES]\n"
         "\n"
         "  -e, --export         explicit export; same as default behavior\n"
         "      --encode         encode WAV input as hca/adx/ahx; requires -f and -o\n"
-        "      --build          build afs/awb/cpk/acx/csb/cvm from directory or supported list/script input\n"
+        "      --build          build afs/awb/cpk/acx/csb/cvm/usm/sfd inputs\n"
         "      --audio PATH     add ADX/HCA audio for usm, or ADX for sfd; repeatable for usm\n"
         "      --audio-channel  assign explicit USM channel per --audio; repeat for every audio input\n"
-        "      --profile NAME   build profile where supported\n"
-        "      --header-version VALUE  builder/header version where supported\n"
+        "      --profile NAME   AHX allocation profile, or CPK/SFD build profile\n"
+        "      --header-version VALUE  HCA/ADX encode version, or AWB/SFD build version\n"
+        "      --quality NAME   HCA quality: highest, high, middle, low, or lowest\n"
+        "      --bitrate BPS    explicit HCA bitrate; 0 keeps automatic selection\n"
+        "      --ms-stereo      enable HCA mid/side stereo coding\n"
+        "      --mode VALUE     ADX mode 2/3/4 or AHX mode 0x10/0x11\n"
+        "      --highpass HZ    ADX high-pass frequency\n"
+        "      --trim-after-loop  discard ADX samples after the final loop end\n"
+        "      --alignment BYTES  AFS/AWB/CPK/ACX build alignment\n"
         "      --add SRC=DEST   add file to archive; DEST is archive path/name, AWB wave ID, or AIX segment/layer\n"
         "      --replace T=SRC  replace archive entry T with source file SRC\n"
         "      --remove T       remove archive entry T\n"

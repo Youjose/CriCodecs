@@ -487,18 +487,14 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
     info.fmtver = vp9_fmtver;
     info.codec_id = vp9_codec_id;
     info.dcprec = vp9_dcprec;
-    if (header.rate != 0 && header.scale != 0) {
-        info.framerate_n = static_cast<uint32_t>(std::llround(
-            (static_cast<long double>(header.rate) * 1000.0L) / static_cast<long double>(header.scale)));
+    if (header.rate == 0 || header.scale == 0) {
+        return std::unexpected("USM builder requires a non-zero IVF time base");
     }
-    const double frame_interval = (header.rate != 0)
-        ? (static_cast<double>(base_frame_rate) * static_cast<double>(header.scale) / static_cast<double>(header.rate))
-        : 99.9;
-    double current_interval = 0.0;
 
     info.chunks.reserve(static_cast<size_t>(info.frame_count) + 1u);
     uint32_t max_chunk_size = 0;
     uint32_t actual_frame_count = 0;
+    video::IvfTimeline timeline;
     while (reader.has_frames()) {
         auto frame = reader.read_next_frame();
         if (!frame) {
@@ -506,6 +502,13 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
                 break;
             }
             return std::unexpected(frame.error());
+        }
+        if (auto observed = timeline.observe(frame->timestamp); !observed) {
+            return std::unexpected("USM builder rejected the VP9 timeline: " + observed.error());
+        }
+        auto frame_time = timeline.time_in(frame->timestamp, header.rate, header.scale, base_frame_rate);
+        if (!frame_time) {
+            return std::unexpected("USM builder rejected the VP9 timeline: " + frame_time.error());
         }
 
         std::vector<uint8_t> payload;
@@ -523,23 +526,21 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
             UsmChunkType::SFV,
             UsmPayloadType::Stream,
             0,
-            static_cast<uint32_t>(std::llround(current_interval)),
+            *frame_time,
             base_frame_rate,
             payload);
         transform_stream_chunk_payload_with_padding(chunk.chunk, crypto, false);
         max_chunk_size = std::max(max_chunk_size, static_cast<uint32_t>(chunk.chunk.packed_size()));
         info.chunks.push_back(std::move(chunk));
 
-        current_interval += frame_interval;
         ++actual_frame_count;
     }
 
     info.frame_count = actual_frame_count;
-    if (header.rate != 0 && header.scale != 0 && info.frame_count != 0) {
-        const double duration_seconds =
-            (static_cast<double>(header.scale) * static_cast<double>(info.frame_count)) /
-            static_cast<double>(header.rate);
-        if (duration_seconds > 0.0) {
+    info.framerate_n = timeline.frame_rate_milli(header.rate, header.scale);
+    if (info.frame_count != 0) {
+        const long double duration_seconds = timeline.duration_seconds(header.rate, header.scale);
+        if (duration_seconds > 0.0L) {
             info.avbps = static_cast<uint32_t>(std::llround(
                 (static_cast<long double>(info.filesize) * 8.0L) / duration_seconds));
         }

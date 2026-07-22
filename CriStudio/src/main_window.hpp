@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <vector>
 
 class QAction;
@@ -308,6 +309,7 @@ private:
         QString target_label;
         size_t requested_sources = 0;
         uint64_t request_id = 0;
+        bool canceled = false;
     };
 
     struct UsmKeyRecoveryTaskResult {
@@ -475,6 +477,7 @@ private:
     QFutureWatcher<HcaKeyRecoveryTaskResult>* m_hca_key_recovery_watcher = nullptr;
     bool m_hca_key_recovery_running = false;
     uint64_t m_hca_key_recovery_request_id = 0;
+    std::stop_source m_hca_key_recovery_stop_source;
     QFutureWatcher<UsmKeyRecoveryTaskResult>* m_usm_key_recovery_watcher = nullptr;
     bool m_usm_key_recovery_running = false;
     uint64_t m_usm_key_recovery_request_id = 0;

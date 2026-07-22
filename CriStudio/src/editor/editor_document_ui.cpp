@@ -25,6 +25,7 @@
 #include "utf_table.hpp"
 
 #include <QAbstractItemView>
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleValidator>
@@ -34,6 +35,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -329,6 +331,12 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     ui.batch_awb_wave_ids_button = toolbar_button(QStringLiteral("Batch Wave IDs"), ui.archive_toolbar);
     ui.archive_entry_options_button = toolbar_button(QStringLiteral("Entry Props"), ui.archive_toolbar);
     ui.archive_options_button = toolbar_button(QStringLiteral("Options"), ui.archive_toolbar);
+    ui.archive_compression_button = toolbar_button(QStringLiteral("Compression"), ui.archive_toolbar);
+    auto* archive_compression_menu = new QMenu(ui.archive_compression_button);
+    ui.archive_compress_all_action = archive_compression_menu->addAction(QStringLiteral("Compress all on save"));
+    ui.archive_store_all_action = archive_compression_menu->addAction(QStringLiteral("Store all uncompressed"));
+    ui.archive_compression_button->setMenu(archive_compression_menu);
+    ui.archive_compression_button->setToolTip(QStringLiteral("Set the save-time compression policy for every CPK entry."));
     ui.import_afs_als_button = toolbar_button(QStringLiteral("Import ALS"), ui.archive_toolbar);
     ui.export_afs_header_button = toolbar_button(QStringLiteral("Export Header"), ui.archive_toolbar);
     ui.import_cvm_script_button = toolbar_button(QStringLiteral("Import CVS"), ui.archive_toolbar);
@@ -340,6 +348,7 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
         ui.move_archive_entry_up_button, ui.move_archive_entry_down_button, ui.rename_archive_entry_button,
         ui.reserve_afs_id_button, ui.set_afs_timestamp_button, ui.set_archive_wave_id_button,
         ui.batch_awb_wave_ids_button, ui.archive_entry_options_button, ui.archive_options_button,
+        ui.archive_compression_button,
         ui.import_afs_als_button, ui.export_afs_header_button, ui.import_cvm_script_button,
         ui.export_cvm_script_button, ui.extract_archive_entry_button, ui.extract_raw_archive_entry_button
     }) {
@@ -502,6 +511,8 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
         QAbstractItemView::SelectRows,
         QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed
     );
+    ui.archive_table->horizontalHeader()->setResizeContentsPrecision(100);
+    modules::cpk::configure_editor_archive_table(ui.archive_table);
     ui.archive_table->hide();
     data_stack_layout->addWidget(ui.archive_table);
 
@@ -798,6 +809,7 @@ void refresh_archive_document_ui(
     ui.move_archive_entry_down_button->setVisible(can_reorder_archive);
     ui.archive_options_button->setVisible(view.kind == ArchiveKind::Afs || view.kind == ArchiveKind::Awb ||
                                           view.kind == ArchiveKind::Cpk || view.kind == ArchiveKind::Cvm);
+    ui.archive_compression_button->setVisible(view.kind == ArchiveKind::Cpk);
     ui.import_afs_als_button->setVisible(is_afs_archive);
     ui.export_afs_header_button->setVisible(is_afs_archive);
     ui.import_cvm_script_button->setVisible(view.kind == ArchiveKind::Cvm);

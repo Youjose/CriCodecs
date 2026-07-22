@@ -32,9 +32,35 @@ namespace {
     ));
 }
 
+[[nodiscard]] nb::object waveform_info_object(
+    const cricodecs::acb::AcbContainer& self,
+    uint32_t index) {
+    const auto& waveform_info = self.waveform(index);
+    nb::object waveform = simple_namespace();
+    waveform.attr("index") = index;
+    waveform.attr("name") = std::string(self.waveform_name(index));
+    waveform.attr("name_raw") = string_to_python_bytes(self.waveform_name_raw(index));
+    waveform.attr("filename") = self.waveform_filename(index, true);
+    waveform.attr("id") = waveform_info.id;
+    waveform.attr("memory_awb_id") = waveform_info.memory_awb_id;
+    waveform.attr("stream_awb_id") = waveform_info.stream_awb_id;
+    waveform.attr("port_no") = waveform_info.port_no;
+    waveform.attr("streaming") = waveform_info.streaming;
+    waveform.attr("encode_type") = waveform_info.encode_type;
+    waveform.attr("loop_flag") = waveform_info.loop_flag;
+    waveform.attr("extension_data") = waveform_info.extension_data;
+    return waveform;
+}
+
 } // namespace
 
 void bind_acb_module(nb::module_& module) {
+    nb::class_<cricodecs::acb::WaveformAwbEntry>(module, "WaveformAwbEntry")
+        .def_ro("waveform_index", &cricodecs::acb::WaveformAwbEntry::waveform_index)
+        .def_ro("wave_id", &cricodecs::acb::WaveformAwbEntry::wave_id)
+        .def_ro("awb_index", &cricodecs::acb::WaveformAwbEntry::awb_index)
+        .def_ro("stream_bank", &cricodecs::acb::WaveformAwbEntry::stream_bank);
+
     nb::class_<cricodecs::acb::AcbContainer>(module, "Acb")
         .def_static(
             "load",
@@ -78,12 +104,7 @@ void bind_acb_module(nb::module_& module) {
             info.attr("waveform_count") = self.waveform_count();
             nb::list waveforms;
             for (uint32_t index = 0; index < self.waveform_count(); ++index) {
-                nb::object waveform = simple_namespace();
-                waveform.attr("index") = index;
-                waveform.attr("name") = std::string(self.waveform_name(index));
-                waveform.attr("name_raw") = string_to_python_bytes(self.waveform_name_raw(index));
-                waveform.attr("filename") = self.waveform_filename(index, true);
-                waveforms.append(waveform);
+                waveforms.append(waveform_info_object(self, index));
             }
             info.attr("waveforms") = waveforms;
             info.attr("has_embedded_awb") = self.has_embedded_awb();
@@ -108,13 +129,57 @@ void bind_acb_module(nb::module_& module) {
         })
         .def("waveform", [](const cricodecs::acb::AcbContainer& self, uint32_t index) {
             static_cast<void>(checked_container(self, index));
-            nb::object waveform = simple_namespace();
-            waveform.attr("index") = index;
-            waveform.attr("name") = std::string(self.waveform_name(index));
-            waveform.attr("name_raw") = string_to_python_bytes(self.waveform_name_raw(index));
-            waveform.attr("filename") = self.waveform_filename(index, true);
-            return waveform;
+            return waveform_info_object(self, index);
         }, nb::arg("index"))
+        .def(
+            "waveform_awb_entry",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               const nb::object& bank,
+               bool prefer_stream_bank) {
+                if (bank.is_none()) {
+                    return unwrap_expected(self.waveform_awb_entry(index, prefer_stream_bank));
+                }
+                auto& awb = nb::cast<cricodecs::awb::AwbContainer&>(bank);
+                return unwrap_expected(self.waveform_awb_entry(index, awb, prefer_stream_bank));
+            },
+            nb::arg("index"),
+            nb::arg("awb") = nb::none(),
+            nb::arg("prefer_stream_bank") = false
+        )
+        .def(
+            "replace_waveform_bytes",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               cricodecs::awb::AwbContainer& awb,
+               const nb::bytes& data,
+               bool prefer_stream_bank) {
+                const auto bytes = copy_python_bytes(data);
+                return unwrap_expected(self.replace_waveform_data(index, awb, bytes, prefer_stream_bank));
+            },
+            nb::arg("index"),
+            nb::arg("awb"),
+            nb::arg("data"),
+            nb::arg("prefer_stream_bank") = false
+        )
+        .def(
+            "replace_waveform_file",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               cricodecs::awb::AwbContainer& awb,
+               const nb::object& input_path,
+               bool prefer_stream_bank) {
+                return unwrap_expected(self.replace_waveform_file(
+                    index,
+                    awb,
+                    require_python_path(input_path, "input_path"),
+                    prefer_stream_bank));
+            },
+            nb::arg("index"),
+            nb::arg("awb"),
+            nb::arg("input_path"),
+            nb::arg("prefer_stream_bank") = false
+        )
         .def(
             "waveform_name",
             [](const cricodecs::acb::AcbContainer& self, uint32_t index) {
@@ -207,6 +272,7 @@ void bind_acb_module(nb::module_& module) {
         );
 
     install_attr_repr(module, "Acb", {"source_path", "name", "waveform_count", "has_embedded_awb", "companion_awb_path", "has_aac_waveforms"});
+    install_attr_repr(module, "WaveformAwbEntry", {"waveform_index", "wave_id", "awb_index", "stream_bank"});
 
     module.def(
         "load",

@@ -5,6 +5,9 @@
 
 #include "ivf.hpp"
 
+#include <cmath>
+#include <limits>
+
 namespace cricodecs::video {
 
 namespace {
@@ -130,6 +133,92 @@ std::expected<IvfFrame, std::string> IvfReader::read_next_frame() {
 
     ++m_current_frame;
     return frame;
+}
+
+std::expected<void, std::string> IvfTimeline::observe(uint64_t timestamp) {
+    if (m_frame_count == 0) {
+        m_first_timestamp = timestamp;
+        m_last_timestamp = timestamp;
+        m_frame_count = 1;
+        return {};
+    }
+    if (timestamp <= m_last_timestamp) {
+        return std::unexpected("IVF timeline contains duplicate or decreasing frame timestamps");
+    }
+    m_last_timestamp = timestamp;
+    ++m_frame_count;
+    return {};
+}
+
+std::expected<uint32_t, std::string> IvfTimeline::time_in(
+    uint64_t timestamp,
+    uint32_t rate,
+    uint32_t scale,
+    uint32_t output_rate) const {
+    if (m_frame_count == 0 || timestamp < m_first_timestamp) {
+        return std::unexpected("IVF timestamp conversion requires an observed frame timestamp");
+    }
+    if (rate == 0 || scale == 0 || output_rate == 0) {
+        return std::unexpected("IVF timestamp conversion requires non-zero clock rates");
+    }
+
+    const long double converted =
+        static_cast<long double>(timestamp - m_first_timestamp) *
+        static_cast<long double>(scale) * static_cast<long double>(output_rate) /
+        static_cast<long double>(rate);
+    if (!std::isfinite(converted) ||
+        converted > static_cast<long double>((std::numeric_limits<uint32_t>::max)())) {
+        return std::unexpected("IVF timestamp conversion exceeds the USM time range");
+    }
+    return static_cast<uint32_t>(std::llround(converted));
+}
+
+uint32_t IvfTimeline::frame_rate_milli(uint32_t rate, uint32_t scale) const noexcept {
+    if (m_frame_count == 0 || rate == 0 || scale == 0) {
+        return 0;
+    }
+
+    long double frames_per_second =
+        static_cast<long double>(rate) / static_cast<long double>(scale);
+    if (m_frame_count > 1) {
+        const auto elapsed = m_last_timestamp - m_first_timestamp;
+        if (elapsed == 0) {
+            return 0;
+        }
+        frames_per_second =
+            static_cast<long double>(m_frame_count - 1u) * static_cast<long double>(rate) /
+            (static_cast<long double>(elapsed) * static_cast<long double>(scale));
+    }
+
+    const long double result = frames_per_second * 1000.0L;
+    if (!std::isfinite(result) || result <= 0.0L ||
+        result > static_cast<long double>((std::numeric_limits<uint32_t>::max)())) {
+        return 0;
+    }
+    return static_cast<uint32_t>(std::llround(result));
+}
+
+long double IvfTimeline::duration_seconds(uint32_t rate, uint32_t scale) const noexcept {
+    if (m_frame_count == 0 || rate == 0 || scale == 0) {
+        return 0.0L;
+    }
+    if (m_frame_count == 1) {
+        return static_cast<long double>(scale) / static_cast<long double>(rate);
+    }
+
+    const long double elapsed = static_cast<long double>(m_last_timestamp - m_first_timestamp);
+    const long double average_interval = elapsed / static_cast<long double>(m_frame_count - 1u);
+    return (elapsed + average_interval) * static_cast<long double>(scale) /
+        static_cast<long double>(rate);
+}
+
+uint64_t IvfTimeline::duration_milliseconds(uint32_t rate, uint32_t scale) const noexcept {
+    const long double result = duration_seconds(rate, scale) * 1000.0L;
+    if (!std::isfinite(result) || result <= 0.0L ||
+        result > static_cast<long double>((std::numeric_limits<long long>::max)())) {
+        return 0;
+    }
+    return static_cast<uint64_t>(std::llround(result));
 }
 
 size_t vp9_subframe_count(std::span<const uint8_t> frame_bytes) noexcept {

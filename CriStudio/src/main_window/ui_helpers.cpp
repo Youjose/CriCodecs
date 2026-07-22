@@ -1286,9 +1286,14 @@ void copy_recovery_keys(const QStringList& keys) {
 
 class RecoveryProgressDialog final : public QDialog {
 public:
-    RecoveryProgressDialog(QWidget* parent, QString title, size_t source_count)
+    RecoveryProgressDialog(
+        QWidget* parent,
+        QString title,
+        size_t source_count,
+        std::function<void()> cancel)
         : QDialog(parent, Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint |
-              Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint) {
+              Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint)
+        , m_cancel(std::move(cancel)) {
         setObjectName(QStringLiteral("KeyRecoveryProgressDialog"));
         setWindowTitle(std::move(title));
         setAttribute(Qt::WA_DeleteOnClose);
@@ -1319,6 +1324,10 @@ public:
         m_copy_all = new QPushButton(QStringLiteral("Copy All"), this);
         m_copy_all->setEnabled(false);
         actions->addWidget(m_copy_all);
+        m_cancel_or_close = new QPushButton(QStringLiteral("Cancel"), this);
+        m_cancel_or_close->setEnabled(static_cast<bool>(m_cancel));
+        m_cancel_or_close->setVisible(static_cast<bool>(m_cancel));
+        actions->addWidget(m_cancel_or_close);
         layout->addLayout(actions);
 
         connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] {
@@ -1329,6 +1338,13 @@ public:
         });
         connect(m_copy_all, &QPushButton::clicked, this, [this] {
             copy_recovery_keys(m_all_keys);
+        });
+        connect(m_cancel_or_close, &QPushButton::clicked, this, [this] {
+            if (m_finished) {
+                close();
+            } else {
+                request_cancel();
+            }
         });
         auto* copy_shortcut = new QShortcut(QKeySequence::Copy, m_table);
         connect(copy_shortcut, &QShortcut::activated, this, [this] {
@@ -1377,6 +1393,8 @@ public:
         m_copy_all->setEnabled(!m_all_keys.isEmpty());
         if (finished) {
             m_finished = true;
+            m_cancel_or_close->setText(QStringLiteral("Close"));
+            m_cancel_or_close->setEnabled(true);
             m_progress->setValue(m_progress->maximum());
             present();
         }
@@ -1384,7 +1402,9 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override {
-        if (!m_finished) {
+        if (!m_finished && m_cancel) {
+            request_cancel();
+        } else if (!m_finished) {
             hide();
             event->ignore();
             return;
@@ -1393,13 +1413,26 @@ protected:
     }
 
 private:
+    void request_cancel() {
+        if (m_finished || m_cancel_requested || !m_cancel) {
+            return;
+        }
+        m_cancel_requested = true;
+        m_cancel_or_close->setEnabled(false);
+        m_status->setText(QStringLiteral("Canceling key recovery..."));
+        m_cancel();
+    }
+
     QLabel* m_status = nullptr;
     QProgressBar* m_progress = nullptr;
     QTreeWidget* m_table = nullptr;
     QPushButton* m_copy_selected = nullptr;
     QPushButton* m_copy_all = nullptr;
+    QPushButton* m_cancel_or_close = nullptr;
     QStringList m_all_keys;
+    std::function<void()> m_cancel;
     bool m_finished = false;
+    bool m_cancel_requested = false;
 };
 
 class RecoveryNotification final : public QDialog {
@@ -1577,13 +1610,18 @@ void show_recovery_message(
 
 } // namespace
 
-void begin_key_recovery_progress(QWidget* parent, QString title, size_t source_count) {
+void begin_key_recovery_progress(
+    QWidget* parent,
+    QString title,
+    size_t source_count,
+    std::function<void()> cancel) {
     if (parent == nullptr) return;
     for (auto* current : parent->findChildren<QDialog*>(
              QStringLiteral("KeyRecoveryProgressDialog"), Qt::FindDirectChildrenOnly)) {
         current->close();
     }
-    auto* dialog = new RecoveryProgressDialog(parent, std::move(title), source_count);
+    auto* dialog = new RecoveryProgressDialog(
+        parent, std::move(title), source_count, std::move(cancel));
     dialog->present();
     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 }

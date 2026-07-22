@@ -65,6 +65,13 @@ struct WaveNameInfo {
     uint8_t encode_type = 0;
 };
 
+struct WaveformAwbEntry {
+    uint32_t waveform_index = 0;
+    uint16_t wave_id = 0xFFFF;
+    uint32_t awb_index = 0;
+    bool stream_bank = false;
+};
+
 struct AcbSubtableInfo {
     std::string name;
     bool present = false;
@@ -101,6 +108,25 @@ public:
     [[nodiscard]] bool has_embedded_awb() const;
     [[nodiscard]] std::optional<std::filesystem::path> companion_awb_path() const;
     [[nodiscard]] std::expected<awb::AwbContainer, std::string> load_awb() const;
+    /// Resolve a waveform row through its AWB ID; row and AWB indices need not match.
+    [[nodiscard]] std::expected<WaveformAwbEntry, std::string> waveform_awb_entry(
+        uint32_t index,
+        bool prefer_stream_bank = false) const;
+    [[nodiscard]] std::expected<WaveformAwbEntry, std::string> waveform_awb_entry(
+        uint32_t index,
+        const awb::AwbContainer& awb,
+        bool prefer_stream_bank = false) const;
+    /// Replace the resolved entry in the supplied editable bank; the ACB itself is unchanged.
+    [[nodiscard]] std::expected<WaveformAwbEntry, std::string> replace_waveform_data(
+        uint32_t index,
+        awb::AwbContainer& awb,
+        std::span<const uint8_t> data,
+        bool prefer_stream_bank = false) const;
+    [[nodiscard]] std::expected<WaveformAwbEntry, std::string> replace_waveform_file(
+        uint32_t index,
+        awb::AwbContainer& awb,
+        const std::filesystem::path& input_path,
+        bool prefer_stream_bank = false) const;
     [[nodiscard]] std::expected<awb::AacEncryptionState, std::string> probe_waveform_aac_encryption(
         uint32_t index,
         uint64_t keycode) const;

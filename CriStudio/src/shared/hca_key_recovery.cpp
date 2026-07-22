@@ -334,15 +334,44 @@ std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
     const DecryptionKeys& keys,
     cricodecs::KeyRecoveryMode mode
 ) {
+    cricodecs::hca::KeyRecoveryOptions options;
+    options.mode = mode;
+    return recover_hca_key(inputs, keys, options);
+}
+
+std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
+    std::span<const HcaRecoverySource> inputs,
+    const DecryptionKeys& keys,
+    const cricodecs::hca::KeyRecoveryOptions& options
+) {
     std::vector<CollectedHca> collected;
     EmbeddedEntryExtractor extractor;
     size_t next_group = 0;
-    for (const auto& input : inputs) {
+    if (options.progress) {
+        options.progress(cricodecs::hca::KeyRecoveryProgress{
+            .stage = cricodecs::hca::KeyRecoveryStage::Collecting,
+            .completed = 0,
+            .total = inputs.size(),
+        });
+    }
+    for (size_t index = 0; index < inputs.size(); ++index) {
+        if (options.stop_token.stop_requested()) {
+            return std::unexpected("HCA key recovery canceled");
+        }
+        const auto& input = inputs[index];
         const auto appended = input.kind == HcaRecoverySource::Kind::Document
             ? append_document(input, next_group, collected)
             : append_entry(input.entry, extractor, keys, next_group++, collected);
         if (!appended) {
             return std::unexpected("HCA key recovery failed: " + appended.error());
+        }
+        if (options.progress) {
+            options.progress(cricodecs::hca::KeyRecoveryProgress{
+                .stage = cricodecs::hca::KeyRecoveryStage::Collecting,
+                .completed = index + 1,
+                .total = inputs.size(),
+                .source_count = collected.size(),
+            });
         }
     }
 
@@ -362,9 +391,11 @@ std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
         inputs.front().kind == HcaRecoverySource::Kind::Document &&
         lower_ascii(inputs.front().loader_tag.empty() ? inputs.front().format : inputs.front().loader_tag)
             .find("cpk") != std::string::npos;
-    auto recovered = cricodecs::hca::recover_key(
-        sources,
-        single_cpk_document ? cricodecs::KeyRecoveryMode::Independent : mode);
+    auto core_options = options;
+    if (single_cpk_document) {
+        core_options.mode = cricodecs::KeyRecoveryMode::Independent;
+    }
+    auto recovered = cricodecs::hca::recover_key(sources, core_options);
     if (!recovered) {
         return std::unexpected(recovered.error());
     }

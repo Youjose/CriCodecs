@@ -97,6 +97,8 @@ struct Options {
     bool recover_key = false;
     bool independent_key_recovery = false;
     bool show_version = false;
+    bool ms_stereo = false;
+    bool trim_after_loop = false;
     std::optional<Format> force_type;
     std::optional<std::filesystem::path> output_path;
     std::optional<std::string> encoding;
@@ -106,6 +108,11 @@ struct Options {
     std::optional<uint16_t> subkey;
     std::optional<uint16_t> cipher_type;
     std::optional<uint64_t> aac_keycode;
+    std::optional<uint32_t> alignment;
+    std::optional<uint32_t> bitrate;
+    std::optional<uint16_t> highpass;
+    std::optional<uint16_t> mode;
+    std::optional<std::string> quality;
     std::vector<size_t> indexes;
     std::vector<std::filesystem::path> audio_paths;
     std::vector<uint8_t> audio_channels;
@@ -158,6 +165,7 @@ struct AacRecoveryOutput {
 [[nodiscard]] std::string lower_ascii(std::string_view text);
 [[nodiscard]] std::string trim_ascii(std::string_view text);
 [[nodiscard]] std::expected<uint64_t, std::string> parse_u64(std::string_view text, std::string_view context);
+[[nodiscard]] std::expected<uint32_t, std::string> parse_u32(std::string_view text, std::string_view context);
 [[nodiscard]] std::expected<uint16_t, std::string> parse_u16(std::string_view text, std::string_view context);
 [[nodiscard]] std::optional<size_t> parse_index_target(std::string_view text);
 [[nodiscard]] std::expected<std::pair<std::string, std::string>, std::string> parse_pair_value(

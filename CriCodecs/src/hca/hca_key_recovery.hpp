@@ -9,7 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <span>
+#include <stop_token>
 #include <string>
 
 namespace cricodecs::hca {
@@ -22,6 +24,26 @@ struct RecoverySource {
     size_t group = 0;
 };
 
+enum class KeyRecoveryStage : uint8_t {
+    Collecting,
+    Recovering,
+};
+
+struct KeyRecoveryProgress {
+    KeyRecoveryStage stage = KeyRecoveryStage::Recovering;
+    size_t completed = 0;
+    size_t total = 0;
+    size_t source_count = 0;
+    size_t resolved_groups = 0;
+};
+
+struct KeyRecoveryOptions {
+    KeyRecoveryMode mode = KeyRecoveryMode::SharedBaseKey;
+    size_t worker_count = 0;
+    std::stop_token stop_token;
+    std::function<void(const KeyRecoveryProgress&)> progress;
+};
+
 using KeyCandidate = cricodecs::KeyCandidate<uint64_t>;
 using KeyRecoveryResult = cricodecs::KeyRecoveryResult<uint64_t>;
 
@@ -32,10 +54,17 @@ using KeyRecoveryResult = cricodecs::KeyRecoveryResult<uint64_t>;
 [[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> sources);
 
 /// Recover base-key candidates while preserving each source's AWB subkey and
-/// logical input group. Shared mode asserts that every group has one base key;
-/// independent mode recovers groups separately and aggregates equal classes.
+/// logical input group. Shared mode ranks compatible consensus across groups
+/// without discarding isolated outliers; independent mode recovers logical
+/// groups separately and aggregates equal classes.
 [[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_key(
     std::span<const RecoverySource> sources,
     KeyRecoveryMode mode = KeyRecoveryMode::SharedBaseKey);
+
+/// Recover base-key candidates with bounded parallel group processing,
+/// cooperative cancellation, and optional progress reporting.
+[[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_key(
+    std::span<const RecoverySource> sources,
+    const KeyRecoveryOptions& options);
 
 } // namespace cricodecs::hca

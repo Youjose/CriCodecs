@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "cricodecs"
-version = "1.0.0"
+version = "1.1.0"
 description = "CriWare codec and container library with Python bindings."
 readme = "README.md"
 requires-python = ">=3.9"

@@ -308,6 +308,9 @@ std::expected<HcaRecoveryOutput, std::string> perform_hca_key_recovery(
         }
         if (const auto* archive = std::get_if<awb::AwbContainer>(&loaded->document)) {
             if (auto appended = append_awb_hcas(*archive, group, collected); !appended) {
+                if (!input.explicit_input) {
+                    continue;
+                }
                 return std::unexpected(appended.error());
             }
             continue;
@@ -315,15 +318,24 @@ std::expected<HcaRecoveryOutput, std::string> perform_hca_key_recovery(
         if (const auto* container = std::get_if<acb::AcbContainer>(&loaded->document)) {
             auto archive = container->load_awb();
             if (!archive) {
+                if (!input.explicit_input) {
+                    continue;
+                }
                 return std::unexpected(archive.error());
             }
             if (auto appended = append_awb_hcas(*archive, group, collected); !appended) {
+                if (!input.explicit_input) {
+                    continue;
+                }
                 return std::unexpected(appended.error());
             }
             continue;
         }
         if (auto* movie = std::get_if<usm::UsmReader>(&loaded->document)) {
             if (auto appended = append_usm_hcas(*movie, group, collected); !appended) {
+                if (!input.explicit_input) {
+                    continue;
+                }
                 return std::unexpected(appended.error());
             }
             continue;

@@ -2,6 +2,66 @@
 
 namespace cricodecs::cli::detail {
 
+[[nodiscard]] static std::expected<hca::HcaQuality, std::string> parse_hca_quality(std::string_view text) {
+    const std::string quality = lower_ascii(trim_ascii(text));
+    if (quality == "highest") return hca::HcaQuality::Highest;
+    if (quality == "high") return hca::HcaQuality::High;
+    if (quality == "middle" || quality == "medium") return hca::HcaQuality::Middle;
+    if (quality == "low") return hca::HcaQuality::Low;
+    if (quality == "lowest") return hca::HcaQuality::Lowest;
+    return std::unexpected("unsupported HCA `--quality`; use highest, high, middle, low, or lowest");
+}
+
+[[nodiscard]] static std::expected<uint16_t, std::string> parse_hca_version(std::string_view text) {
+    const std::string version = lower_ascii(trim_ascii(text));
+    if (version == "1.02" || version == "1.2" || version == "v1.02" || version == "0x0102") {
+        return hca::HCA_VERSION_V102;
+    }
+    if (version == "1.03" || version == "1.3" || version == "v1.03" || version == "0x0103") {
+        return hca::HCA_VERSION_V103;
+    }
+    if (version == "2.00" || version == "2.0" || version == "v2.00" || version == "0x0200") {
+        return hca::HCA_VERSION_V200;
+    }
+    if (version == "3.00" || version == "3.0" || version == "v3.00" || version == "0x0300") {
+        return hca::HCA_VERSION_V300;
+    }
+    return std::unexpected("unsupported HCA `--header-version`; use 1.02, 1.03, 2.00, 3.00, or the matching hexadecimal value");
+}
+
+[[nodiscard]] static std::expected<ahx::AhxBitAllocationPattern, std::string> parse_ahx_profile(
+    std::string_view text
+) {
+    const std::string profile = lower_ascii(trim_ascii(text));
+    if (profile == "default") return ahx::default_bit_allocation_pattern();
+    if (profile == "22050" || profile == "preset-22050" || profile == "preset_22050") {
+        return ahx::preset_bit_allocation_pattern(ahx::AhxBitAllocationPreset::preset_22050);
+    }
+    if (profile == "24000" || profile == "preset-24000" || profile == "preset_24000") {
+        return ahx::preset_bit_allocation_pattern(ahx::AhxBitAllocationPreset::preset_24000);
+    }
+    if (profile == "44100" || profile == "preset-44100" || profile == "preset_44100") {
+        return ahx::preset_bit_allocation_pattern(ahx::AhxBitAllocationPreset::preset_44100);
+    }
+    if (profile == "48000" || profile == "preset-48000" || profile == "preset_48000") {
+        return ahx::preset_bit_allocation_pattern(ahx::AhxBitAllocationPreset::preset_48000);
+    }
+    return std::unexpected("unsupported AHX `--profile`; use default, 22050, 24000, 44100, or 48000");
+}
+
+[[nodiscard]] static std::expected<cpk::CpkPreset, std::string> parse_cpk_profile(std::string_view text) {
+    std::string profile = lower_ascii(trim_ascii(text));
+    std::ranges::replace(profile, '_', '-');
+    if (profile == "id") return cpk::CpkPreset::Id;
+    if (profile == "filename") return cpk::CpkPreset::Filename;
+    if (profile == "filename-id") return cpk::CpkPreset::FilenameId;
+    if (profile == "filename-group") return cpk::CpkPreset::FilenameGroup;
+    if (profile == "id-group") return cpk::CpkPreset::IdGroup;
+    if (profile == "filename-id-group") return cpk::CpkPreset::FilenameIdGroup;
+    return std::unexpected(
+        "unsupported CPK `--profile`; use id, filename, filename-id, filename-group, id-group, or filename-id-group");
+}
+
 [[nodiscard]] std::vector<adx::AdxLoop> wav_loops_as_adx_loops(const wav::WavContainer& wav) {
     std::vector<adx::AdxLoop> loops;
     const auto& sample_loops = wav.sampler().loops;
@@ -26,6 +86,25 @@ namespace cricodecs::cli::detail {
     hca::HcaEncodeConfig config;
     config.sample_rate = source.sample_rate();
     config.channel_count = static_cast<uint8_t>(source.channels());
+    config.bitrate = options.bitrate.value_or(0);
+    config.ms_stereo = options.ms_stereo;
+
+    if (options.version.has_value()) {
+        auto version = parse_hca_version(*options.version);
+        if (!version) return std::unexpected(version.error());
+        config.version = *version;
+    }
+    if (options.quality.has_value()) {
+        auto quality = parse_hca_quality(*options.quality);
+        if (!quality) return std::unexpected(quality.error());
+        config.quality = *quality;
+    }
+    const auto& loops = source.sampler().loops;
+    if (!loops.empty() && loops.front().start < loops.front().end) {
+        config.loop_enabled = true;
+        config.loop_start = loops.front().start;
+        config.loop_end = loops.front().end;
+    }
 
     auto encoded = hca::encode(source, config);
     if (!encoded) {
@@ -65,7 +144,32 @@ namespace cricodecs::cli::detail {
     adx::AdxEncodeConfig config;
     config.sample_rate = source.sample_rate();
     config.channels = static_cast<uint8_t>(source.channels());
-    config.encoding_mode = (format == Format::ahx) ? 0x10 : 3;
+    config.encoding_mode = static_cast<uint8_t>(options.mode.value_or(format == Format::ahx ? 0x10 : 3));
+
+    if (format == Format::adx) {
+        if (config.encoding_mode != 2 && config.encoding_mode != 3 && config.encoding_mode != 4) {
+            return std::unexpected("ADX encode `--mode` must be 2, 3, or 4");
+        }
+        config.highpass_freq = options.highpass.value_or(config.highpass_freq);
+        config.delete_samples_after_loop_end = options.trim_after_loop;
+        if (options.version.has_value()) {
+            auto version = parse_u16(*options.version, "ADX --header-version");
+            if (!version) return std::unexpected(version.error());
+            if (*version != 3 && *version != 4 && *version != 5) {
+                return std::unexpected("ADX encode `--header-version` must be 3, 4, or 5");
+            }
+            config.version = static_cast<uint8_t>(*version);
+        }
+    } else {
+        if (config.encoding_mode != 0x10 && config.encoding_mode != 0x11) {
+            return std::unexpected("AHX encode `--mode` must be 0x10 or 0x11");
+        }
+        if (options.profile.has_value()) {
+            auto profile = parse_ahx_profile(*options.profile);
+            if (!profile) return std::unexpected(profile.error());
+            config.ahx_bit_allocation_pattern = *profile;
+        }
+    }
 
     if (options.key.has_value()) {
         const uint16_t encryption_type = options.cipher_type.value_or(8);
@@ -726,14 +830,15 @@ struct AixMutationTarget {
 
     switch (*options.force_type) {
         case Format::afs: {
+            const uint32_t alignment = options.alignment.value_or(afs::AfsContainer::DEFAULT_ALIGNMENT);
             if (lower_ascii(input_path.extension().string()) == ".als") {
-                auto archive = afs::AfsContainer::create_from_als(input_path, afs::AfsContainer::DEFAULT_ALIGNMENT, true);
+                auto archive = afs::AfsContainer::create_from_als(input_path, alignment, true);
                 if (!archive) return std::unexpected(archive.error());
                 return archive->build_to_file(output_path);
             }
             auto files = collect_directory_files(input_path);
             if (!files) return std::unexpected(files.error());
-            auto archive = afs::AfsContainer::create(afs::AfsContainer::DEFAULT_ALIGNMENT, true);
+            auto archive = afs::AfsContainer::create(alignment, true);
             for (const auto& [source, relative] : *files) {
                 auto bytes = read_bytes_file(source);
                 if (!bytes) return std::unexpected(bytes.error());
@@ -744,7 +849,23 @@ struct AixMutationTarget {
         case Format::awb: {
             auto files = collect_directory_files(input_path);
             if (!files) return std::unexpected(files.error());
-            auto archive = awb::AwbContainer::create();
+            const uint32_t raw_alignment = options.alignment.value_or(awb::AwbContainer::DEFAULT_ALIGNMENT);
+            if (raw_alignment > std::numeric_limits<uint16_t>::max()) {
+                return std::unexpected("AWB `--alignment` is out of range for uint16");
+            }
+            uint16_t raw_version = awb::AwbContainer::DEFAULT_VERSION;
+            if (options.version.has_value()) {
+                auto version = parse_u16(*options.version, "AWB --header-version");
+                if (!version) return std::unexpected(version.error());
+                if (*version > std::numeric_limits<uint8_t>::max()) {
+                    return std::unexpected("AWB `--header-version` must be in the range 0..255");
+                }
+                raw_version = *version;
+            }
+            auto archive = awb::AwbContainer::create(
+                static_cast<uint8_t>(raw_version),
+                static_cast<uint16_t>(raw_alignment),
+                options.subkey.value_or(0));
             for (const auto& [source, _] : *files) {
                 auto bytes = read_bytes_file(source);
                 if (!bytes) return std::unexpected(bytes.error());
@@ -761,16 +882,29 @@ struct AixMutationTarget {
             }
             cpk::CpkBuilderOptions build_options;
             build_options.encoding = encoding_options(options);
+            if (options.alignment.has_value()) {
+                if (*options.alignment > std::numeric_limits<uint16_t>::max()) {
+                    return std::unexpected("CPK `--alignment` is out of range for uint16");
+                }
+                build_options.align = static_cast<uint16_t>(*options.alignment);
+            }
+            if (options.profile.has_value()) {
+                auto profile = parse_cpk_profile(*options.profile);
+                if (!profile) return std::unexpected(profile.error());
+                build_options.preset = *profile;
+            }
             return builder.build_to_file(output_path, build_options);
         }
         case Format::acx: {
             acx::AcxBuilder builder;
+            const uint32_t alignment = options.alignment.value_or(4);
             if (lower_ascii(input_path.extension().string()) == ".fls") {
-                return builder.build_file_list_to_file(input_path, output_path);
+                return builder.build_file_list_to_file(input_path, output_path, alignment);
             }
             auto files = collect_directory_files(input_path);
             if (!files) return std::unexpected(files.error());
             acx::AcxBuildInput input;
+            input.alignment = alignment;
             input.entries.reserve(files->size());
             for (const auto& [source, _] : *files) {
                 input.entries.push_back({.source_path = source, .data = std::nullopt});

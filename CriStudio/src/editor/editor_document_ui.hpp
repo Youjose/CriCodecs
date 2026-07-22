@@ -9,6 +9,7 @@
 #include <span>
 
 class QCheckBox;
+class QAction;
 class QLabel;
 class QComboBox;
 class QGridLayout;
@@ -79,6 +80,9 @@ struct EditorDocumentUi {
     QPushButton* batch_awb_wave_ids_button = nullptr;
     QPushButton* archive_entry_options_button = nullptr;
     QPushButton* archive_options_button = nullptr;
+    QPushButton* archive_compression_button = nullptr;
+    QAction* archive_compress_all_action = nullptr;
+    QAction* archive_store_all_action = nullptr;
     QPushButton* import_afs_als_button = nullptr;
     QPushButton* export_afs_header_button = nullptr;
     QPushButton* import_cvm_script_button = nullptr;

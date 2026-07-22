@@ -73,6 +73,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QAudioOutput>
+#include <QAction>
 #include <QBasicTimer>
 #include <QCheckBox>
 #include <QComboBox>
@@ -603,6 +604,8 @@ private:
         connect(m_ui.batch_awb_wave_ids_button, &QPushButton::clicked, this, [this] { assign_awb_wave_ids(); });
         connect(m_ui.archive_entry_options_button, &QPushButton::clicked, this, [this] { edit_archive_entry_properties(); });
         connect(m_ui.archive_options_button, &QPushButton::clicked, this, [this] { edit_archive_options(); });
+        connect(m_ui.archive_compress_all_action, &QAction::triggered, this, [this] { set_all_cpk_compression(true); });
+        connect(m_ui.archive_store_all_action, &QAction::triggered, this, [this] { set_all_cpk_compression(false); });
         connect(m_ui.import_afs_als_button, &QPushButton::clicked, this, [this] { import_afs_als_script(); });
         connect(m_ui.export_afs_header_button, &QPushButton::clicked, this, [this] { export_afs_file_id_header(); });
         connect(m_ui.import_cvm_script_button, &QPushButton::clicked, this, [this] { import_cvm_script(); });
@@ -2060,10 +2063,11 @@ private:
                 ? (item->checkState() == Qt::Checked ? QStringLiteral("yes") : QStringLiteral("no"))
                 : item->text()
         );
-        apply_archive_edit_result(edited);
+        const bool refresh = m_archive_kind != ArchiveKind::Cpk || item->column() != 12;
+        apply_archive_edit_result(edited, refresh);
     }
 
-    void apply_archive_edit_result(const ArchiveItemEditResult& edited) {
+    void apply_archive_edit_result(const ArchiveItemEditResult& edited, bool refresh = true) {
         if (!edited.handled) {
             return;
         }
@@ -2073,7 +2077,7 @@ private:
             return;
         }
         if (edited.changed) {
-            mark_archive_changed(edited.change_message);
+            mark_archive_changed(edited.change_message, refresh);
         }
         if (edited.selected_row >= 0 && edited.selected_row < m_ui.archive_table->rowCount()) {
             m_ui.archive_table->setCurrentCell(edited.selected_row, 0);
@@ -2119,12 +2123,35 @@ private:
         }
     }
 
-    void mark_archive_changed(QString message) {
+    void mark_archive_changed(QString message, bool refresh = true) {
         m_dirty = true;
         append_log(std::move(message));
         populate_info();
-        refresh_archive_view();
+        if (refresh) {
+            refresh_archive_view();
+        }
         refresh_title();
+    }
+
+    void set_all_cpk_compression(bool enabled) {
+        if (m_archive_kind != ArchiveKind::Cpk || !m_cpk || m_ui.archive_table == nullptr) {
+            return;
+        }
+        modules::cpk::set_all_request_compress(*m_cpk, enabled);
+        const QSignalBlocker signal_blocker(m_ui.archive_table);
+        const bool updates_enabled = m_ui.archive_table->updatesEnabled();
+        m_ui.archive_table->setUpdatesEnabled(false);
+        for (int row = 0; row < m_ui.archive_table->rowCount(); ++row) {
+            if (auto* item = m_ui.archive_table->item(row, 12); item != nullptr) {
+                item->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
+            }
+        }
+        m_ui.archive_table->setUpdatesEnabled(updates_enabled);
+        mark_archive_changed(
+            enabled
+                ? QStringLiteral("Enabled save-time compression for all CPK entries.")
+                : QStringLiteral("Disabled save-time compression for all CPK entries."),
+            false);
     }
 
     void apply_table_name() {

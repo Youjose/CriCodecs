@@ -156,6 +156,7 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    m_hca_key_recovery_stop_source.request_stop();
     save_ui_state();
     if (auto* app = QApplication::instance(); app != nullptr) {
         app->removeEventFilter(this);

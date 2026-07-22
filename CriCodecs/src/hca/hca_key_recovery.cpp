@@ -13,6 +13,7 @@
 #include "../utilities/io.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -20,15 +21,27 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <span>
+#include <thread>
 #include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 namespace cricodecs::hca {
+
+struct HcaRecoveryAccess {
+    [[nodiscard]] static std::span<const uint8_t> stored_bytes(const Hca& hca) noexcept {
+        return hca.m_bytes;
+    }
+
+    [[nodiscard]] static const std::filesystem::path& source_path(const Hca& hca) noexcept {
+        return hca.m_source_path;
+    }
+};
 
 namespace {
 
@@ -1002,7 +1015,9 @@ struct FrameMetrics {
 }
 
 [[nodiscard]] std::vector<Candidate> refine_byte(
-    Candidate candidate, std::span<const Frame> frames, size_t byte_index) noexcept {
+    Candidate candidate,
+    std::span<const Frame> frames,
+    size_t byte_index) noexcept {
     const size_t shift = 8 * byte_index;
     const uint64_t base = candidate.q & ~(uint64_t{0xFF} << shift);
     std::array<Candidate, 256> candidates{};
@@ -1165,7 +1180,8 @@ struct FrameMetrics {
 }
 
 [[nodiscard]] std::vector<Candidate> joint_refine(
-    Candidate initial, std::span<const Frame> frames) {
+    Candidate initial,
+    std::span<const Frame> frames) {
     const uint64_t base = initial.q & ~(uint64_t{0xFF} << 8) & ~(uint64_t{0xFF} << 48);
     std::vector<Candidate> candidates;
     candidates.reserve(65536);
@@ -1213,7 +1229,9 @@ struct FrameMetrics {
 }
 
 [[nodiscard]] std::expected<std::vector<KeyCandidate>, std::string> recover_profile_key(
-    std::span<const Payload> payloads, const Profile& common_profile) {
+    std::span<const Payload> payloads,
+    const Profile& common_profile,
+    bool allow_joint_refine) {
     if (common_profile.ath) {
         return std::unexpected("HCA key recovery failed: ATH-profile recovery is not supported");
     }
@@ -1240,7 +1258,8 @@ struct FrameMetrics {
 
     if (const Model* model = balanced_model(common_profile, payloads.front().header->file.version)) {
         const auto likelihood = sample_frames(payloads, BalancedFrameLimit);
-        auto recovered = recover_with_model(prepare(*model), likelihood, prefix, validation);
+        auto recovered = recover_with_model(
+            prepare(*model), likelihood, prefix, validation);
         if (recovered) {
             append(*recovered);
             if (perfect(candidates.front().metrics)) {
@@ -1268,7 +1287,8 @@ struct FrameMetrics {
     const PreparedModel expert = prepare(*expert_model);
     std::array<PreparedModel, 3> models{expert, blend(global, expert), global};
     for (const auto& model : models) {
-        auto recovered = recover_with_model(model, likelihood, prefix, validation);
+        auto recovered = recover_with_model(
+            model, likelihood, prefix, validation);
         if (recovered) {
             append(*recovered);
         }
@@ -1276,7 +1296,7 @@ struct FrameMetrics {
     if (candidates.empty()) {
         return std::unexpected("HCA key recovery failed: no table candidate could be constructed");
     }
-    if (!perfect(candidates.front().metrics)) {
+    if (allow_joint_refine && !perfect(candidates.front().metrics)) {
         append(joint_refine(candidates.front(), validation));
     }
     std::vector<KeyCandidate> result;
@@ -1298,7 +1318,11 @@ std::expected<KeyRecoveryResult, std::string> recover_key(const Hca& source) {
     return recover_key(std::span<const Hca>(&source, 1));
 }
 
-std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> sources) {
+namespace {
+
+[[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_effective_key(
+    std::span<const Hca* const> sources,
+    bool allow_joint_refine = true) {
     if (sources.empty()) {
         return std::unexpected("HCA key recovery failed: no HCA inputs");
     }
@@ -1312,19 +1336,23 @@ std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> s
         std::vector<Payload> payloads;
     };
     std::vector<ProfileGroup> groups;
-    for (const auto& source : sources) {
+    for (const Hca* source : sources) {
+        if (source == nullptr) {
+            return std::unexpected("HCA key recovery failed: null HCA recovery source");
+        }
         std::span<const uint8_t> bytes;
-        if (!source.m_bytes.empty()) {
-            bytes = source.m_bytes;
+        if (const auto stored = HcaRecoveryAccess::stored_bytes(*source); !stored.empty()) {
+            bytes = stored;
         } else {
-            auto loaded = io::read_file_bytes(source.m_source_path, "HCA key recovery failed");
+            auto loaded = io::read_file_bytes(
+                HcaRecoveryAccess::source_path(*source), "HCA key recovery failed");
             if (!loaded) {
                 return std::unexpected(loaded.error());
             }
             owned.push_back(std::move(*loaded));
             bytes = owned.back();
         }
-        const auto& header = source.header();
+        const auto& header = source->header();
         if (header.cipher.type != 56) {
             return std::unexpected("HCA key recovery failed: every input must use cipher type 56");
         }
@@ -1345,7 +1373,8 @@ std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> s
     std::vector<KeyCandidate> profile_candidates;
     std::string first_error;
     for (const auto& group : groups) {
-        auto recovered = recover_profile_key(group.payloads, group.profile);
+        auto recovered = recover_profile_key(
+            group.payloads, group.profile, allow_joint_refine);
         if (!recovered) {
             if (first_error.empty()) {
                 first_error = recovered.error();
@@ -1390,6 +1419,17 @@ std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> s
     };
 }
 
+} // namespace
+
+std::expected<KeyRecoveryResult, std::string> recover_key(std::span<const Hca> sources) {
+    std::vector<const Hca*> pointers;
+    pointers.reserve(sources.size());
+    for (const auto& source : sources) {
+        pointers.push_back(&source);
+    }
+    return recover_effective_key(pointers);
+}
+
 namespace {
 
 struct BaseClass {
@@ -1411,6 +1451,9 @@ struct BaseClass {
 }
 
 [[nodiscard]] std::optional<BaseClass> normalize_base_key(uint64_t effective, uint16_t subkey) noexcept {
+    if (subkey == 0) {
+        return BaseClass{.residue = effective & Mask56, .unknown_high_bits = 0};
+    }
     const uint64_t multiplier = subkey_multiplier(subkey);
     const uint8_t trailing = static_cast<uint8_t>(std::countr_zero(multiplier));
     const uint64_t divisor = uint64_t{1} << trailing;
@@ -1471,6 +1514,14 @@ void rank_base_candidates(std::vector<KeyCandidate>& candidates) {
 std::expected<KeyRecoveryResult, std::string> recover_key(
     std::span<const RecoverySource> sources,
     KeyRecoveryMode mode) {
+    KeyRecoveryOptions options;
+    options.mode = mode;
+    return recover_key(sources, options);
+}
+
+std::expected<KeyRecoveryResult, std::string> recover_key(
+    std::span<const RecoverySource> sources,
+    const KeyRecoveryOptions& options) {
     if (sources.empty()) {
         return std::unexpected("HCA key recovery failed: no HCA inputs");
     }
@@ -1483,11 +1534,11 @@ std::expected<KeyRecoveryResult, std::string> recover_key(
     struct Group {
         size_t logical_group = 0;
         uint16_t subkey = 0;
-        std::vector<Hca> hcas;
+        std::vector<const Hca*> hcas;
     };
     std::vector<Group> groups;
     for (const auto& source : sources) {
-        const size_t logical_group = mode == KeyRecoveryMode::SharedBaseKey ? 0 : source.group;
+        const size_t logical_group = options.mode == KeyRecoveryMode::SharedBaseKey ? 0 : source.group;
         auto group = std::ranges::find_if(groups, [&](const Group& current) {
             return current.logical_group == logical_group && current.subkey == source.subkey;
         });
@@ -1499,69 +1550,393 @@ std::expected<KeyRecoveryResult, std::string> recover_key(
             });
             group = std::prev(groups.end());
         }
-        group->hcas.push_back(*source.hca);
+        group->hcas.push_back(source.hca);
     }
-
-    std::vector<std::vector<KeyCandidate>> normalized_groups;
-    normalized_groups.reserve(groups.size());
-    size_t evidence_count = 0;
-    for (const auto& group : groups) {
-        auto effective = recover_key(group.hcas);
-        if (!effective) {
-            return std::unexpected(effective.error());
-        }
-        evidence_count += effective->evidence_count;
-        std::vector<KeyCandidate> normalized;
-        for (const auto& candidate : effective->candidates) {
-            const auto base = normalize_base_key(candidate.key, group.subkey);
-            if (!base) {
-                continue;
+    if (options.mode == KeyRecoveryMode::SharedBaseKey) {
+        std::ranges::stable_sort(groups, [](const Group& left, const Group& right) {
+            const auto exact_class = [](uint16_t subkey) {
+                return subkey == 0 || (subkey_multiplier(subkey) & 1u) != 0;
+            };
+            if (exact_class(left.subkey) != exact_class(right.subkey)) {
+                return exact_class(left.subkey);
             }
-            normalized.push_back(KeyCandidate{
-                .key = base->residue,
-                .score = candidate.score,
-                .source_count = candidate.source_count,
-                .evidence_count = candidate.evidence_count,
-                .unknown_high_bits = base->unknown_high_bits,
-                .equivalent_count = uint32_t{1} << base->unknown_high_bits,
-            });
-        }
-        if (normalized.empty()) {
-            return std::unexpected("HCA key recovery failed: effective candidates are incompatible with the AWB subkey");
-        }
-        rank_base_candidates(normalized);
-        normalized_groups.push_back(std::move(normalized));
+            return left.hcas.size() > right.hcas.size();
+        });
     }
 
-    std::vector<KeyCandidate> combined = normalized_groups.front();
-    for (size_t index = 1; index < normalized_groups.size(); ++index) {
-        std::vector<KeyCandidate> next;
-        if (mode == KeyRecoveryMode::SharedBaseKey) {
-            for (const auto& left : combined) {
-                for (const auto& right : normalized_groups[index]) {
-                    if (compatible(left, right)) {
-                        next.push_back(intersect(left, right));
+    struct GroupRecovery {
+        std::vector<KeyCandidate> candidates;
+        size_t evidence_count = 0;
+        std::string error;
+    };
+    std::vector<GroupRecovery> recovered_groups(groups.size());
+    std::atomic_size_t next_group = 0;
+    std::atomic_size_t completed_groups = 0;
+    std::atomic_size_t resolved_groups = 0;
+    std::atomic_bool exact_consensus_found = false;
+    std::optional<uint64_t> exact_consensus_key;
+    std::vector<uint8_t> processed_groups(groups.size(), 0);
+    std::mutex result_mutex;
+    std::mutex progress_mutex;
+
+    const auto publish_progress = [&](size_t completed) {
+        if (!options.progress) {
+            return;
+        }
+        const std::scoped_lock lock(progress_mutex);
+        options.progress(KeyRecoveryProgress{
+            .stage = KeyRecoveryStage::Recovering,
+            .completed = completed,
+            .total = groups.size(),
+            .source_count = sources.size(),
+            .resolved_groups = resolved_groups.load(std::memory_order_relaxed),
+        });
+    };
+    publish_progress(0);
+
+    const bool fast_shared_pass = options.mode == KeyRecoveryMode::SharedBaseKey && groups.size() > 1;
+    const auto recover_group = [&](size_t index, bool allow_joint_refine, bool report_progress) {
+        const auto& group = groups[index];
+        GroupRecovery result;
+        auto effective = recover_effective_key(group.hcas, allow_joint_refine);
+        if (!effective) {
+            result.error = std::move(effective.error());
+        } else {
+            result.evidence_count = effective->evidence_count;
+            for (const auto& candidate : effective->candidates) {
+                const auto base = normalize_base_key(candidate.key, group.subkey);
+                if (!base) {
+                    continue;
+                }
+                result.candidates.push_back(KeyCandidate{
+                    .key = base->residue,
+                    .score = candidate.score,
+                    .source_count = candidate.source_count,
+                    .evidence_count = candidate.evidence_count,
+                    .unknown_high_bits = base->unknown_high_bits,
+                    .equivalent_count = uint32_t{1} << base->unknown_high_bits,
+                });
+            }
+            if (result.candidates.empty()) {
+                result.error = "HCA key recovery failed: effective candidates are incompatible with the AWB subkey";
+            } else {
+                rank_base_candidates(result.candidates);
+                resolved_groups.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        {
+            const std::scoped_lock lock(result_mutex);
+            recovered_groups[index] = std::move(result);
+            processed_groups[index] = true;
+            if (fast_shared_pass && !exact_consensus_found.load(std::memory_order_relaxed)) {
+                for (const auto& candidate : recovered_groups[index].candidates) {
+                    if (candidate.score < 1.0f || candidate.unknown_high_bits != 0) {
+                        continue;
+                    }
+                    const bool confirmed = std::ranges::any_of(
+                        recovered_groups,
+                        [&](const GroupRecovery& other) {
+                            if (&other == &recovered_groups[index]) {
+                                return false;
+                            }
+                            return std::ranges::any_of(
+                                other.candidates,
+                                [&](const KeyCandidate& other_candidate) {
+                                    return other_candidate.score >= 1.0f &&
+                                        other_candidate.unknown_high_bits == 0 &&
+                                        other_candidate.key == candidate.key;
+                                });
+                        });
+                    if (confirmed) {
+                        exact_consensus_key = candidate.key;
+                        exact_consensus_found.store(true, std::memory_order_release);
+                        break;
                     }
                 }
             }
-            if (next.empty()) {
-                return std::unexpected("HCA key recovery failed: selected sources do not share a compatible base key");
+        }
+        if (report_progress) {
+            const auto completed = completed_groups.fetch_add(1, std::memory_order_relaxed) + 1;
+            publish_progress(completed);
+        }
+    };
+
+    const auto worker = [&] {
+        while (!options.stop_token.stop_requested()) {
+            if (fast_shared_pass && exact_consensus_found.load(std::memory_order_acquire)) {
+                return;
             }
+            const auto index = next_group.fetch_add(1, std::memory_order_relaxed);
+            if (index >= groups.size()) {
+                return;
+            }
+            if (fast_shared_pass && exact_consensus_found.load(std::memory_order_acquire)) {
+                return;
+            }
+            recover_group(index, !fast_shared_pass, true);
+        }
+    };
+    const auto hardware_threads = std::max(1u, std::thread::hardware_concurrency());
+    const size_t requested_workers = options.worker_count == 0
+        ? std::min<size_t>(4, hardware_threads)
+        : options.worker_count;
+    const size_t worker_count = std::max<size_t>(1, std::min(groups.size(), requested_workers));
+    if (worker_count == 1) {
+        worker();
+    } else {
+        std::vector<std::jthread> workers;
+        workers.reserve(worker_count);
+        for (size_t index = 0; index < worker_count; ++index) {
+            workers.emplace_back(worker);
+        }
+        workers.clear();
+    }
+    if (options.stop_token.stop_requested()) {
+        return std::unexpected("HCA key recovery canceled");
+    }
+
+    if (exact_consensus_key) {
+        const auto validate_group = [&](size_t index) -> std::expected<std::optional<KeyCandidate>, std::string> {
+            const auto& group = groups[index];
+            std::vector<std::vector<uint8_t>> owned;
+            owned.reserve(group.hcas.size());
+            std::vector<Payload> payloads;
+            payloads.reserve(group.hcas.size());
+            for (const Hca* hca : group.hcas) {
+                std::span<const uint8_t> bytes;
+                if (const auto stored = HcaRecoveryAccess::stored_bytes(*hca); !stored.empty()) {
+                    bytes = stored;
+                } else {
+                    auto loaded = io::read_file_bytes(
+                        HcaRecoveryAccess::source_path(*hca), "HCA key validation failed");
+                    if (!loaded) {
+                        return std::unexpected(loaded.error());
+                    }
+                    owned.push_back(std::move(*loaded));
+                    bytes = owned.back();
+                }
+                payloads.push_back(Payload{.bytes = bytes, .header = &hca->header()});
+            }
+            const auto validation = sample_frames(payloads, ValidationFrameLimit);
+            if (validation.empty()) {
+                return std::optional<KeyCandidate>{};
+            }
+            const uint64_t effective = detail::apply_subkey(
+                *exact_consensus_key, group.subkey) & Mask56;
+            const auto metrics = score_q((effective - 1u) & Mask56, validation);
+            if (!perfect(metrics)) {
+                return std::optional<KeyCandidate>{};
+            }
+            return std::optional<KeyCandidate>{KeyCandidate{
+                .key = *exact_consensus_key,
+                .score = validation_score(metrics),
+                .source_count = group.hcas.size(),
+                .evidence_count = metrics.tested,
+            }};
+        };
+
+        std::atomic_size_t next_validation = 0;
+        const auto validation_worker = [&] {
+            while (!options.stop_token.stop_requested()) {
+                const auto index = next_validation.fetch_add(1, std::memory_order_relaxed);
+                if (index >= groups.size()) {
+                    return;
+                }
+                const bool was_processed = processed_groups[index];
+                auto validated = validate_group(index);
+                if (validated && *validated) {
+                    auto candidate = std::move(**validated);
+                    const auto candidate_evidence = candidate.evidence_count;
+                    recovered_groups[index] = GroupRecovery{
+                        .candidates = {std::move(candidate)},
+                        .evidence_count = candidate_evidence,
+                        .error = {},
+                    };
+                    if (!was_processed) {
+                        resolved_groups.fetch_add(1, std::memory_order_relaxed);
+                    }
+                } else if (!was_processed) {
+                    recover_group(index, false, false);
+                    if (!validated && recovered_groups[index].error.empty()) {
+                        recovered_groups[index].error = std::move(validated.error());
+                    }
+                }
+                if (!was_processed) {
+                    const auto completed = completed_groups.fetch_add(1, std::memory_order_relaxed) + 1;
+                    publish_progress(completed);
+                }
+            }
+        };
+        if (worker_count == 1) {
+            validation_worker();
         } else {
-            next = std::move(combined);
-            for (const auto& candidate : normalized_groups[index]) {
-                auto existing = std::ranges::find_if(next, [&](const KeyCandidate& current) {
+            std::vector<std::jthread> validation_workers;
+            validation_workers.reserve(worker_count);
+            for (size_t index = 0; index < worker_count; ++index) {
+                validation_workers.emplace_back(validation_worker);
+            }
+        }
+        if (options.stop_token.stop_requested()) {
+            return std::unexpected("HCA key recovery canceled");
+        }
+    }
+
+    if (fast_shared_pass && !exact_consensus_key) {
+        bool has_consensus = false;
+        for (size_t left = 0; left < recovered_groups.size() && !has_consensus; ++left) {
+            for (size_t right = left + 1; right < recovered_groups.size() && !has_consensus; ++right) {
+                has_consensus = std::ranges::any_of(
+                    recovered_groups[left].candidates,
+                    [&](const KeyCandidate& left_candidate) {
+                        return std::ranges::any_of(
+                            recovered_groups[right].candidates,
+                            [&](const KeyCandidate& right_candidate) {
+                                return compatible(left_candidate, right_candidate);
+                            });
+                    });
+            }
+        }
+        if (!has_consensus) {
+            std::vector<size_t> retry_indices;
+            for (size_t index = 0; index < recovered_groups.size(); ++index) {
+                const auto& candidates = recovered_groups[index].candidates;
+                if (candidates.empty() || candidates.front().score < 1.0f) {
+                    retry_indices.push_back(index);
+                }
+            }
+            std::atomic_size_t next_retry = 0;
+            const auto retry_worker = [&] {
+                while (!options.stop_token.stop_requested()) {
+                    const auto position = next_retry.fetch_add(1, std::memory_order_relaxed);
+                    if (position >= retry_indices.size()) {
+                        return;
+                    }
+                    recover_group(retry_indices[position], true, false);
+                }
+            };
+            const auto retry_worker_count = std::max<size_t>(
+                1, std::min(retry_indices.size(), worker_count));
+            if (retry_worker_count == 1) {
+                retry_worker();
+            } else {
+                std::vector<std::jthread> retry_workers;
+                retry_workers.reserve(retry_worker_count);
+                for (size_t index = 0; index < retry_worker_count; ++index) {
+                    retry_workers.emplace_back(retry_worker);
+                }
+            }
+            if (options.stop_token.stop_requested()) {
+                return std::unexpected("HCA key recovery canceled");
+            }
+        }
+    }
+
+    std::vector<size_t> resolved_indices;
+    resolved_indices.reserve(recovered_groups.size());
+    size_t evidence_count = 0;
+    std::string first_error;
+    for (size_t index = 0; index < recovered_groups.size(); ++index) {
+        const auto& recovered = recovered_groups[index];
+        if (recovered.candidates.empty()) {
+            if (first_error.empty() && !recovered.error.empty()) {
+                first_error = recovered.error;
+            }
+            continue;
+        }
+        resolved_indices.push_back(index);
+        evidence_count += recovered.evidence_count;
+    }
+    if (resolved_indices.empty()) {
+        return std::unexpected(first_error.empty()
+            ? "HCA key recovery failed: no base-key candidate could be constructed"
+            : std::move(first_error));
+    }
+
+    std::vector<KeyCandidate> combined;
+    if (options.mode == KeyRecoveryMode::SharedBaseKey) {
+        std::ranges::sort(resolved_indices, [&](size_t left, size_t right) {
+            const auto& left_candidate = recovered_groups[left].candidates.front();
+            const auto& right_candidate = recovered_groups[right].candidates.front();
+            if (left_candidate.score != right_candidate.score) {
+                return left_candidate.score > right_candidate.score;
+            }
+            if (left_candidate.unknown_high_bits != right_candidate.unknown_high_bits) {
+                return left_candidate.unknown_high_bits < right_candidate.unknown_high_bits;
+            }
+            return left_candidate.source_count > right_candidate.source_count;
+        });
+
+        struct ConsensusCandidate {
+            KeyCandidate candidate;
+            size_t group_support = 0;
+        };
+        std::vector<ConsensusCandidate> consensus;
+        for (const size_t seed_group : resolved_indices) {
+            for (const auto& seed : recovered_groups[seed_group].candidates) {
+                ConsensusCandidate current{.candidate = seed, .group_support = 1};
+                for (const size_t group_index : resolved_indices) {
+                    if (group_index == seed_group) {
+                        continue;
+                    }
+                    const auto& candidates = recovered_groups[group_index].candidates;
+                    const auto match = std::ranges::find_if(candidates, [&](const KeyCandidate& candidate) {
+                        return compatible(current.candidate, candidate);
+                    });
+                    if (match != candidates.end()) {
+                        current.candidate = intersect(current.candidate, *match);
+                        ++current.group_support;
+                    }
+                }
+                const auto existing = std::ranges::find_if(consensus, [&](const ConsensusCandidate& value) {
+                    return value.candidate.key == current.candidate.key &&
+                        value.candidate.unknown_high_bits == current.candidate.unknown_high_bits;
+                });
+                if (existing == consensus.end()) {
+                    consensus.push_back(std::move(current));
+                } else if (current.group_support > existing->group_support ||
+                           (current.group_support == existing->group_support &&
+                            current.candidate.score > existing->candidate.score)) {
+                    *existing = std::move(current);
+                }
+            }
+        }
+        std::ranges::sort(consensus, [](const ConsensusCandidate& left, const ConsensusCandidate& right) {
+            if (left.group_support != right.group_support) {
+                return left.group_support > right.group_support;
+            }
+            if (left.candidate.source_count != right.candidate.source_count) {
+                return left.candidate.source_count > right.candidate.source_count;
+            }
+            if (left.candidate.score != right.candidate.score) {
+                return left.candidate.score > right.candidate.score;
+            }
+            if (left.candidate.evidence_count != right.candidate.evidence_count) {
+                return left.candidate.evidence_count > right.candidate.evidence_count;
+            }
+            if (left.candidate.unknown_high_bits != right.candidate.unknown_high_bits) {
+                return left.candidate.unknown_high_bits < right.candidate.unknown_high_bits;
+            }
+            return left.candidate.key < right.candidate.key;
+        });
+        const auto count = std::min(MaxKeyRecoveryCandidates, consensus.size());
+        combined.reserve(count);
+        for (size_t index = 0; index < count; ++index) {
+            combined.push_back(std::move(consensus[index].candidate));
+        }
+    } else {
+        for (const size_t group_index : resolved_indices) {
+            for (const auto& candidate : recovered_groups[group_index].candidates) {
+                const auto existing = std::ranges::find_if(combined, [&](const KeyCandidate& current) {
                     return compatible(current, candidate);
                 });
-                if (existing == next.end()) {
-                    next.push_back(candidate);
+                if (existing == combined.end()) {
+                    combined.push_back(candidate);
                 } else {
                     *existing = intersect(*existing, candidate);
                 }
             }
+            rank_base_candidates(combined);
         }
-        rank_base_candidates(next);
-        combined = std::move(next);
     }
 
     return KeyRecoveryResult{

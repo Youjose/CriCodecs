@@ -108,7 +108,7 @@ Download a wheel matching your Python version, operating system, and CPU
 architecture, then install it directly:
 
 ```sh
-python -m pip install cricodecs-1.0.0-*.whl
+python -m pip install cricodecs-1.1.0-*.whl
 ```
 
 ### C++ Core Library
@@ -118,6 +118,7 @@ Build and install the optimized static C++ library:
 ```sh
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCRICODECS_BUILD_TESTS=OFF \
   -DCRICODECS_BUILD_CLI=OFF \
   -DCRICODECS_INSTALL_CPP=ON
 cmake --build build --parallel 4

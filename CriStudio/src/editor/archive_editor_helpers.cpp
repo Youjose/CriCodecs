@@ -458,9 +458,6 @@ ArchiveItemEditResult edit_archive_options(
             return {.handled = true};
         }
         modules::cpk::set_options(*view.cpk, std::move(selection->options));
-        if (selection->compress_all.has_value()) {
-            modules::cpk::set_all_request_compress(*view.cpk, *selection->compress_all);
-        }
         if (view.cpk_obfuscate_utf != nullptr) {
             *view.cpk_obfuscate_utf = selection->obfuscate_utf;
         }

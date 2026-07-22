@@ -75,6 +75,74 @@ std::expected<std::reference_wrapper<const awb::AwbContainer>, std::string> AcbC
     return std::cref(*m_associated_awb);
 }
 
+std::expected<WaveformAwbEntry, std::string> AcbContainer::waveform_awb_entry(
+    uint32_t index,
+    bool prefer_stream_bank) const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+    return waveform_awb_entry(index, awb->get(), prefer_stream_bank);
+}
+
+std::expected<WaveformAwbEntry, std::string> AcbContainer::waveform_awb_entry(
+    uint32_t index,
+    const awb::AwbContainer& awb,
+    bool prefer_stream_bank) const {
+    if (index >= m_waveforms.size()) {
+        return std::unexpected("ACB waveform AWB resolution failed: waveform index is out of range");
+    }
+
+    const auto& waveform = m_waveforms[index];
+    const bool stream_bank =
+        prefer_stream_bank && waveform.streaming != 0 && waveform.stream_awb_id != invalid_wave_id;
+    const bool memory_bank = stream_bank ? false : uses_memory_bank_for_associated_awb(waveform);
+    const uint16_t wave_id = waveform_id_for_bank(waveform, memory_bank);
+    if (wave_id == invalid_wave_id) {
+        return std::unexpected("ACB waveform AWB resolution failed: waveform does not have a usable AWB ID");
+    }
+
+    const auto awb_index = awb.find_index_by_wave_id(wave_id);
+    if (!awb_index) {
+        return std::unexpected(
+            "ACB waveform AWB resolution failed: waveform AWB ID was not found in the supplied bank (ID " +
+            std::to_string(wave_id) + ")");
+    }
+    return WaveformAwbEntry{
+        .waveform_index = index,
+        .wave_id = wave_id,
+        .awb_index = *awb_index,
+        .stream_bank = !memory_bank,
+    };
+}
+
+std::expected<WaveformAwbEntry, std::string> AcbContainer::replace_waveform_data(
+    uint32_t index,
+    awb::AwbContainer& awb,
+    std::span<const uint8_t> data,
+    bool prefer_stream_bank) const {
+    auto resolved = waveform_awb_entry(index, awb, prefer_stream_bank);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    if (auto replaced = awb.replace_file(resolved->awb_index, data); !replaced) {
+        return std::unexpected("ACB waveform replacement failed: " + replaced.error());
+    }
+    return *resolved;
+}
+
+std::expected<WaveformAwbEntry, std::string> AcbContainer::replace_waveform_file(
+    uint32_t index,
+    awb::AwbContainer& awb,
+    const std::filesystem::path& input_path,
+    bool prefer_stream_bank) const {
+    auto data = io::read_file_bytes(input_path, "ACB waveform replacement failed");
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+    return replace_waveform_data(index, awb, *data, prefer_stream_bank);
+}
+
 std::expected<awb::AacEncryptionState, std::string> AcbContainer::probe_waveform_aac_encryption(
     uint32_t index,
     uint64_t keycode) const {
@@ -174,29 +242,12 @@ std::expected<std::span<const uint8_t>, std::string> AcbContainer::waveform_data
     uint32_t index,
     const awb::AwbContainer& awb,
     bool prefer_stream_bank) const {
-    if (index >= m_waveforms.size()) {
-        return std::unexpected("ACB waveform index is out of range");
+    auto resolved = waveform_awb_entry(index, awb, prefer_stream_bank);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
     }
 
-    const auto& waveform = m_waveforms[index];
-    const bool can_use_stream_bank =
-        prefer_stream_bank &&
-        waveform.streaming != 0 &&
-        waveform.stream_awb_id != invalid_wave_id;
-    const bool is_memory_bank = can_use_stream_bank
-        ? false
-        : uses_memory_bank_for_associated_awb(waveform);
-    const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_bank);
-    if (wave_id == invalid_wave_id) {
-        return std::unexpected("ACB waveform extract failed: waveform does not have a usable AWB ID");
-    }
-
-    auto awb_index = awb.find_index_by_wave_id(wave_id);
-    if (!awb_index) {
-        return std::unexpected("ACB waveform extract failed: waveform AWB ID was not found in the associated AWB");
-    }
-
-    auto data = awb.file_data(*awb_index);
+    auto data = awb.file_data(resolved->awb_index);
     if (!data) {
         return std::unexpected(data.error());
     }
