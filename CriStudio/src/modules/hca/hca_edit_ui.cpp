@@ -130,12 +130,9 @@ void set_encode_options_from_hca(const EncodeOptionsControls& controls, const cr
     controls.encrypt->setEnabled(has_cri_key);
     controls.encrypt->setChecked(header.cipher.encrypted());
     controls.loop_enabled->setChecked(header.loop.enabled());
-    if (header.loop.enabled()) {
-        controls.loop_start->setText(QString::number(static_cast<qulonglong>(
-            header.loop.start_frame * cricodecs::hca::HCA_SAMPLES_PER_FRAME + header.loop.start_delay)));
-        controls.loop_end->setText(QString::number(static_cast<qulonglong>(
-            header.loop.end_frame * cricodecs::hca::HCA_SAMPLES_PER_FRAME +
-                cricodecs::hca::HCA_SAMPLES_PER_FRAME - header.loop.end_padding)));
+    if (const auto loop = pcm_loop(header)) {
+        controls.loop_start->setText(QString::number(static_cast<qulonglong>(loop->start_sample)));
+        controls.loop_end->setText(QString::number(static_cast<qulonglong>(loop->end_sample)));
     }
     sync_loop_controls(controls);
 }
