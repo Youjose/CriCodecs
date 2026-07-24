@@ -2,7 +2,7 @@
 
 /**
  * @file adx_key_recovery.hpp
- * @brief Structural ADX type-8 recovery and exact known-scale helpers.
+ * @brief Structural ADX type-8 and type-9 effective-triplet recovery.
  */
 
 #include "adx_crypto.hpp"
@@ -54,27 +54,15 @@ struct AdxRecoveryResult {
 using KeyCandidate = AdxKeyCandidate;
 using KeyRecoveryResult = AdxRecoveryResult;
 
-/// Recover a type-8 triplet from one or more same-key ADX byte streams.
+/// Recover an effective triplet from one or more same-key encrypted ADX
+/// streams. The encryption type is detected from the ADX header.
 [[nodiscard]] std::expected<AdxRecoveryResult, std::string> recover_key(
     std::span<const AdxRecoverySource> sources);
 
-/// Recover one shared triplet or aggregate independently recovered triplets.
+/// Recover one shared effective triplet or aggregate independently recovered
+/// triplets. The encryption type of each input is detected automatically.
 [[nodiscard]] std::expected<AdxRecoveryResult, std::string> recover_key(
     std::span<const AdxRecoverySource> sources,
     KeyRecoveryMode mode);
-
-/// Recover a type-9 effective triplet from the leaked scale bit across a
-/// sufficiently long stream. The returned key is required to decrypt the
-/// complete 13-bit scale stream, not merely match the leaked bit sequence.
-[[nodiscard]] std::expected<AdxRecoveryResult, std::string> recover_key_type9(
-    std::span<const AdxRecoverySource> sources);
-
-/// Recover a type-9 effective triplet when matching plaintext scale words are
-/// available. This is intended for synthetic/reference fixtures and known
-/// plaintext workflows; ciphertext-only type-9 recovery is a separate
-/// truncated-LCG problem.
-[[nodiscard]] std::expected<AdxRecoveryResult, std::string> recover_key_from_scales(
-    std::span<const AdxRecoverySource> encrypted_sources,
-    std::span<const std::span<const uint16_t>> plaintext_scales);
 
 } // namespace cricodecs::adx

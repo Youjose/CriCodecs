@@ -297,39 +297,6 @@ template <typename Loader>
     return loader(std::filesystem::path{}, borrowed.as_span());
 }
 
-[[nodiscard]] inline std::vector<std::vector<uint8_t>> copy_python_recovery_sources(
-    const nb::object& source,
-    std::string_view context)
-{
-    std::vector<nb::object> objects;
-    if (PyList_Check(source.ptr()) || PyTuple_Check(source.ptr())) {
-        const auto sequence = nb::borrow<nb::sequence>(source);
-        objects.reserve(nb::len(sequence));
-        for (const auto item : sequence) {
-            objects.push_back(nb::borrow<nb::object>(item));
-        }
-    } else {
-        objects.push_back(source);
-    }
-    if (objects.empty()) {
-        raise_value_error(std::string(context) + " requires at least one source");
-    }
-
-    std::vector<std::vector<uint8_t>> sources;
-    sources.reserve(objects.size());
-    for (const auto& object : objects) {
-        if (auto path = python_text_path(object)) {
-            sources.push_back(unwrap_expected(cricodecs::io::read_file_bytes(
-                std::filesystem::path(*path), std::string(context) + " failed")));
-            continue;
-        }
-        auto borrowed = borrow_python_source(object);
-        const auto bytes = borrowed.as_span();
-        sources.emplace_back(bytes.begin(), bytes.end());
-    }
-    return sources;
-}
-
 [[nodiscard]] inline std::string_view borrow_python_bytes(const nb::bytes& bytes) {
     char* data = nullptr;
     Py_ssize_t size = 0;

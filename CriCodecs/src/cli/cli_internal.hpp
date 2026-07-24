@@ -30,6 +30,7 @@
 #include "../acx/acx_container.hpp"
 #include "../adx/adx_codec.hpp"
 #include "../adx/adx_key_recovery.hpp"
+#include "../adx/adx_recovery_source_collector.hpp"
 #include "../afs/afs_container.hpp"
 #include "../ahx/ahx_codec.hpp"
 #include "../ahx/ahx_key_recovery.hpp"
@@ -114,6 +115,7 @@ struct Options {
     std::optional<uint16_t> mode;
     std::optional<std::string> quality;
     std::vector<size_t> indexes;
+    std::optional<std::filesystem::path> alpha_path;
     std::vector<std::filesystem::path> audio_paths;
     std::vector<uint8_t> audio_channels;
     std::vector<MutationSpec> mutations;

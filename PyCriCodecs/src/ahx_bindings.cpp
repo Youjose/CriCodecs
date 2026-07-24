@@ -1,4 +1,4 @@
-#include "binding_helpers.hpp"
+#include "adx_recovery_bindings.hpp"
 
 #include <algorithm>
 #include <array>
@@ -144,7 +144,8 @@ namespace {
     const nb::object& source,
     bool same_base_key)
 {
-    auto bytes = copy_python_recovery_sources(source, "AHX key recovery");
+    auto bytes = collect_python_adx_family_sources(
+        source, cricodecs::adx::RecoveryStreamKind::Ahx, "AHX key recovery");
     std::vector<cricodecs::ahx::AhxRecoverySource> sources;
     sources.reserve(bytes.size());
     for (const auto& data : bytes) sources.push_back({data});
@@ -289,7 +290,7 @@ void bind_ahx_module(nb::module_& module) {
         &recover_ahx_python,
         nb::arg("source"),
         nb::arg("same_base_key") = true,
-        "Recover up to ten ranked AHX key-triplet candidates from one or more sources."
+        "Recover up to ten ranked AHX key-triplet candidates from AHX or supported archive sources."
     );
 
     module.def(

@@ -1,4 +1,5 @@
 #include "adx_key_recovery.hpp"
+#include "adx_key_recovery_internal.hpp"
 
 #include "adx_codec.hpp"
 

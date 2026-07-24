@@ -60,12 +60,13 @@ bool is_usm_recovery_entry(const EntrySummary& entry) {
 }
 
 std::optional<AdxRecoveryKind> adx_recovery_kind(const EntrySummary& entry) {
-    const auto name = QString::fromStdString(entry.name).toLower();
-    const auto type = QString::fromStdString(entry.type + " " + entry.detail).toLower();
-    if (name.endsWith(QStringLiteral(".ahx")) || type.contains(QStringLiteral("ahx"))) {
+    const auto detected = QString::fromStdString(
+        entry.type + " " + entry.detail + " " +
+        entry.source_format + " " + entry.nested_source_format).toLower();
+    if (detected.contains(QStringLiteral("ahx"))) {
         return AdxRecoveryKind::Ahx;
     }
-    if (name.endsWith(QStringLiteral(".adx")) || type.contains(QStringLiteral("adx"))) {
+    if (detected.contains(QStringLiteral("adx"))) {
         return AdxRecoveryKind::Adx;
     }
     return std::nullopt;
@@ -80,7 +81,7 @@ std::optional<AdxRecoveryKind> adx_recovery_kind(const LoadedDocument& document)
         }
     }
     const auto text = QString::fromStdString(
-        document.display_name + " " + document.format + " " + document.loader_tag).toLower();
+        document.format + " " + document.loader_tag).toLower();
     if (text.contains(QStringLiteral("ahx"))) {
         return AdxRecoveryKind::Ahx;
     }
@@ -109,6 +110,34 @@ void append_document_hca_recovery_sources(
     }
     if (supports_hca_key_recovery(document)) {
         sources.push_back(make_hca_recovery_source(document));
+    }
+}
+
+void append_document_adx_recovery_sources(
+    const LoadedDocument& document,
+    std::vector<AdxRecoverySource>& sources
+) {
+    const auto text = QString::fromStdString(
+        document.loader_tag + " " + document.format).toLower();
+    if (text.contains(QStringLiteral("aax")) ||
+        text.contains(QStringLiteral("awb")) ||
+        text.contains(QStringLiteral("acb")) ||
+        text.contains(QStringLiteral("csb")) ||
+        text.contains(QStringLiteral("cpk"))) {
+        sources.push_back(make_adx_recovery_source(document));
+        return;
+    }
+    const auto initial_size = sources.size();
+    for (const auto& entry : document.entries) {
+        if (entry.has_source && adx_recovery_kind(entry).has_value()) {
+            sources.push_back(make_adx_recovery_source(entry));
+        }
+    }
+    if (sources.size() != initial_size) {
+        return;
+    }
+    if (adx_recovery_kind(document).has_value()) {
+        sources.push_back(make_adx_recovery_source(document));
     }
 }
 
@@ -731,7 +760,7 @@ std::vector<AdxRecoverySource> MainWindow::selected_file_adx_recovery_sources() 
         const auto source = m_file_proxy->mapToSource(index);
         if (source.isValid()) {
             if (const auto* document = m_file_model->document_at(source.row()); document != nullptr) {
-                sources.push_back(make_adx_recovery_source(*document));
+                append_document_adx_recovery_sources(*document, sources);
             }
         }
     }
@@ -747,7 +776,7 @@ std::vector<AdxRecoverySource> MainWindow::all_file_adx_recovery_sources() const
     sources.reserve(static_cast<size_t>(rows));
     for (int row = 0; row < rows; ++row) {
         if (const auto* document = m_file_model->document_at(row); document != nullptr) {
-            sources.push_back(make_adx_recovery_source(*document));
+            append_document_adx_recovery_sources(*document, sources);
         }
     }
     return sources;

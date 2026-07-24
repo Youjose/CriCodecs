@@ -6,7 +6,7 @@ function(cricodecs_add_library target_name)
     endif()
 
     if(NOT DEFINED CRICODECS_VERSION)
-        set(CRICODECS_VERSION "1.1.0")
+        set(CRICODECS_VERSION "1.1.1")
     endif()
     if(NOT DEFINED CRICODECS_VERSION_MAJOR)
         set(CRICODECS_VERSION_MAJOR 1)
@@ -15,7 +15,7 @@ function(cricodecs_add_library target_name)
         set(CRICODECS_VERSION_MINOR 1)
     endif()
     if(NOT DEFINED CRICODECS_VERSION_PATCH)
-        set(CRICODECS_VERSION_PATCH 0)
+        set(CRICODECS_VERSION_PATCH 1)
     endif()
 
     set(cricodecs_generated_include_dir "${CMAKE_CURRENT_BINARY_DIR}/cricodecs-generated")
@@ -61,6 +61,7 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_decoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_encoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_key_recovery.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/adx/adx_recovery_source_collector.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_commands.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_container.cpp
@@ -113,7 +114,7 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities/io_writer_platform.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/utilities/text_encoding.cpp
     )
-    if(CRICODECS_BUILD_CLI OR CRICODECS_BUILD_PYTHON)
+    if(CRICODECS_BUILD_CLI OR CRICODECS_BUILD_PYTHON OR CRICODECS_INCLUDE_CLI_API)
         list(APPEND cricodecs_sources
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_maker.cpp

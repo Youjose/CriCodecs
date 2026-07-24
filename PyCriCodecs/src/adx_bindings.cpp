@@ -1,4 +1,4 @@
-#include "binding_helpers.hpp"
+#include "adx_recovery_bindings.hpp"
 
 #include <array>
 #include <algorithm>
@@ -52,7 +52,9 @@ namespace {
     const nb::object& source,
     bool same_base_key)
 {
-    auto bytes = copy_python_recovery_sources(source, "ADX key recovery");
+    auto bytes = collect_python_adx_family_sources(
+        source, cricodecs::adx::RecoveryStreamKind::Adx, "ADX key recovery");
+
     std::vector<cricodecs::adx::AdxRecoverySource> sources;
     sources.reserve(bytes.size());
     for (const auto& data : bytes) sources.push_back({data});
@@ -336,7 +338,7 @@ void bind_adx_module(nb::module_& module) {
         &recover_adx_python,
         nb::arg("source"),
         nb::arg("same_base_key") = true,
-        "Recover up to ten ranked ADX key-triplet candidates from one or more sources."
+        "Recover up to ten ranked ADX key-triplet candidates from ADX or supported archive sources."
     );
     module.def("decode", [](const nb::object& source, const nb::object& key, uint16_t subkey) {
         auto adx = load_adx_any(source);

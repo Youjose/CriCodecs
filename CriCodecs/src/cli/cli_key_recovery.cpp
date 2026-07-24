@@ -85,7 +85,12 @@ struct RecoveryPath {
         }
         for (const auto& [path, _] : *files) {
             const auto formats = sniff_format_order(path, false);
-            if (std::ranges::find(formats, Format::adx) != formats.end()) {
+            if (std::ranges::find(formats, Format::adx) != formats.end() ||
+                std::ranges::find(formats, Format::aax) != formats.end() ||
+                std::ranges::find(formats, Format::awb) != formats.end() ||
+                std::ranges::find(formats, Format::acb) != formats.end() ||
+                std::ranges::find(formats, Format::csb) != formats.end() ||
+                std::ranges::find(formats, Format::cpk) != formats.end()) {
                 paths.push_back({.path = path, .explicit_input = false});
             }
         }
@@ -131,39 +136,19 @@ collect_adx_family_sources(
     const std::string_view label = want_ahx ? "AHX" : "ADX";
     std::vector<std::vector<uint8_t>> sources;
     for (const auto& input : *paths) {
-        auto bytes = read_bytes_file(input.path);
-        if (!bytes) {
+        auto collected = adx::collect_recovery_streams(
+            input.path,
+            want_ahx ? adx::RecoveryStreamKind::Ahx : adx::RecoveryStreamKind::Adx);
+        if (!collected) {
             if (!input.explicit_input) {
                 continue;
             }
-            return std::unexpected(std::string(label) + " key recovery failed: " + bytes.error());
+            return std::unexpected(std::string(label) + " key recovery failed: " + collected.error());
         }
-        if (bytes->size() <= 19u || (*bytes)[0] != 0x80u || (*bytes)[1] != 0x00u) {
-            if (!input.explicit_input) {
-                continue;
-            }
-            return std::unexpected(
-                std::string(label) + " key recovery failed: input `" + input.path.string() +
-                "` has an invalid ADX-family header");
-        }
-        const bool is_ahx = (*bytes)[4] == 0x10u || (*bytes)[4] == 0x11u;
-        if (is_ahx != want_ahx) {
-            if (!input.explicit_input) {
-                continue;
-            }
-            return std::unexpected(
-                std::string(label) + " key recovery failed: input `" + input.path.string() + "` is " +
-                (is_ahx ? "AHX" : "ADX"));
-        }
-        if ((*bytes)[19] != 8u && (*bytes)[19] != 9u) {
-            if (!input.explicit_input) {
-                continue;
-            }
-            return std::unexpected(
-                std::string(label) + " key recovery failed: input `" + input.path.string() +
-                "` is not encrypted with type 8 or 9");
-        }
-        sources.push_back(std::move(*bytes));
+        sources.insert(
+            sources.end(),
+            std::make_move_iterator(collected->begin()),
+            std::make_move_iterator(collected->end()));
     }
     if (sources.empty()) {
         return std::unexpected(std::string(label) + " key recovery failed: inputs contain no encrypted " +

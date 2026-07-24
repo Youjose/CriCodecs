@@ -3,6 +3,7 @@
 #include "shared/embedded_entry_extractor.hpp"
 
 #include <adx_key_recovery.hpp>
+#include <adx_recovery_source_collector.hpp>
 #include <ahx_key_recovery.hpp>
 #include "io_reader.hpp"
 
@@ -24,24 +25,23 @@ namespace {
 
 [[nodiscard]] bool mentions_adx_family(std::string_view text) {
     const auto lower = lower_ascii(std::string(text));
-    return lower.find("adx") != std::string::npos || lower.find("ahx") != std::string::npos;
+    return lower.find("adx") != std::string::npos ||
+        lower.find("ahx") != std::string::npos ||
+        lower.find("aax") != std::string::npos ||
+        lower.find("awb") != std::string::npos ||
+        lower.find("acb") != std::string::npos ||
+        lower.find("csb") != std::string::npos ||
+        lower.find("cpk") != std::string::npos;
 }
 
 [[nodiscard]] bool source_might_be_adx_family(const AdxRecoverySource& source) {
     if (source.kind == AdxRecoverySource::Kind::Document) {
-        return mentions_adx_family(source.name) || mentions_adx_family(source.format) ||
-            mentions_adx_family(source.loader_tag);
+        return mentions_adx_family(source.format) || mentions_adx_family(source.loader_tag);
     }
-    return mentions_adx_family(source.entry.name) || mentions_adx_family(source.entry.type) ||
-        mentions_adx_family(source.entry.detail);
-}
-
-[[nodiscard]] bool is_requested_payload(std::span<const uint8_t> bytes, AdxRecoveryKind kind) {
-    if (bytes.size() <= 19u || bytes[0] != 0x80u || bytes[1] != 0x00u) {
-        return false;
-    }
-    const bool is_ahx = bytes[4] == 0x10u || bytes[4] == 0x11u;
-    return is_ahx == (kind == AdxRecoveryKind::Ahx) && (bytes[19] == 8u || bytes[19] == 9u);
+    return mentions_adx_family(source.entry.type) ||
+        mentions_adx_family(source.entry.detail) ||
+        mentions_adx_family(source.entry.source_format) ||
+        mentions_adx_family(source.entry.nested_source_format);
 }
 
 [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> read_source(
@@ -99,13 +99,27 @@ std::expected<AdxKeyRecoveryResult, std::string> recover_adx_key(
         if (!source_might_be_adx_family(input)) {
             continue;
         }
-        auto source = read_source(input, extractor, keys);
-        if (!source) {
-            return std::unexpected("ADX/AHX key recovery failed: " + source.error());
+        std::expected<std::vector<std::vector<uint8_t>>, std::string> collected =
+            std::unexpected("uninitialized recovery source");
+        const auto stream_kind = kind == AdxRecoveryKind::Ahx
+            ? cricodecs::adx::RecoveryStreamKind::Ahx
+            : cricodecs::adx::RecoveryStreamKind::Adx;
+        if (input.kind == AdxRecoverySource::Kind::Document) {
+            collected = cricodecs::adx::collect_recovery_streams(input.path, stream_kind);
+        } else {
+            auto source = read_source(input, extractor, keys);
+            if (!source) {
+                return std::unexpected("ADX/AHX key recovery failed: " + source.error());
+            }
+            collected = cricodecs::adx::collect_recovery_streams(*source, stream_kind);
         }
-        if (is_requested_payload(*source, kind)) {
-            bytes.push_back(std::move(*source));
+        if (!collected) {
+            return std::unexpected("ADX/AHX key recovery failed: " + collected.error());
         }
+        bytes.insert(
+            bytes.end(),
+            std::make_move_iterator(collected->begin()),
+            std::make_move_iterator(collected->end()));
     }
 
     const auto label = kind == AdxRecoveryKind::Ahx ? std::string_view("AHX") : std::string_view("ADX");
