@@ -153,9 +153,14 @@ public:
             return std::unexpected("AWB suggested_path failed: file index out of range");
         }
         const auto& entry = m_entries[index];
+        auto codec = entry_codec(index);
+        if (!codec) {
+            return std::unexpected(codec.error());
+        }
         return std::filesystem::path{
             (index < 10 ? "0000" : index < 100 ? "000" : index < 1000 ? "00" : index < 10000 ? "0" : "") +
-            std::to_string(index) + "_" + std::to_string(entry.wave_id) + ".bin"
+            std::to_string(index) + "_" + std::to_string(entry.wave_id) +
+            std::string(entry_codec_extension(*codec))
         };
     }
 

@@ -35,8 +35,11 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::awb
     for (size_t i = 0; i < awb.entries().size(); ++i) {
         const auto& entry = awb.entries()[i];
         const auto codec = awb.entry_codec(static_cast<uint32_t>(i));
+        const auto extension = codec
+            ? cricodecs::awb::entry_codec_extension(*codec)
+            : std::string_view{".bin"};
         auto summary = sourced_entry({
-            "wave " + number(entry.wave_id),
+            "wave_" + number(entry.wave_id) + std::string(extension),
             codec ? std::string(cricodecs::awb::entry_codec_name(*codec)) : "audio",
             byte_count(entry.size),
             number(entry.offset),
