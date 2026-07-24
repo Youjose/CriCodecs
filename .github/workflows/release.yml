@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "CriCodecs release tag to create, for example v1.1.0"
+        description: "CriCodecs release tag to create, for example v1.1.1"
         required: true
         type: string
       draft:
@@ -171,6 +171,9 @@ jobs:
 
     env:
       CIBW_ARCHS: ${{ matrix.arch }}
+      CIBW_BEFORE_ALL: >-
+        python -m pip install cmake ninja &&
+        python {package}/PyCriCodecs/build_wheel_core.py
       CIBW_TEST_COMMAND: >-
         python -c "import cricodecs, cricodecs.adx;
         text = repr(cricodecs.adx.AdxEncodeConfig());
@@ -178,6 +181,7 @@ jobs:
       CMAKE_ARGS: >-
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
         -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+        -DCRICODECS_PREBUILT_CORE_PREFIX=build/wheel-core-install
 
     steps:
       - uses: actions/checkout@v7
@@ -190,6 +194,14 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.10
         with:
           version: "v0.15.0"
+
+      - name: Restore cibuildwheel tool cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/cibw-cache
+          key: cibw-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            cibw-${{ runner.os }}-${{ matrix.arch }}-
 
       - uses: actions/download-artifact@v8
         with:
@@ -222,10 +234,12 @@ jobs:
         shell: bash
         run: |
           echo '${{ matrix.manylinux_image_env }}=${{ matrix.manylinux_image }}' >> "$GITHUB_ENV"
-          echo "CIBW_ENVIRONMENT_LINUX=LDFLAGS=\"-static-libstdc++ -static-libgcc\" CMAKE_BUILD_PARALLEL_LEVEL=4 CMAKE_ARGS=\"-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_CXX_COMPILER_LAUNCHER=/host${SCCACHE_PATH}\" SCCACHE_DIR=\"/host${RUNNER_TEMP}/sccache\"" >> "$GITHUB_ENV"
+          echo "CIBW_ENVIRONMENT_LINUX=LDFLAGS=\"-static-libstdc++ -static-libgcc\" CMAKE_BUILD_PARALLEL_LEVEL=4 CMAKE_ARGS=\"-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_CXX_COMPILER_LAUNCHER=/host${SCCACHE_PATH} -DCRICODECS_PREBUILT_CORE_PREFIX=build/wheel-core-install\" CRICODECS_WHEEL_COMPILER_LAUNCHER=\"/host${SCCACHE_PATH}\" SCCACHE_DIR=\"/host${RUNNER_TEMP}/sccache\"" >> "$GITHUB_ENV"
 
       - name: Build and repair wheels
         shell: bash
+        env:
+          CIBW_CACHE_PATH: ${{ runner.temp }}/cibw-cache
         run: |
           set -euo pipefail
           python -m pip install cibuildwheel==4.1.0
@@ -287,9 +301,16 @@ jobs:
     runs-on: windows-11-arm
     env:
       CIBW_ARCHS: ARM64
+      CIBW_BEFORE_ALL: >-
+        python -m pip install cmake ninja &&
+        python {package}/PyCriCodecs/build_wheel_core.py
       CIBW_TEST_COMMAND: >-
         python -c "import cricodecs, cricodecs.adx;
         assert 'sample_rate=' in repr(cricodecs.adx.AdxEncodeConfig())"
+      CMAKE_ARGS: >-
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        -DCRICODECS_PREBUILT_CORE_PREFIX=build/wheel-core-install
 
     steps:
       - uses: actions/checkout@v7

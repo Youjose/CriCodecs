@@ -108,7 +108,7 @@ Download a wheel matching your Python version, operating system, and CPU
 architecture, then install it directly:
 
 ```sh
-python -m pip install cricodecs-1.1.0-*.whl
+python -m pip install cricodecs-1.1.1-*.whl
 ```
 
 ### C++ Core Library

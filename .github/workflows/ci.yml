@@ -9,6 +9,10 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: "4"
   CMAKE_INSTALL_PARALLEL_LEVEL: "4"
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sdist:
     name: Source distribution
@@ -30,109 +34,6 @@ jobs:
       - name: Check package metadata
         run: python -m twine check dist/*
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: sdist
-          path: dist/*.tar.gz
-          if-no-files-found: error
-          overwrite: true
-
-  cli-zip:
-    name: CLI zip (${{ matrix.artifact_name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-26
-            generator: Ninja
-            platform: ""
-            artifact_name: macos-arm64
-          - os: macos-26-intel
-            generator: Ninja
-            platform: ""
-            artifact_name: macos-x86_64
-          - os: windows-2025-vs2026
-            generator: Visual Studio 18 2026
-            platform: "-A x64"
-            artifact_name: windows-x86_64
-
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "14.0"
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install build frontend
-        run: python -m pip install --upgrade pip cmake ninja
-
-      - name: Configure CLI
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
-
-      - name: Build CLI
-        run: cmake --build build --config Release --target cricodecs_cli --parallel 4
-
-      - name: Install CLI
-        run: cmake --install build --config Release --prefix stage
-
-      - name: Smoke test CLI (Unix)
-        if: runner.os != 'Windows'
-        run: ./stage/cricodecs --help >/dev/null
-
-      - name: Smoke test CLI (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\stage\cricodecs.exe --help | Out-Null
-
-      - name: Archive CLI zip
-        run: cmake -E chdir stage cmake -E tar cf "../cricodecs-cli-${{ matrix.artifact_name }}.zip" --format=zip .
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: cli-${{ matrix.artifact_name }}
-          path: cricodecs-cli-${{ matrix.artifact_name }}.zip
-          if-no-files-found: error
-          overwrite: true
-
-  cli-zip-linux:
-    name: CLI zip (linux-x86_64)
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build Linux CLI with GCC 16.1
-        run: |
-          docker run --rm \
-            -e CC=gcc \
-            -e CXX=g++ \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            gcc:16.1 \
-            bash -lc '
-              set -euo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends python3 python3-pip
-              python3 -m pip install --break-system-packages cmake ninja
-              c++ --version
-              python3 -m cmake -S . -B build-cli-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
-              python3 -m cmake --build build-cli-linux --target cricodecs_cli --parallel 4
-              python3 -m cmake --install build-cli-linux --prefix stage-cli-linux
-              ./stage-cli-linux/cricodecs --help >/dev/null
-              python3 -m cmake -E chdir stage-cli-linux python3 -m cmake -E tar cf ../cricodecs-cli-linux-x86_64.zip --format=zip .
-            '
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: cli-linux-x86_64
-          path: cricodecs-cli-linux-x86_64.zip
-          if-no-files-found: error
-          overwrite: true
-
   source-build:
     name: Source build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -146,9 +47,6 @@ jobs:
           - os: macos-26-intel
             generator: Ninja
             platform: ""
-          - os: windows-2025-vs2026
-            generator: Visual Studio 18 2026
-            platform: "-A x64"
 
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -166,11 +64,55 @@ jobs:
       - name: Show toolchain
         run: cmake --version
 
-      - name: Configure core library
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF
+      - name: Configure core library and CLI
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
 
-      - name: Build core library
-        run: cmake --build build --config Release --parallel 4
+      - name: Build core library and CLI
+        run: cmake --build build --config Release --target cricodecs_cli --parallel 4
+
+      - name: Smoke test CLI (Unix)
+        if: runner.os != 'Windows'
+        run: ./build/cricodecs --help >/dev/null
+
+  cristudio-windows-build:
+    name: CriStudio and CLI (windows-x86_64)
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.2"
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja
+
+      - name: Configure CriStudio and CLI
+        run: >-
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+          -DCMAKE_BUILD_TYPE=Release
+          -DCRICODECS_BUILD_TESTS=OFF
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=ON
+          -DCRICODECS_BUILD_CRISTUDIO=ON
+          -DCRICODECS_INSTALL_CPP=OFF
+          -DCRISTUDIO_DEPLOY_QT=OFF
+
+      - name: Build CriStudio and CLI
+        run: cmake --build build --config Release --target CriStudio cricodecs_cli --parallel 4
+
+      - name: Smoke test CLI
+        shell: pwsh
+        run: .\build\Release\cricodecs.exe --help | Out-Null
 
   gcc16-source-build:
     name: Source build (GCC 16.1)
@@ -187,26 +129,18 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work \
             gcc:16.1 \
-            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF && python3 -m cmake --build build-gcc16 --parallel 4"
+            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON && python3 -m cmake --build build-gcc16 --target cricodecs_cli --parallel 4 && ./build-gcc16/cricodecs --help >/dev/null"
 
   pip-install:
-    name: Pip install (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-26, macos-26-intel, windows-2025-vs2026]
-        python-version: ["3.9", "3.14"]
-
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    name: Pip install (windows-x86_64, Python 3.12)
+    runs-on: windows-2025-vs2026
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
       - name: Install from source tree
         run: python -m pip install --verbose .
@@ -244,3 +178,62 @@ jobs:
               python -c "import cricodecs, cricodecs.adx; text = repr(cricodecs.adx.AdxEncodeConfig()); assert '\''sample_rate='\'' in text; print(text)"
               cricodecs --help
             '
+
+  cristudio-windows-diagnostics:
+    name: CriStudio Windows diagnostic symbols
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.2"
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip cmake ninja
+
+      - name: Configure diagnostic CriStudio
+        run: >-
+          cmake -S . -B build-cristudio-diagnostics -G "Visual Studio 18 2026" -A x64
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_BUILD_TESTS=OFF
+          -DCRICODECS_BUILD_PYTHON=OFF
+          -DCRICODECS_BUILD_CLI=OFF
+          -DCRICODECS_BUILD_CRISTUDIO=ON
+          -DCRICODECS_INSTALL_CPP=OFF
+          -DCRISTUDIO_DEPLOY_QT=OFF
+          -DBUILD_SHARED_LIBS=OFF
+
+      - name: Build diagnostic CriStudio
+        run: cmake --build build-cristudio-diagnostics --config RelWithDebInfo --target CriStudio --parallel 4
+
+      - name: Verify diagnostic files
+        shell: pwsh
+        run: |
+          $directory = 'build-cristudio-diagnostics/CriStudio/RelWithDebInfo'
+          if (-not (Test-Path "$directory/CriStudio.exe" -PathType Leaf)) {
+              throw 'Diagnostic CriStudio executable was not produced'
+          }
+          if (-not (Test-Path "$directory/CriStudio.pdb" -PathType Leaf)) {
+              throw 'Diagnostic CriStudio PDB was not produced'
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cristudio-windows-x86_64-diagnostics
+          path: |
+            build-cristudio-diagnostics/CriStudio/RelWithDebInfo/CriStudio.exe
+            build-cristudio-diagnostics/CriStudio/RelWithDebInfo/CriStudio.pdb
+          if-no-files-found: error
+          overwrite: true

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20...4.2)
-set(CRICODECS_VERSION "1.1.0" CACHE STRING "CriCodecs release version")
+set(CRICODECS_VERSION "1.1.1" CACHE STRING "CriCodecs release version")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" cricodecs_numeric_version "${CRICODECS_VERSION}")
 if(NOT cricodecs_numeric_version)
     message(FATAL_ERROR "CRICODECS_VERSION must begin with major.minor.patch")
@@ -12,6 +12,7 @@ project(CriCodecs VERSION "${cricodecs_numeric_version}" LANGUAGES CXX)
 option(CRICODECS_BUILD_PYTHON "Build the experimental Python binding prototype" OFF)
 option(CRICODECS_BUILD_CLI "Build the shared CriCodecs CLI executable" ON)
 option(CRICODECS_BUILD_CRISTUDIO "Build the CriStudio desktop GUI" OFF)
+option(CRICODECS_INCLUDE_CLI_API "Compile the shared CLI API into the core library" OFF)
 option(BUILD_SHARED_LIBS "Build CriCodecs as a shared library" OFF)
 if(PROJECT_IS_TOP_LEVEL)
     set(cricodecs_install_cpp_default ON)
@@ -19,13 +20,31 @@ else()
     set(cricodecs_install_cpp_default OFF)
 endif()
 option(CRICODECS_INSTALL_CPP "Install the standalone C++ library and CMake package" ${cricodecs_install_cpp_default})
+set(CRICODECS_PREBUILT_CORE_PREFIX "" CACHE PATH "Use an installed static CriCodecs core instead of rebuilding it")
 
 set(CRICODECS_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 include(${CMAKE_CURRENT_SOURCE_DIR}/cricodecs_library.cmake)
 
-cricodecs_add_library(CriCodecs)
+if(CRICODECS_PREBUILT_CORE_PREFIX)
+    if(NOT IS_ABSOLUTE "${CRICODECS_PREBUILT_CORE_PREFIX}")
+        cmake_path(ABSOLUTE_PATH CRICODECS_PREBUILT_CORE_PREFIX
+            BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            NORMALIZE
+        )
+    endif()
+    find_package(CriCodecs CONFIG REQUIRED
+        PATHS "${CRICODECS_PREBUILT_CORE_PREFIX}"
+        NO_DEFAULT_PATH
+    )
+    add_library(CriCodecs ALIAS CriCodecs::CriCodecs)
+elseif(NOT TARGET CriCodecs)
+    cricodecs_add_library(CriCodecs)
+endif()
 
 if(CRICODECS_INSTALL_CPP)
+    if(CRICODECS_PREBUILT_CORE_PREFIX)
+        message(FATAL_ERROR "CRICODECS_INSTALL_CPP cannot reinstall CRICODECS_PREBUILT_CORE_PREFIX")
+    endif()
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
 
