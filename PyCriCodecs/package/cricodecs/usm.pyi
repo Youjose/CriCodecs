@@ -83,8 +83,9 @@ class UsmMuxSubtitleTrack:
     ) -> None: ...
 
 class UsmMuxConfig:
-    """USM mux configuration with repeatable ADX/HCA and subtitle tracks."""
+    """USM mux configuration with optional alpha video and repeatable audio/subtitle tracks."""
     video_path: str
+    alpha_path: str | None
     audio_tracks: list[UsmMuxAudioTrack]
     subtitle_tracks: list[UsmMuxSubtitleTrack]
     key: int | None
@@ -97,6 +98,7 @@ class UsmMuxConfig:
         encrypt_audio: bool | None = None,
         key: int | None = None,
         encoding: str | None = None,
+        alpha_path: Any | None = None,
     ) -> None: ...
 
 class UsmInfo:
@@ -143,6 +145,7 @@ def mux(
     encrypt_audio: bool | None = None,
     key: int | None = None,
     encoding: str | None = None,
+    alpha_path: Any | None = None,
 ) -> bytes: ...
 def mux_to_file(
     output_path: Any,
@@ -152,6 +155,7 @@ def mux_to_file(
     encrypt_audio: bool | None = None,
     key: int | None = None,
     encoding: str | None = None,
+    alpha_path: Any | None = None,
 ) -> None: ...
 def sbt_to_text(data: bytes) -> str: ...
 def text_to_sbt(text: str, language_id: int = 0) -> bytes: ...

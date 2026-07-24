@@ -267,10 +267,14 @@ void bind_usm_module(nb::module_& module) {
             const std::vector<cricodecs::usm::UsmBuildInput::SubtitleTrack>& subtitle_tracks,
             std::optional<bool> encrypt_audio,
             const nb::object& key,
-            const nb::object& encoding
+            const nb::object& encoding,
+            const nb::object& alpha_path
         ) {
             cricodecs::usm::UsmBuildInput input;
             input.video_path = require_python_path(video_path, "video_path");
+            if (!alpha_path.is_none()) {
+                input.alpha_path = require_python_path(alpha_path, "alpha_path");
+            }
             input.audio_tracks = audio_tracks;
             input.subtitle_tracks = subtitle_tracks;
             input.encrypt_audio = std::move(encrypt_audio);
@@ -283,12 +287,22 @@ void bind_usm_module(nb::module_& module) {
             nb::arg("subtitle_tracks") = std::vector<cricodecs::usm::UsmBuildInput::SubtitleTrack>{},
             nb::arg("encrypt_audio") = nb::none(),
             nb::arg("key") = nb::none(),
-            nb::arg("encoding") = nb::none()
+            nb::arg("encoding") = nb::none(),
+            nb::arg("alpha_path") = nb::none()
         )
         .def_prop_rw("video_path", [](const cricodecs::usm::UsmBuildInput& self) {
             return self.video_path.generic_string();
         }, [](cricodecs::usm::UsmBuildInput& self, const nb::object& path) {
             self.video_path = require_python_path(path, "video_path");
+        })
+        .def_prop_rw("alpha_path", [](const cricodecs::usm::UsmBuildInput& self) -> nb::object {
+            return self.alpha_path.has_value()
+                ? nb::cast(self.alpha_path->generic_string())
+                : nb::none();
+        }, [](cricodecs::usm::UsmBuildInput& self, const nb::object& path) {
+            self.alpha_path = path.is_none()
+                ? std::nullopt
+                : std::optional<std::filesystem::path>(require_python_path(path, "alpha_path"));
         })
         .def_rw("audio_tracks", &cricodecs::usm::UsmBuildInput::audio_tracks)
         .def_rw("subtitle_tracks", &cricodecs::usm::UsmBuildInput::subtitle_tracks)
@@ -438,7 +452,7 @@ void bind_usm_module(nb::module_& module) {
     install_attr_repr(module, "KeyRecoveryResult", {"candidates", "source_count", "evidence_count"});
     install_attr_repr(module, "UsmMuxAudioTrack", {"path", "encrypt", "channel_no"});
     install_attr_repr(module, "UsmMuxSubtitleTrack", {"path", "language_id", "format", "channel_no"});
-    install_attr_repr(module, "UsmMuxConfig", {"video_path", "audio_tracks", "subtitle_tracks", "encrypt_audio", "key"});
+    install_attr_repr(module, "UsmMuxConfig", {"video_path", "alpha_path", "audio_tracks", "subtitle_tracks", "encrypt_audio", "key"});
     install_attr_repr(module, "Usm", {"source_path", "container_filename", "stream_count", "streams"});
 
     module.def(
@@ -467,7 +481,8 @@ void bind_usm_module(nb::module_& module) {
             const std::vector<std::optional<bool>>& audio_encrypt,
             std::optional<bool> encrypt_audio,
             const nb::object& key,
-            const nb::object& encoding
+            const nb::object& encoding,
+            const nb::object& alpha_path
         ) {
             if (!audio_encrypt.empty() && audio_encrypt.size() != audio_paths.size()) {
                 raise_value_error("USM mux audio_encrypt size must match audio_paths");
@@ -475,6 +490,9 @@ void bind_usm_module(nb::module_& module) {
 
             cricodecs::usm::UsmBuildInput input;
             input.video_path = require_python_path(video_path, "video_path");
+            if (!alpha_path.is_none()) {
+                input.alpha_path = require_python_path(alpha_path, "alpha_path");
+            }
             input.encoding = encoding_options_from_python(encoding);
             input.encrypt_audio = std::move(encrypt_audio);
             input.key = usm_key_from_python(key);
@@ -493,7 +511,8 @@ void bind_usm_module(nb::module_& module) {
         nb::arg("audio_encrypt") = std::vector<std::optional<bool>>{},
         nb::arg("encrypt_audio") = nb::none(),
         nb::arg("key") = nb::none(),
-        nb::arg("encoding") = nb::none()
+        nb::arg("encoding") = nb::none(),
+        nb::arg("alpha_path") = nb::none()
     );
 
     module.def(
@@ -505,7 +524,8 @@ void bind_usm_module(nb::module_& module) {
             const std::vector<std::optional<bool>>& audio_encrypt,
             std::optional<bool> encrypt_audio,
             const nb::object& key,
-            const nb::object& encoding
+            const nb::object& encoding,
+            const nb::object& alpha_path
         ) {
             if (!audio_encrypt.empty() && audio_encrypt.size() != audio_paths.size()) {
                 raise_value_error("USM mux audio_encrypt size must match audio_paths");
@@ -513,6 +533,9 @@ void bind_usm_module(nb::module_& module) {
 
             cricodecs::usm::UsmBuildInput input;
             input.video_path = require_python_path(video_path, "video_path");
+            if (!alpha_path.is_none()) {
+                input.alpha_path = require_python_path(alpha_path, "alpha_path");
+            }
             input.encoding = encoding_options_from_python(encoding);
             input.encrypt_audio = std::move(encrypt_audio);
             input.key = usm_key_from_python(key);
@@ -532,7 +555,8 @@ void bind_usm_module(nb::module_& module) {
         nb::arg("audio_encrypt") = std::vector<std::optional<bool>>{},
         nb::arg("encrypt_audio") = nb::none(),
         nb::arg("key") = nb::none(),
-        nb::arg("encoding") = nb::none()
+        nb::arg("encoding") = nb::none(),
+        nb::arg("alpha_path") = nb::none()
     );
 
     module.def(

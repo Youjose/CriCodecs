@@ -491,6 +491,7 @@ struct UsmStreamInfo {
 
 struct UsmBuildInput {
     std::filesystem::path video_path;
+    std::optional<std::filesystem::path> alpha_path;
     text::EncodingOptions encoding;
 
     // Audio paths may contain ADX or HCA. Encryption is codec-aware: ADX uses

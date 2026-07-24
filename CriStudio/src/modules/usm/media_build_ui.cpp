@@ -168,6 +168,9 @@ MediaBuildConfig::ExistingUsmTrack::Kind stream_kind(cricodecs::usm::UsmChunkTyp
     if (stream_id == cricodecs::usm::UsmChunkType::SFV) {
         return MediaBuildConfig::ExistingUsmTrack::Kind::Video;
     }
+    if (stream_id == cricodecs::usm::UsmChunkType::ALP) {
+        return MediaBuildConfig::ExistingUsmTrack::Kind::Alpha;
+    }
     return MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported;
 }
 
@@ -175,6 +178,8 @@ QString track_kind_text(MediaBuildConfig::ExistingUsmTrack::Kind kind) {
     switch (kind) {
     case MediaBuildConfig::ExistingUsmTrack::Kind::Video:
         return QStringLiteral("Video");
+    case MediaBuildConfig::ExistingUsmTrack::Kind::Alpha:
+        return QStringLiteral("Alpha video");
     case MediaBuildConfig::ExistingUsmTrack::Kind::Audio:
         return QStringLiteral("Audio");
     case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
@@ -357,6 +362,17 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
     video_preset_combo->setCurrentIndex(1);
     form->addRow(QStringLiteral("Video preset"), video_preset_combo);
 
+    auto* alpha_edit = new QLineEdit(&dialog);
+    form->addRow(QStringLiteral("Alpha video"), path_picker_row(
+        dialog,
+        *alpha_edit,
+        QStringLiteral("Choose alpha-video source"),
+        false,
+        QStringLiteral("Video streams (*.ivf *.264 *.h264 *.m1v *.m2v *.mpg *.mpeg);;All files (*)")
+    ));
+    auto* alpha_prep_combo = make_video_prep_combo(&dialog, MediaVideoPrep::UsePrepared);
+    form->addRow(QStringLiteral("Alpha prep"), alpha_prep_combo);
+
     std::function<void()> refresh_validation;
 
     auto* audio_group = new QGroupBox(QStringLiteral("Audio tracks"), &dialog);
@@ -499,7 +515,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
     add_subtitle_button = new QPushButton(QStringLiteral("Add subtitle track"), subtitle_group);
     subtitle_layout->addWidget(add_subtitle_button, 0, Qt::AlignLeft);
     QObject::connect(add_subtitle_button, &QPushButton::clicked, &dialog, [&] { add_subtitle_track(); });
-    add_subtitle_track();
+    if (current_usm == nullptr) {
+        add_subtitle_track();
+    }
     form->addRow(subtitle_group);
 
     auto* sfd_profile_combo = new QComboBox(&dialog);
@@ -517,9 +535,12 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
     if (current_usm != nullptr) {
         video_edit->setEnabled(false);
         video_prep_combo->setEnabled(false);
-        audio_group->setEnabled(false);
-        subtitle_group->setEnabled(false);
         sfd_profile_combo->setEnabled(false);
+        audio_group->setTitle(QStringLiteral("Add audio streams"));
+        audio_note->setText(QStringLiteral(
+            "Add ADX or HCA streams to the rebuilt USM. Existing streams remain controlled below."
+        ));
+        subtitle_group->setTitle(QStringLiteral("Add subtitle streams"));
 
         auto* group = new QGroupBox(QStringLiteral("Current USM streams"), &dialog);
         auto* stream_layout = new QVBoxLayout(group);
@@ -561,14 +582,17 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 continue;
             }
             controls.replacement = new QLineEdit(stream_group);
-            const auto filter = controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video
-                ? QStringLiteral("Video streams (*.264 *.h264 *.m1v *.m2v *.mpg *.mpeg);;All files (*)")
+            const auto filter =
+                (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video ||
+                 controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Alpha)
+                ? QStringLiteral("Video streams (*.ivf *.264 *.h264 *.m1v *.m2v *.mpg *.mpeg);;All files (*)")
                 : (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Audio
                     ? audio_source_filter()
                     : QStringLiteral("Subtitles (*.srt *.ass *.ssa *.sbt *.txt);;All files (*)"));
             stream_form->addRow(QStringLiteral("Replacement"), replacement_picker_row(dialog, *controls.replacement, QStringLiteral("Choose replacement stream"), filter));
 
-            if (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video) {
+            if (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video ||
+                controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Alpha) {
                 controls.prep = make_video_prep_combo(stream_group, MediaVideoPrep::UsePrepared);
                 stream_form->addRow(QStringLiteral("Replacement prep"), controls.prep);
             } else if (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Audio) {
@@ -617,9 +641,11 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         MediaBuildConfig config;
         config.target = static_cast<MediaBuildTarget>(target_combo->currentData().toInt());
         config.video_prep = static_cast<MediaVideoPrep>(video_prep_combo->currentData().toInt());
+        config.alpha_prep = static_cast<MediaVideoPrep>(alpha_prep_combo->currentData().toInt());
         config.video_preset = static_cast<MediaCodecPreset>(video_preset_combo->currentData().toInt());
         config.sfd_profile = static_cast<cricodecs::sfd::SfdBuildProfile>(sfd_profile_combo->currentData().toInt());
         config.video_source = path_from_qstring(video_edit->text().trimmed());
+        config.alpha_source = path_from_qstring(alpha_edit->text().trimmed());
         config.output_path = path_from_qstring(output_edit->text().trimmed());
         config.ffmpeg_path = path_from_qstring(ffmpeg_exe);
         config.keys = keys;
@@ -630,32 +656,30 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         ));
         config.apply_to_editor = apply_to_editor_check != nullptr && apply_to_editor_check->isChecked();
         config.encrypt_audio = config.target == MediaBuildTarget::Usm && encrypt_audio_check->isChecked();
-        if (current_usm == nullptr) {
-            const auto audio_target = static_cast<MediaAudioPrep>(audio_codec_combo->currentData().toInt());
-            for (const auto& controls : audio_controls) {
+        const auto audio_target = static_cast<MediaAudioPrep>(audio_codec_combo->currentData().toInt());
+        for (const auto& controls : audio_controls) {
+            const auto source = path_from_qstring(controls.source->text().trimmed());
+            if (source.empty()) {
+                continue;
+            }
+            config.audio_tracks.push_back(MediaBuildConfig::AudioTrack{
+                .source = source,
+                .prep = audio_prep_for_source(source, audio_target),
+                .channel_no = optional_channel(*controls.channel),
+            });
+        }
+        if (config.target == MediaBuildTarget::Usm) {
+            for (const auto& controls : subtitle_controls) {
                 const auto source = path_from_qstring(controls.source->text().trimmed());
                 if (source.empty()) {
                     continue;
                 }
-                config.audio_tracks.push_back(MediaBuildConfig::AudioTrack{
+                config.subtitle_tracks.push_back(MediaBuildConfig::SubtitleTrack{
                     .source = source,
-                    .prep = audio_prep_for_source(source, audio_target),
+                    .format = static_cast<cricodecs::usm::UsmSubtitleFormat>(controls.format->currentData().toInt()),
+                    .language_id = static_cast<uint32_t>(controls.language->value()),
                     .channel_no = optional_channel(*controls.channel),
                 });
-            }
-            if (config.target == MediaBuildTarget::Usm) {
-                for (const auto& controls : subtitle_controls) {
-                    const auto source = path_from_qstring(controls.source->text().trimmed());
-                    if (source.empty()) {
-                        continue;
-                    }
-                    config.subtitle_tracks.push_back(MediaBuildConfig::SubtitleTrack{
-                        .source = source,
-                        .format = static_cast<cricodecs::usm::UsmSubtitleFormat>(controls.format->currentData().toInt()),
-                        .language_id = static_cast<uint32_t>(controls.language->value()),
-                        .channel_no = optional_channel(*controls.channel),
-                    });
-                }
             }
         }
         if (current_usm != nullptr) {
@@ -671,7 +695,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 track.replacement_source = controls.replacement == nullptr
                     ? std::filesystem::path{}
                     : path_from_qstring(controls.replacement->text().trimmed());
-                if (track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video && controls.prep != nullptr) {
+                if ((track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video ||
+                     track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Alpha) &&
+                    controls.prep != nullptr) {
                     track.video_prep = static_cast<MediaVideoPrep>(controls.prep->currentData().toInt());
                 } else if (track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Audio && controls.prep != nullptr) {
                     track.audio_prep = static_cast<MediaAudioPrep>(controls.prep->currentData().toInt());
@@ -699,8 +725,13 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         );
         const bool has_cri_key = !key_error.has_value() && dialog_keys.has_cri_key;
         sfd_profile_combo->setEnabled(target == MediaBuildTarget::Sfd);
-        audio_group->setEnabled(current_usm == nullptr);
-        subtitle_group->setVisible(current_usm == nullptr && target == MediaBuildTarget::Usm);
+        audio_group->setEnabled(true);
+        subtitle_group->setVisible(target == MediaBuildTarget::Usm);
+        form->setRowVisible(alpha_edit, target == MediaBuildTarget::Usm);
+        form->setRowVisible(alpha_prep_combo, target == MediaBuildTarget::Usm);
+        alpha_prep_combo->setEnabled(
+            target == MediaBuildTarget::Usm && !alpha_edit->text().trimmed().isEmpty()
+        );
         add_audio_button->setText(target == MediaBuildTarget::Usm
             ? QStringLiteral("Add audio track")
             : QStringLiteral("Add audio track (SFD supports one)"));
@@ -717,8 +748,12 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         video_prep_combo->setItemText(0, target == MediaBuildTarget::Sfd
             ? QStringLiteral("Use prepared MPEG elementary stream")
             : QStringLiteral("Use prepared source"));
-        video_preset_combo->setEnabled(current_usm == nullptr &&
-            static_cast<MediaVideoPrep>(video_prep_combo->currentData().toInt()) != MediaVideoPrep::UsePrepared);
+        video_preset_combo->setEnabled(
+            (current_usm == nullptr &&
+             static_cast<MediaVideoPrep>(video_prep_combo->currentData().toInt()) != MediaVideoPrep::UsePrepared) ||
+            (!alpha_edit->text().trimmed().isEmpty() &&
+             static_cast<MediaVideoPrep>(alpha_prep_combo->currentData().toInt()) != MediaVideoPrep::UsePrepared)
+        );
         if (target == MediaBuildTarget::Sfd &&
             (static_cast<MediaVideoPrep>(video_prep_combo->currentData().toInt()) == MediaVideoPrep::FfmpegH264 ||
              static_cast<MediaVideoPrep>(video_prep_combo->currentData().toInt()) == MediaVideoPrep::FfmpegVp9)) {
@@ -738,6 +773,8 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
     };
     QObject::connect(target_combo, &QComboBox::currentIndexChanged, &dialog, [update_target_state](int) { update_target_state(); });
     QObject::connect(video_prep_combo, &QComboBox::currentIndexChanged, &dialog, [update_target_state](int) { update_target_state(); });
+    QObject::connect(alpha_prep_combo, &QComboBox::currentIndexChanged, &dialog, [update_target_state](int) { update_target_state(); });
+    QObject::connect(alpha_edit, &QLineEdit::textChanged, &dialog, [update_target_state](const QString&) { update_target_state(); });
     QObject::connect(cri_key_edit, &QLineEdit::textChanged, &dialog, [update_target_state](const QString&) { update_target_state(); });
     QObject::connect(cri_key_base, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [update_target_state](int) { update_target_state(); });
     update_target_state();
@@ -766,13 +803,19 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         }
     };
     const auto refresh_from_edit = [&refresh_validation](const QString&) { refresh_validation(); };
-    for (auto* edit : {video_edit, output_edit, cri_key_edit}) {
+    for (auto* edit : {video_edit, alpha_edit, output_edit, cri_key_edit}) {
         QObject::connect(edit, &QLineEdit::textChanged, &dialog, refresh_from_edit);
     }
     QObject::connect(encrypt_audio_check, &QCheckBox::toggled, &dialog, [&refresh_validation](bool) {
         refresh_validation();
     });
-    for (auto* combo : {video_prep_combo, video_preset_combo, sfd_profile_combo, audio_codec_combo, cri_key_base}) {
+    for (auto* combo : {
+             video_prep_combo,
+             alpha_prep_combo,
+             video_preset_combo,
+             sfd_profile_combo,
+             audio_codec_combo,
+             cri_key_base}) {
         QObject::connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [&refresh_validation](int) {
             refresh_validation();
         });

@@ -212,6 +212,14 @@ namespace cricodecs::cli::detail {
             options.audio_paths.emplace_back(*value);
             continue;
         }
+        if (arg == "--alpha") {
+            auto value = require_value(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            options.alpha_path = std::filesystem::path(*value);
+            continue;
+        }
         if (arg == "--audio-channel") {
             auto value = require_value(arg);
             if (!value) {
@@ -344,7 +352,8 @@ namespace cricodecs::cli::detail {
             || options.version.has_value() || options.key.has_value()
             || options.subkey.has_value() || options.cipher_type.has_value()
             || options.aac_keycode.has_value() || !options.indexes.empty()
-            || !options.audio_paths.empty() || !options.audio_channels.empty() || !options.mutations.empty()
+            || options.alpha_path.has_value() || !options.audio_paths.empty()
+            || !options.audio_channels.empty() || !options.mutations.empty()
             || options.alignment.has_value() || options.bitrate.has_value()
             || options.highpass.has_value() || options.mode.has_value() || options.quality.has_value()
             || options.ms_stereo || options.trim_after_loop || options.compress)) {
@@ -370,7 +379,8 @@ namespace cricodecs::cli::detail {
         return std::unexpected("`--build` cannot be combined with encode/export/list/metadata/crypto selection flags");
     }
     if (!options.build && !options.encode &&
-        (!options.audio_paths.empty() || !options.audio_channels.empty() || options.profile.has_value()
+        (options.alpha_path.has_value() || !options.audio_paths.empty()
+         || !options.audio_channels.empty() || options.profile.has_value()
          || options.version.has_value() || options.alignment.has_value() || options.bitrate.has_value()
          || options.highpass.has_value() || options.mode.has_value() || options.quality.has_value()
          || options.ms_stereo || options.trim_after_loop)) {
@@ -382,10 +392,15 @@ namespace cricodecs::cli::detail {
     if (!options.audio_channels.empty() && options.force_type != Format::usm) {
         return std::unexpected("`--audio-channel` is only supported for USM builds");
     }
+    if (options.alpha_path.has_value() &&
+        (!options.build || options.force_type != Format::usm)) {
+        return std::unexpected("`--alpha` is only supported for USM builds");
+    }
     if (options.encode) {
         const Format format = *options.force_type;
-        if (options.alignment.has_value() || !options.audio_paths.empty() || !options.audio_channels.empty()) {
-            return std::unexpected("`--alignment`, `--audio`, and `--audio-channel` are builder options");
+        if (options.alignment.has_value() || options.alpha_path.has_value() ||
+            !options.audio_paths.empty() || !options.audio_channels.empty()) {
+            return std::unexpected("`--alignment`, `--alpha`, `--audio`, and `--audio-channel` are builder options");
         }
         if ((options.quality.has_value() || options.bitrate.has_value() || options.ms_stereo) && format != Format::hca) {
             return std::unexpected("`--quality`, `--bitrate`, and `--ms-stereo` are only supported for HCA encoding");
@@ -485,13 +500,14 @@ void print_usage(std::ostream& out, bool show_identity) {
         "Usage: cricodecs <input> [-e] [--encode|--build] [--raw] [--list] [--encrypt|--decrypt] [-m] [--json] [-q] [-f TYPE] [-o PATH]\n"
         "       cricodecs --recover-key -f hca|usm|adx|ahx|awb|acb <input> [input ...] [--json] [-q]\n"
         "                 [--index N] [--key VALUE] [--subkey VALUE] [--cipher-type VALUE] [--aac-keycode VALUE]\n"
-        "                 [--encoding NAME] [--audio PATH] [--audio-channel 0..255] [--profile NAME] [--header-version VALUE]\n"
+        "                 [--encoding NAME] [--alpha PATH] [--audio PATH] [--audio-channel 0..255] [--profile NAME] [--header-version VALUE]\n"
         "                 [--quality NAME] [--bitrate BPS] [--ms-stereo] [--mode VALUE] [--highpass HZ]\n"
         "                 [--trim-after-loop] [--alignment BYTES]\n"
         "\n"
         "  -e, --export         explicit export; same as default behavior\n"
         "      --encode         encode WAV input as hca/adx/ahx; requires -f and -o\n"
         "      --build          build afs/awb/cpk/acx/csb/cvm/usm/sfd inputs\n"
+        "      --alpha PATH     add an alpha-video stream to a USM build\n"
         "      --audio PATH     add ADX/HCA audio for usm, or ADX for sfd; repeatable for usm\n"
         "      --audio-channel  assign explicit USM channel per --audio; repeat for every audio input\n"
         "      --profile NAME   AHX allocation profile, or CPK/SFD build profile\n"

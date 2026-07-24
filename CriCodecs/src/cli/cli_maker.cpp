@@ -927,6 +927,7 @@ struct AixMutationTarget {
         case Format::usm: {
             usm::UsmBuildInput input;
             input.video_path = input_path;
+            input.alpha_path = options.alpha_path;
             input.encoding = encoding_options(options);
             if (options.key.has_value()) {
                 auto key = parse_u64(*options.key, "--key");

@@ -136,6 +136,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
     MediaCodecPreset preset,
     const std::filesystem::path& ffmpeg_path,
     const std::filesystem::path& stage_dir,
+    std::string_view stage_name,
     const MediaBuildLogCallback& log
 ) {
     if (source.empty()) {
@@ -154,7 +155,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
 
     const auto source_hint = inspect_video_source_hint(source);
     std::filesystem::path output;
-    std::optional<PreparedVideoFormat> expected_format;
+    std::optional<PreparedVideoFormat> expected_format = std::nullopt;
     QStringList arguments = {
         QStringLiteral("-y"),
         QStringLiteral("-xerror"),
@@ -166,7 +167,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
     };
     switch (prep) {
     case MediaVideoPrep::FfmpegVp9:
-        output = stage_dir / "video.ivf";
+        output = stage_dir / (std::string(stage_name) + ".ivf");
         expected_format = PreparedVideoFormat::Vp9Ivf;
         arguments << QStringLiteral("-c:v") << QStringLiteral("libvpx-vp9")
                   << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
@@ -184,7 +185,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
                   << path_to_qstring(output);
         break;
     case MediaVideoPrep::FfmpegH264:
-        output = stage_dir / "video.264";
+        output = stage_dir / (std::string(stage_name) + ".264");
         expected_format = PreparedVideoFormat::H264AnnexB;
         arguments << QStringLiteral("-c:v") << QStringLiteral("libx264")
                   << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
@@ -196,7 +197,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
                   << path_to_qstring(output);
         break;
     case MediaVideoPrep::FfmpegMpeg1:
-        output = stage_dir / "video.m1v";
+        output = stage_dir / (std::string(stage_name) + ".m1v");
         expected_format = PreparedVideoFormat::Mpeg1Elementary;
         arguments << QStringLiteral("-c:v") << QStringLiteral("mpeg1video")
                   << QStringLiteral("-b:v") << (preset == MediaCodecPreset::Compact
@@ -206,7 +207,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
                   << path_to_qstring(output);
         break;
     case MediaVideoPrep::FfmpegMpeg2:
-        output = stage_dir / "video.m2v";
+        output = stage_dir / (std::string(stage_name) + ".m2v");
         expected_format = PreparedVideoFormat::Mpeg2Elementary;
         arguments << QStringLiteral("-c:v") << QStringLiteral("mpeg2video")
                   << QStringLiteral("-b:v") << (preset == MediaCodecPreset::Compact
@@ -350,6 +351,9 @@ std::filesystem::path existing_track_path(
     case MediaBuildConfig::ExistingUsmTrack::Kind::Video:
         extension = ".video";
         break;
+    case MediaBuildConfig::ExistingUsmTrack::Kind::Alpha:
+        extension = ".alpha";
+        break;
     case MediaBuildConfig::ExistingUsmTrack::Kind::Audio:
         extension = hca_audio ? ".hca" : ".adx";
         break;
@@ -422,10 +426,17 @@ std::expected<void, QString> build_existing_usm_from_tracks(
 
         std::filesystem::path source_path;
         switch (track.kind) {
-        case MediaBuildConfig::ExistingUsmTrack::Kind::Video: {
+        case MediaBuildConfig::ExistingUsmTrack::Kind::Video:
+        case MediaBuildConfig::ExistingUsmTrack::Kind::Alpha: {
+            const bool is_alpha = track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Alpha;
             if (has_video) {
-                push_log(log, QStringLiteral("Skipping extra video stream %1; builder currently accepts one video stream.").arg(track.stream_index));
-                continue;
+                if (!is_alpha) {
+                    push_log(log, QStringLiteral("Skipping extra video stream %1; builder accepts one main video stream.").arg(track.stream_index));
+                    continue;
+                }
+            }
+            if (is_alpha && input.alpha_path.has_value()) {
+                return std::unexpected(QStringLiteral("Current USM contains more than one enabled alpha-video stream."));
             }
             if (track.replacement_source.empty()) {
                 auto materialized = materialize_existing_track(*reader, track, stage_dir, log);
@@ -441,6 +452,8 @@ std::expected<void, QString> build_existing_usm_from_tracks(
                     config.video_preset,
                     config.ffmpeg_path,
                     stage_dir,
+                    (is_alpha ? "replacement_alpha_" : "replacement_video_") +
+                        std::to_string(track.stream_index),
                     log
                 );
                 if (!prepared) {
@@ -448,8 +461,12 @@ std::expected<void, QString> build_existing_usm_from_tracks(
                 }
                 source_path = *prepared;
             }
-            input.video_path = source_path;
-            has_video = true;
+            if (is_alpha) {
+                input.alpha_path = source_path;
+            } else {
+                input.video_path = source_path;
+                has_video = true;
+            }
             break;
         }
         case MediaBuildConfig::ExistingUsmTrack::Kind::Audio: {
@@ -511,6 +528,55 @@ std::expected<void, QString> build_existing_usm_from_tracks(
         }
     }
 
+    for (size_t index = 0; index < config.audio_tracks.size(); ++index) {
+        const auto& track = config.audio_tracks[index];
+        auto prepared = prepare_audio_source(
+            track.source,
+            track.prep,
+            config.ffmpeg_path,
+            stage_dir,
+            "added_audio_" + std::to_string(index),
+            log
+        );
+        if (!prepared) {
+            return std::unexpected(prepared.error());
+        }
+        if (prepared->has_value()) {
+            input.audio_tracks.push_back(cricodecs::usm::UsmBuildInput::AudioTrack{
+                .path = **prepared,
+                .channel_no = track.channel_no,
+            });
+        }
+    }
+    for (const auto& track : config.subtitle_tracks) {
+        input.subtitle_tracks.push_back(cricodecs::usm::UsmBuildInput::SubtitleTrack{
+            .path = track.source,
+            .language_id = track.language_id,
+            .format = track.format,
+            .channel_no = track.channel_no,
+        });
+    }
+    if (!config.alpha_source.empty()) {
+        if (input.alpha_path.has_value()) {
+            return std::unexpected(QStringLiteral(
+                "The rebuilt USM already includes an alpha-video stream. Replace that stream or disable it before adding another."
+            ));
+        }
+        auto prepared = prepare_video_source(
+            config.alpha_source,
+            config.alpha_prep,
+            config.video_preset,
+            config.ffmpeg_path,
+            stage_dir,
+            "added_alpha",
+            log
+        );
+        if (!prepared) {
+            return std::unexpected(prepared.error());
+        }
+        input.alpha_path = *prepared;
+    }
+
     if (!has_video) {
         return std::unexpected(QStringLiteral("Current USM build requires one enabled video stream."));
     }
@@ -543,7 +609,10 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
         }
 
         int video_count = 0;
+        int alpha_count = config.alpha_source.empty() ? 0 : 1;
         bool needs_ffmpeg = false;
+        std::array<bool, 256> audio_channels{};
+        std::array<bool, 256> subtitle_channels{};
         for (const auto& track : config.existing_usm_tracks) {
             if (!track.enabled) {
                 continue;
@@ -554,11 +623,24 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                 needs_ffmpeg = needs_ffmpeg ||
                     (!track.replacement_source.empty() && track.video_prep != MediaVideoPrep::UsePrepared);
                 break;
+            case MediaBuildConfig::ExistingUsmTrack::Kind::Alpha:
+                ++alpha_count;
+                needs_ffmpeg = needs_ffmpeg ||
+                    (!track.replacement_source.empty() && track.video_prep != MediaVideoPrep::UsePrepared);
+                break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Audio:
+                if (audio_channels[track.channel]) {
+                    return QStringLiteral("Audio channel %1 is assigned more than once.").arg(track.channel);
+                }
+                audio_channels[track.channel] = true;
                 needs_ffmpeg = needs_ffmpeg ||
                     (!track.replacement_source.empty() && track.audio_prep != MediaAudioPrep::UsePrepared);
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
+                if (subtitle_channels[track.channel]) {
+                    return QStringLiteral("Subtitle channel %1 is assigned more than once.").arg(track.channel);
+                }
+                subtitle_channels[track.channel] = true;
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported:
                 return QStringLiteral("Disable unsupported stream %1 before rebuilding.").arg(track.stream_index);
@@ -571,6 +653,47 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
         }
         if (video_count != 1) {
             return QStringLiteral("Enable exactly one video stream.");
+        }
+        if (alpha_count > 1) {
+            return QStringLiteral(
+                "A USM can contain one alpha-video stream. Replace the current alpha stream or disable it before adding another."
+            );
+        }
+        needs_ffmpeg = needs_ffmpeg ||
+            (!config.alpha_source.empty() && config.alpha_prep != MediaVideoPrep::UsePrepared);
+        for (const auto& track : config.audio_tracks) {
+            if (track.source.empty()) {
+                return QStringLiteral("Remove empty audio tracks or choose their source files.");
+            }
+            needs_ffmpeg = needs_ffmpeg || track.prep != MediaAudioPrep::UsePrepared;
+            if (track.channel_no.has_value()) {
+                if (audio_channels[*track.channel_no]) {
+                    return QStringLiteral("Audio channel %1 is assigned more than once.").arg(*track.channel_no);
+                }
+                audio_channels[*track.channel_no] = true;
+            }
+            if (inspect_sources && !std::filesystem::exists(track.source)) {
+                return QStringLiteral("Audio source does not exist: %1").arg(path_to_qstring(track.source));
+            }
+        }
+        for (const auto& track : config.subtitle_tracks) {
+            if (track.source.empty()) {
+                return QStringLiteral("Remove empty subtitle tracks or choose their source files.");
+            }
+            if (track.channel_no.has_value()) {
+                if (subtitle_channels[*track.channel_no]) {
+                    return QStringLiteral("Subtitle channel %1 is assigned more than once.").arg(*track.channel_no);
+                }
+                subtitle_channels[*track.channel_no] = true;
+            }
+            if (inspect_sources && !std::filesystem::exists(track.source)) {
+                return QStringLiteral("Subtitle source does not exist: %1").arg(path_to_qstring(track.source));
+            }
+        }
+        if (inspect_sources && !config.alpha_source.empty() &&
+            !std::filesystem::exists(config.alpha_source)) {
+            return QStringLiteral("Alpha-video source does not exist: %1")
+                .arg(path_to_qstring(config.alpha_source));
         }
         if (needs_ffmpeg && config.ffmpeg_path.empty()) {
             return QStringLiteral("FFmpeg was not found in PATH.");
@@ -598,8 +721,12 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
     if (config.target == MediaBuildTarget::Sfd && !config.subtitle_tracks.empty()) {
         return QStringLiteral("SFD subtitle authoring is not supported.");
     }
+    if (config.target == MediaBuildTarget::Sfd && !config.alpha_source.empty()) {
+        return QStringLiteral("Alpha-video authoring is available for USM builds only.");
+    }
 
-    bool needs_ffmpeg = config.video_prep != MediaVideoPrep::UsePrepared;
+    bool needs_ffmpeg = config.video_prep != MediaVideoPrep::UsePrepared ||
+        (!config.alpha_source.empty() && config.alpha_prep != MediaVideoPrep::UsePrepared);
     std::array<bool, 256> audio_channels{};
     for (const auto& track : config.audio_tracks) {
         if (track.source.empty()) {
@@ -642,6 +769,9 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
     }
     if (!std::filesystem::exists(config.video_source)) {
         return QStringLiteral("Video source does not exist: %1").arg(path_to_qstring(config.video_source));
+    }
+    if (!config.alpha_source.empty() && !std::filesystem::exists(config.alpha_source)) {
+        return QStringLiteral("Alpha-video source does not exist: %1").arg(path_to_qstring(config.alpha_source));
     }
     for (const auto& track : config.audio_tracks) {
         if (!std::filesystem::exists(track.source)) {
@@ -719,6 +849,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         config.video_preset,
         config.ffmpeg_path,
         stage_dir,
+        "video",
         log
     );
     if (!video_path) {
@@ -748,6 +879,21 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
     if (config.target == MediaBuildTarget::Usm) {
         cricodecs::usm::UsmBuildInput input;
         input.video_path = *video_path;
+        if (!config.alpha_source.empty()) {
+            auto alpha_path = prepare_video_source(
+                config.alpha_source,
+                config.alpha_prep,
+                config.video_preset,
+                config.ffmpeg_path,
+                stage_dir,
+                "alpha",
+                log
+            );
+            if (!alpha_path) {
+                return std::unexpected(alpha_path.error());
+            }
+            input.alpha_path = *alpha_path;
+        }
         input.key = config.keys.has_cri_key ? config.keys.cri_key : 0;
         input.encrypt_audio = config.encrypt_audio;
         for (size_t index = 0; index < audio_paths.size(); ++index) {

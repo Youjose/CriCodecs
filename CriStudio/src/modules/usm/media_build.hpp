@@ -46,9 +46,11 @@ enum class MediaCodecPreset : uint8_t {
 struct MediaBuildConfig {
     MediaBuildTarget target = MediaBuildTarget::Usm;
     MediaVideoPrep video_prep = MediaVideoPrep::UsePrepared;
+    MediaVideoPrep alpha_prep = MediaVideoPrep::UsePrepared;
     MediaCodecPreset video_preset = MediaCodecPreset::Standard;
     cricodecs::sfd::SfdBuildProfile sfd_profile = cricodecs::sfd::SfdBuildProfile::sofdec_stream_standard_fixed_2048;
     std::filesystem::path video_source;
+    std::filesystem::path alpha_source;
     std::filesystem::path output_path;
     std::filesystem::path ffmpeg_path;
     DecryptionKeys keys;
@@ -73,6 +75,7 @@ struct MediaBuildConfig {
     struct ExistingUsmTrack {
         enum class Kind : uint8_t {
             Video,
+            Alpha,
             Audio,
             Subtitle,
             Unsupported,
