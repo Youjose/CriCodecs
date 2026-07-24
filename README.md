@@ -6,8 +6,7 @@
 
 CriStudio is the desktop interface for inspecting, previewing, extracting,
 editing, and building CRI middleware files. It is powered by CriCodecs, a
-modern C++23 codec and container library with a standalone CLI and Python
-bindings built with nanobind.
+C++23 codec and container library with a standalone CLI and Python bindings.
 
 Most users should download CriStudio. The CLI, Python package, and C++ SDK are
 available for automation, scripting, and application integration.
@@ -33,19 +32,18 @@ provides platform-specific downloads:
 | C++ SDK | Headers, CMake package metadata, and static/shared libraries. |
 | Python wheels | Install from PyPI with `python -m pip install cricodecs`. |
 
-Portable CriStudio is non-installer software. Windows packages expose only
-`CriStudio.exe` and an `_internal` runtime directory; Linux uses an AppImage;
-macOS uses a self-contained application bundle.
+Portable CriStudio needs no installer. Windows packages expose only
+`CriStudio.exe` and an `_internal` runtime directory, Linux uses an AppImage,
+and macOS uses a self-contained application bundle.
 
 ## CriStudio
 
-CriStudio provides two complementary workspaces:
+CriStudio has two workspaces:
 
 - **Browse** loads files and archives, searches nested entries, previews audio,
   video, images, tables, and raw bytes, and extracts selected content.
-- **Editor** exposes format-aware inspection and mutation tools, archive entry
-  management, build workflows, media muxing, encryption controls, and local
-  key handling without changing the global CRI key implicitly.
+- **Editor** edits archive entries and tables, builds and muxes media, and
+  manages encryption keys without changing the global CRI key implicitly.
 
 Key recovery is available for supported HCA, ADX, AHX, USM, AWB, and ACB
 inputs. Multi-file recovery runs in the background and ranks a bounded set of
@@ -60,97 +58,8 @@ candidates rather than blocking the interface.
 | Archives and disc containers | AFS, CPK, CVM/ROFS |
 | Video and stream containers | USM, SFD/SofDec |
 
-Available operations differ by format. CriStudio only exposes editing,
-encoding, muxing, or key-recovery actions where the corresponding native API
-supports them.
-
-Detailed CLI, Python, and C++ examples are in
-[USAGE.md](https://github.com/Youjose/CriCodecs/blob/main/USAGE.md).
-
-## Installation
-
-### Requirements
-
-- CMake 4.2 or newer
-- A recent C++23 compiler
-  - GCC 16.1 or newer on Linux
-  - Visual Studio 2026 / MSVC v145 or newer on Windows
-  - A current Apple Clang/Xcode toolchain on macOS
-- Python 3.9 or newer for Python bindings
-
-Use a fresh build directory for each generator and compiler. If you change
-compilers, generators, Python versions, or CMake versions, delete the old build
-directory first.
-
-### Python From Source
-
-From the repository root:
-
-```sh
-python -m pip install .
-```
-
-For verbose build logs:
-
-```sh
-python -m pip install -v .
-```
-
-For local development with an already prepared build environment:
-
-```sh
-python -m pip install --no-build-isolation -ve .
-```
-
-### Python From A Wheel
-
-Download a wheel matching your Python version, operating system, and CPU
-architecture, then install it directly:
-
-```sh
-python -m pip install cricodecs-1.1.1-*.whl
-```
-
-### C++ Core Library
-
-Build and install the optimized static C++ library:
-
-```sh
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCRICODECS_BUILD_TESTS=OFF \
-  -DCRICODECS_BUILD_CLI=OFF \
-  -DCRICODECS_INSTALL_CPP=ON
-cmake --build build --parallel 4
-cmake --install build --prefix ./install
-```
-
-Set `-DBUILD_SHARED_LIBS=ON` to build and install the shared-library variant.
-Both variants install the same headers and CMake package metadata.
-
-Consume an installed package with:
-
-```cmake
-find_package(CriCodecs CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE CriCodecs::CriCodecs)
-```
-
-Build the C++ library and Python bindings with CMake:
-
-```sh
-cmake -S . -B build-python -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=ON
-cmake --build build-python --parallel 4
-```
-
-On Windows with Visual Studio 2026:
-
-```sh
-cmake -S . -B build-vs -G "Visual Studio 18 2026" -A x64 -DCRICODECS_BUILD_PYTHON=OFF
-cmake --build build-vs --config Release --parallel 4
-```
-
-If the Visual Studio generator is missing, update CMake first and run
-`cmake -G` to list the generators available on your machine.
+Editing, encoding, muxing, and key-recovery actions appear only where
+supported.
 
 ## CLI
 
@@ -169,69 +78,31 @@ and container inputs extract to a sibling directory by default. Use `-m` for
 metadata, `-m --json` for JSON metadata, `-f` to force the input format, and
 `-o` to choose the output path or extraction root.
 
-Recover the effective low-56 key used by HCA cipher type 56 with one or more
-HCA files, directly from AWB/ACB/USM containers, or recursively from folders:
+### Key recovery
 
 ```sh
 cricodecs --recover-key -f hca music.hca
-cricodecs --recover-key -f hca cue_01.hca cue_02.hca --json
-cricodecs --recover-key -f hca music.awb
 cricodecs --recover-key -f hca music.acb
-cricodecs --recover-key -f hca movie.usm
-cricodecs --recover-key -f hca audio_folder
-```
-
-Multiple inputs are assumed to use the same effective table and compatible HCA
-frame grammar. Folder scans ignore unrelated files and pool every cipher-56 HCA
-found in HCA, AWB, ACB, or USM inputs. Every matching audio channel in a
-multi-audio USM is included. Recovery always returns the best guess and its
-validation score; a low score is not treated as a command failure.
-
-Recover the effective low-56 USM stream-mask key with `-f usm`:
-
-```sh
 cricodecs --recover-key -f usm movie.usm
-cricodecs --recover-key -f usm movie_folder --json
-```
-
-Each USM is recovered independently because separate containers may use
-different keys. Recovery can use video, encrypted HCA, or USM-masked ADX
-evidence. Text and JSON results include the input path, key, score, sampled
-video blocks, and contributing video/ADX chunk counts. Recovery reports the
-candidate without applying it or rewriting the container.
-
-Recover standalone ADX or AHX encryption triplets with their explicit format
-domains:
-
-```sh
 cricodecs --recover-key -f adx music.adx
-cricodecs --recover-key -f adx same_key_adx_folder --json
 cricodecs --recover-key -f ahx voice_a.ahx voice_b.ahx
-```
-
-Multiple ADX or AHX inputs are pooled under the contract that they use the same
-encryption type and effective triplet. Results include the directly usable
-`start,mult,add` triplet, structural score, and frame evidence. AHX output also
-keeps per-component candidate counts visible because sparse files can leave one
-component ambiguous.
-
-`-f adx` targets ADX's own header-declared type-8/type-9 frame encryption.
-ADX carried inside a USM can additionally have the separate USM repeating
-audio mask; `-f usm` evaluates that audio-mask evidence together with SFV video
-and embedded HCA evidence.
-
-Recover CRI's effective low-52 AAC key from encrypted M4A waveforms in an AWB
-or its ACB cue sheet with an explicit container domain:
-
-```sh
 cricodecs --recover-key -f awb BGM.awb
 cricodecs --recover-key -f acb BGM.acb --json
 ```
 
-The ACB path selects only `EncodeType 19` waveforms. The AWB path selects only
-entries sharing the encrypted CRI M4A header pattern, so unrelated HCA, ADX,
-or other bank entries are not passed to the AAC solver. Recovery is unavailable
-when the selected input contains no encrypted AAC/M4A evidence.
+HCA recovery scans standalone files, AWB/ACB/USM containers, and folders. USM
+recovery combines supported video, encrypted HCA, and masked ADX evidence.
+ADX/AHX recovery returns directly usable `start,mult,add` triplets, while
+AWB/ACB recovery targets encrypted AAC/M4A entries. Multiple inputs are assumed
+to share one base key unless `--independent` is supplied.
+
+HCA type 56 uses only bits 0 through 55, so recovery cannot determine the
+original 64-bit key's upper byte. If the exact stored value matters, the seven
+recovered bytes can be searched in application metadata or executables, but a
+match is only a heuristic; the key may instead be derived, obfuscated, split,
+or absent.
+
+### USM muxing
 
 When building a USM, `--audio` accepts repeatable ADX or HCA inputs. Supplying
 `--key` masks the video and ADX audio by default, converts plain HCA audio to
@@ -242,12 +113,20 @@ cricodecs --build -f usm --key 0x165CF4E2138F7BDA \
   --audio dialogue.adx --audio music.hca -o movie.usm movie.ivf
 ```
 
+See [USAGE.md](https://github.com/Youjose/CriCodecs/blob/main/USAGE.md) for the
+complete command and key-recovery options.
+
 ## Python Usage
 
-Import the package as `cricodecs`. The top-level `cricodecs.load()` helper
-detects supported formats from a path or bytes and returns the matching object.
-Individual modules also expose format-specific helpers such as `load()`,
-`decode()`, `encode()`, `extract()`, `demux()`, or `save_bytes()`.
+Install from PyPI and import the package as `cricodecs`:
+
+```sh
+python -m pip install cricodecs
+```
+
+The top-level `cricodecs.load()` helper accepts a path or bytes and returns the
+matching object. Individual modules expose operations such as `load()`,
+`decode()`, `encode()`, `extract()`, `demux()`, and `save_bytes()`.
 
 ### Top-Level Load
 
@@ -334,23 +213,12 @@ config = usm.UsmMuxConfig(
             language_id=0,
             format=usm.UsmSubtitleFormat.SRT,
         ),
-        usm.UsmMuxSubtitleTrack(
-            "subtitles_alt.ass",
-            language_id=1,
-            format=usm.UsmSubtitleFormat.ASS,
-        ),
     ],
 )
 usm.mux(config, "movie_with_subtitles.usm")
 ```
 
-USM SBT language ids are numeric subtitle slots. The checked SDK docs do not
-define a universal locale mapping; pass the intended slot with
-`UsmMuxSubtitleTrack(..., language_id=N)`. ASS imports can also preserve per-cue
-ids from Dialogue names like `lang5`.
-
-Objects and small data structs implement useful `repr()` output, so interactive
-inspection is intended to be practical:
+Objects and configuration structs provide useful `repr()` output:
 
 ```python
 from cricodecs import adx
@@ -367,13 +235,13 @@ Include the complete API and link the namespaced CMake target:
 ```
 
 ```cmake
+find_package(CriCodecs CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE CriCodecs::CriCodecs)
 ```
 
-The source tree remains organized by CRI format under `CriCodecs/src`. Installed
-module headers preserve that organization under `<cricodecs/...>`, so a project
-can include only the formats it uses. Public APIs use value types and
-`std::expected<T, std::string>` for recoverable failures.
+Module headers are installed under `<cricodecs/...>`, so projects can include
+only the formats they use. Public operations report recoverable failures with
+`std::expected<T, std::string>`.
 
 ### ADX
 
@@ -430,6 +298,55 @@ int main() {
 
     return archive->files().empty() ? 1 : 0;
 }
+```
+
+## Build from source
+
+### Requirements
+
+- CMake 4.2 or newer
+- A C++23 compiler:
+  - GCC 16.1 or newer on Linux
+  - Visual Studio 2026 / MSVC v145 or newer on Windows
+  - A current Apple Clang/Xcode toolchain on macOS
+- Python 3.9 or newer when building the Python package
+
+Use a fresh build directory after changing the compiler, generator, Python
+version, or CMake version.
+
+### Python package
+
+From the repository root:
+
+```sh
+python -m pip install .
+```
+
+For an editable development install:
+
+```sh
+python -m pip install --no-build-isolation -ve .
+```
+
+### C++ SDK and CLI
+
+Build and install an optimized static library and the CLI:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel 4
+cmake --install build --prefix ./install
+```
+
+Set `-DBUILD_SHARED_LIBS=ON` for a shared library. To omit the CLI, set
+`-DCRICODECS_BUILD_CLI=OFF`.
+
+On Windows with Visual Studio 2026:
+
+```sh
+cmake -S . -B build-vs -G "Visual Studio 18 2026" -A x64
+cmake --build build-vs --config Release --parallel 4
+cmake --install build-vs --config Release --prefix install
 ```
 
 ## Credits

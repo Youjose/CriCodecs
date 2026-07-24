@@ -281,7 +281,8 @@ void bind_hca_module(nb::module_& module) {
                     std::span<const cricodecs::hca::RecoverySource>(&source, 1)));
             },
             nb::arg("subkey") = 0,
-            "Recover up to ten ranked canonical base-key candidates."
+            "Recover up to ten ranked canonical low-56 base-key candidates; "
+            "the original 64-bit key's upper byte is not observable."
         );
 
     install_attr_repr(module, "HcaFileChunk", {"version", "header_size"});
@@ -407,7 +408,8 @@ void bind_hca_module(nb::module_& module) {
         nb::arg("source"),
         nb::arg("subkeys") = nb::none(),
         nb::arg("same_base_key") = true,
-        "Recover up to ten ranked HCA base-key candidates from one or more sources."
+        "Recover up to ten ranked canonical low-56 HCA base-key candidates; "
+        "the original 64-bit key's upper byte is not observable."
     );
 }
 

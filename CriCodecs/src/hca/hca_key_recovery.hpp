@@ -47,7 +47,14 @@ struct KeyRecoveryOptions {
 using KeyCandidate = cricodecs::KeyCandidate<uint64_t>;
 using KeyRecoveryResult = cricodecs::KeyRecoveryResult<uint64_t>;
 
-/// Recover ranked effective low-56 candidates from one HCA object.
+/// HCA type-56 table generation consumes only bits 0 through 55 of the
+/// effective key. Recovery therefore returns canonical low-56 values; the
+/// original caller key's upper byte cannot be inferred from HCA data.
+///
+/// `KeyCandidate::unknown_high_bits` describes a separate ambiguity inside
+/// those 56 observable bits when an AWB subkey cannot be uniquely inverted.
+
+/// Recover ranked canonical low-56 candidates from one HCA object.
 [[nodiscard]] std::expected<KeyRecoveryResult, std::string> recover_key(const Hca& source);
 
 /// Pool compatible HCA objects that use the same effective key.

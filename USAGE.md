@@ -144,6 +144,20 @@ Scores are comparable within a recovery domain, but they do not all express
 the same codec-specific structural test. Prefer the highest-ranked candidate
 and validate it against representative files before bulk application.
 
+HCA type-56 recovery returns a canonical value for bits 0 through 55. The
+cipher table does not represent bits 56 through 63, so no HCA data can identify
+the original caller key's upper byte. `unknown_high_bits` is separate: it
+reports unresolved bits within the observable low 56 after AWB-subkey
+normalization.
+
+As an optional application-level heuristic, search unencrypted metadata or
+executables for the recovered seven bytes. In a little-endian stored 64-bit
+key, the following byte is the unknown upper byte; in big-endian storage, it is
+the preceding byte. A textual 16-digit hexadecimal key may contain the
+recovered 14 digits as its suffix. A match is not proof: the original key may
+be derived, obfuscated, split, or absent. This search applies to HCA/USM
+keycodes and not to ADX/AHX triplets or other recovery domains.
+
 ## Python package
 
 Install the published package with:
@@ -220,6 +234,34 @@ Path("output.cpk").write_bytes(created.save_bytes())
 Loaded mutable container objects preserve inspectable state. Prefer their
 `save_bytes()` or file-output methods after mutation rather than reconstructing
 private table structures yourself.
+
+### Mux USM
+
+```python
+from cricodecs import usm
+
+config = usm.UsmMuxConfig(
+    video_path="movie.264",
+    audio_tracks=[usm.UsmMuxAudioTrack("movie.adx")],
+    subtitle_tracks=[
+        usm.UsmMuxSubtitleTrack(
+            "subtitles_en.srt",
+            language_id=0,
+            format=usm.UsmSubtitleFormat.SRT,
+        ),
+        usm.UsmMuxSubtitleTrack(
+            "subtitles_alt.ass",
+            language_id=1,
+            format=usm.UsmSubtitleFormat.ASS,
+        ),
+    ],
+)
+usm.mux(config, "movie_with_subtitles.usm")
+```
+
+SBT language IDs are numeric subtitle slots; the available SDK documentation
+does not define a universal locale mapping. ASS imports can preserve per-cue
+IDs from Dialogue names such as `lang5`.
 
 ### Recover keys
 
