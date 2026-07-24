@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -56,7 +57,8 @@ namespace cristudio {
 [[nodiscard]] std::expected<MuxPreview, std::string> build_mux_preview(
     const LoadedDocument& document,
     int audio_choice,
-    const DecryptionKeys& keys = {}
+    const DecryptionKeys& keys = {},
+    std::stop_token stop_token = {}
 );
 
 [[nodiscard]] EmbeddedPreview load_embedded_entry_preview(

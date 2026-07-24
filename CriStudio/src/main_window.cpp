@@ -14,6 +14,7 @@
 #include <QApplication>
 #include <QAudioOutput>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDialog>
@@ -149,6 +150,12 @@ MainWindow::MainWindow(QWidget* parent)
 
     const auto path = log_path();
     QDir().mkpath(QFileInfo(path).absolutePath());
+    constexpr qint64 max_log_bytes = 2 * 1024 * 1024;
+    if (QFileInfo(path).size() >= max_log_bytes) {
+        const auto previous_path = path + QStringLiteral(".previous");
+        QFile::remove(previous_path);
+        QFile::rename(path, previous_path);
+    }
     m_log_file.setFileName(path);
     if (m_log_file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
         append_log(QStringLiteral("CriStudio started"));
@@ -156,6 +163,7 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    m_extract_stop_source.request_stop();
     m_hca_key_recovery_stop_source.request_stop();
     save_ui_state();
     if (auto* app = QApplication::instance(); app != nullptr) {
@@ -176,6 +184,12 @@ MainWindow::~MainWindow() {
         std::filesystem::remove_all(temp_dir, remove_error);
     }
     m_deferred_video_temp_dirs.clear();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    m_extract_stop_source.request_stop();
+    m_hca_key_recovery_stop_source.request_stop();
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::restore_ui_state() {

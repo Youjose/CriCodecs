@@ -2,6 +2,7 @@
 
 #include "shared/document_helpers.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <system_error>
 
@@ -108,8 +109,13 @@ std::filesystem::path with_stem_suffix(
 
 std::expected<void, std::string> write_binary_file(
     const std::filesystem::path& output_path,
-    std::span<const uint8_t> bytes
+    std::span<const uint8_t> bytes,
+    std::stop_token stop_token
 ) {
+    if (stop_token.stop_requested()) {
+        return std::unexpected("extraction canceled");
+    }
+
     std::error_code filesystem_error;
     if (output_path.has_parent_path()) {
         std::filesystem::create_directories(output_path.parent_path(), filesystem_error);
@@ -122,27 +128,49 @@ std::expected<void, std::string> write_binary_file(
     if (!output) {
         return std::unexpected("could not open output file: " + output_path.string());
     }
-    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!output) {
-        return std::unexpected("could not write output file: " + output_path.string());
+    constexpr size_t write_chunk_size = 4u * 1024u * 1024u;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        if (stop_token.stop_requested()) {
+            output.close();
+            std::filesystem::remove(output_path, filesystem_error);
+            return std::unexpected("extraction canceled");
+        }
+        const auto size = std::min(write_chunk_size, bytes.size() - offset);
+        output.write(
+            reinterpret_cast<const char*>(bytes.data() + offset),
+            static_cast<std::streamsize>(size)
+        );
+        if (!output) {
+            return std::unexpected("could not write output file: " + output_path.string());
+        }
+        offset += size;
     }
     return {};
 }
 
 std::expected<void, std::string> write_text_file(
     const std::filesystem::path& output_path,
-    std::string_view text
+    std::string_view text,
+    std::stop_token stop_token
 ) {
     return write_binary_file(
         output_path,
         std::span<const uint8_t>(
             reinterpret_cast<const uint8_t*>(text.data()),
             text.size()
-        )
+        ),
+        stop_token
     );
 }
 
-std::expected<std::vector<uint8_t>, std::string> read_binary_file(const std::filesystem::path& path) {
+std::expected<std::vector<uint8_t>, std::string> read_binary_file(
+    const std::filesystem::path& path,
+    std::stop_token stop_token
+) {
+    if (stop_token.stop_requested()) {
+        return std::unexpected("extraction canceled");
+    }
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return std::unexpected("could not open input file: " + path.string());
@@ -154,11 +182,21 @@ std::expected<std::vector<uint8_t>, std::string> read_binary_file(const std::fil
     }
     input.seekg(0, std::ios::beg);
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
-    if (!bytes.empty()) {
-        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    constexpr size_t read_chunk_size = 4u * 1024u * 1024u;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        if (stop_token.stop_requested()) {
+            return std::unexpected("extraction canceled");
+        }
+        const auto chunk_size = std::min(read_chunk_size, bytes.size() - offset);
+        input.read(
+            reinterpret_cast<char*>(bytes.data() + offset),
+            static_cast<std::streamsize>(chunk_size)
+        );
         if (!input) {
             return std::unexpected("could not read input file: " + path.string());
         }
+        offset += chunk_size;
     }
     return bytes;
 }

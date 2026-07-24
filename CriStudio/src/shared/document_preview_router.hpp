@@ -5,6 +5,7 @@
 #include <expected>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 
@@ -21,7 +22,8 @@ namespace cristudio {
 [[nodiscard]] std::expected<AudioPreview, std::string> audio_preview_from_bytes(
     const LoadedDocument& document,
     std::span<const uint8_t> bytes,
-    const DecryptionKeys& keys
+    const DecryptionKeys& keys,
+    std::stop_token stop_token = {}
 );
 [[nodiscard]] std::optional<VideoPreview> video_preview_from_bytes(
     const EntrySummary& entry,

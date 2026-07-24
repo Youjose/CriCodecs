@@ -25,6 +25,7 @@
 class QAction;
 class QAudioOutput;
 class QCheckBox;
+class QCloseEvent;
 class QComboBox;
 class QDialog;
 class QEvent;
@@ -86,6 +87,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     bool eventFilter(QObject* object, QEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
 
@@ -124,6 +126,7 @@ private:
     void add_directory(const std::filesystem::path& path);
     void start_loading_paths(std::vector<std::filesystem::path> paths);
     void start_extraction(std::vector<ExtractionTarget> targets, ExtractionMode mode, std::optional<int> mux_audio_choice = std::nullopt);
+    void cancel_extraction();
     void start_hca_key_recovery(std::vector<HcaRecoverySource> sources, QString target_label);
     void start_usm_key_recovery(std::vector<UsmRecoverySource> sources, QString target_label);
     void start_adx_key_recovery(
@@ -435,6 +438,7 @@ private:
     QPixmap m_nested_source_pixmap;
     QProgressBar* m_loading_bar = nullptr;
     QLabel* m_loading_status_label = nullptr;
+    QToolButton* m_cancel_extraction_button = nullptr;
     QLabel* m_memory_usage_label = nullptr;
     QAction* m_toggle_left_action = nullptr;
     QAction* m_toggle_preview_action = nullptr;
@@ -474,6 +478,7 @@ private:
     QFutureWatcher<ExtractionReport>* m_extract_watcher = nullptr;
     std::shared_ptr<ExtractionProgress> m_extract_progress;
     bool m_extract_running = false;
+    std::stop_source m_extract_stop_source;
     QFutureWatcher<HcaKeyRecoveryTaskResult>* m_hca_key_recovery_watcher = nullptr;
     bool m_hca_key_recovery_running = false;
     uint64_t m_hca_key_recovery_request_id = 0;
@@ -496,6 +501,7 @@ private:
     bool m_preview_running = false;
     uint64_t m_preview_request_id = 0;
     bool m_audio_slider_dragging = false;
+    bool m_audio_resume_after_seek = false;
     bool m_audio_loop_seeking = false;
     uint64_t m_audio_sample_count = 0;
     uint32_t m_audio_sample_rate = 0;

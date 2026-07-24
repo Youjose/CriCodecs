@@ -25,7 +25,9 @@
 #include <QtConcurrentRun>
 
 #include <algorithm>
+#include <exception>
 #include <limits>
+#include <typeinfo>
 #include <utility>
 
 namespace cristudio {
@@ -51,19 +53,42 @@ void MainWindow::start_document_audio_preview(const LoadedDocument& document) {
 
     const auto request_id = m_preview_request_id;
     show_pending_media_preview(QStringLiteral("Loading audio preview..."));
+    append_log(QStringLiteral("Audio preview started [%1]: %2")
+        .arg(request_id)
+        .arg(path_to_qstring(document.path)));
 
     m_preview_running = true;
     auto keys = m_decryption_keys;
     m_preview_watcher->setFuture(QtConcurrent::run([document, request_id, keys = std::move(keys)] {
-        PreviewResult result;
-        result.request_id = request_id;
-        result.document = document;
-        if (auto audio = build_audio_preview(document, keys); audio) {
-            result.audio = std::move(*audio);
-        } else {
-            result.message = utf8_to_qstring(audio.error());
+        const auto stage = QStringLiteral("extracting and decoding the audio stream");
+        try {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            if (auto audio = build_audio_preview(document, keys); audio) {
+                result.audio = std::move(*audio);
+            } else {
+                result.message = utf8_to_qstring(audio.error());
+            }
+            return result;
+        } catch (const std::exception& error) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            result.message = QStringLiteral("Audio preview failed while %1: %2 [%3]")
+                .arg(
+                    stage,
+                    QString::fromLocal8Bit(error.what()),
+                    QString::fromLatin1(typeid(error).name())
+                );
+            return result;
+        } catch (...) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            result.message = QStringLiteral("Audio preview failed while %1 with an unknown exception").arg(stage);
+            return result;
         }
-        return result;
     }));
 }
 
@@ -163,6 +188,7 @@ void MainWindow::reset_audio_preview() {
     m_audio_loops.clear();
     m_preview_duration_ms = 0;
     m_audio_slider_dragging = false;
+    m_audio_resume_after_seek = false;
     m_audio_loop_seeking = false;
     m_video_preview_active = false;
     if (m_audio_play_button != nullptr) {
@@ -234,7 +260,10 @@ void MainWindow::update_audio_time_label() {
     } else if (duration <= 0 && m_audio_sample_rate != 0) {
         duration = static_cast<qint64>((m_audio_sample_count * 1000ull) / m_audio_sample_rate);
     }
-    m_audio_time_label->setText(time_text(m_audio_player->position()) + QStringLiteral(" / ") + time_text(duration));
+    const auto position = m_audio_slider_dragging && m_audio_progress != nullptr
+        ? static_cast<qint64>(m_audio_progress->value())
+        : m_audio_player->position();
+    m_audio_time_label->setText(time_text(position) + QStringLiteral(" / ") + time_text(duration));
 }
 
 void MainWindow::update_loop_controls(const AudioPreview& audio) {

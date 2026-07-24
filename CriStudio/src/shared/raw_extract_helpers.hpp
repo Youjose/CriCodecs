@@ -15,4 +15,9 @@ namespace cristudio {
     const DecryptionKeys& keys
 );
 
+[[nodiscard]] std::expected<std::vector<uint8_t>, std::string> raw_extract_transform(
+    std::vector<uint8_t>&& bytes,
+    const DecryptionKeys& keys
+);
+
 } // namespace cristudio

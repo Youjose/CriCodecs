@@ -107,7 +107,8 @@ bool supports_editor(const EntrySummary& entry) {
 std::expected<AudioPreview, std::string> audio_preview_from_bytes(
     const LoadedDocument& document,
     std::span<const uint8_t> bytes,
-    const DecryptionKeys& keys
+    const DecryptionKeys& keys,
+    std::stop_token stop_token
 ) {
     const auto codec = cricodecs::awb::probe_entry_codec(bytes);
     using cricodecs::awb::EntryCodec;
@@ -121,7 +122,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
         return modules::wav::audio_preview_from_bytes(bytes, document.path);
     }
     if (is_ffmpeg_audio_codec(codec)) {
-        return ffmpeg_audio_preview_from_bytes(codec, bytes);
+        return ffmpeg_audio_preview_from_bytes(codec, bytes, stop_token);
     }
 
     const auto format = lower_ascii(document.format);

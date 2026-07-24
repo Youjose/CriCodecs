@@ -6,6 +6,7 @@
 #include <expected>
 #include <filesystem>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -38,16 +39,19 @@ private:
 
 [[nodiscard]] std::expected<void, std::string> write_binary_file(
     const std::filesystem::path& output_path,
-    std::span<const uint8_t> bytes
+    std::span<const uint8_t> bytes,
+    std::stop_token stop_token = {}
 );
 
 [[nodiscard]] std::expected<void, std::string> write_text_file(
     const std::filesystem::path& output_path,
-    std::string_view text
+    std::string_view text,
+    std::stop_token stop_token = {}
 );
 
 [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> read_binary_file(
-    const std::filesystem::path& path
+    const std::filesystem::path& path,
+    std::stop_token stop_token = {}
 );
 
 } // namespace cristudio

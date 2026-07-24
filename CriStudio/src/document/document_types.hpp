@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <utility>
 #include <vector>
@@ -165,6 +166,7 @@ struct ExtractionOptions {
     bool include_mux_outputs = true;
     int mux_audio_choice = 0;
     std::filesystem::path ffmpeg_path;
+    std::stop_token stop_token;
     std::function<void(const ExtractionEvent&)> event_callback;
 };
 
@@ -183,6 +185,7 @@ struct ExtractionReport {
     size_t total = 0;
     size_t extracted = 0;
     size_t failed = 0;
+    bool canceled = false;
     bool messages_logged_live = false;
     std::optional<std::filesystem::path> diagnostic_path = std::nullopt;
     std::vector<std::filesystem::path> output_paths;

@@ -3,6 +3,7 @@
 #include "path_text.hpp"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
@@ -10,7 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <limits>
+#include <stop_token>
 #include <string_view>
 
 namespace cristudio {
@@ -47,13 +48,18 @@ std::expected<void, std::string> write_staged_bytes(
     QFile& file,
     const char* bytes,
     size_t size,
-    std::string_view description
+    std::string_view description,
+    std::stop_token stop_token
 ) {
+    constexpr size_t write_chunk_size = 4u * 1024u * 1024u;
     size_t written = 0;
     while (written < size) {
+        if (stop_token.stop_requested()) {
+            return std::unexpected("extraction canceled");
+        }
         const auto chunk_size = static_cast<qint64>(std::min<size_t>(
             size - written,
-            static_cast<size_t>(std::numeric_limits<qint64>::max())
+            write_chunk_size
         ));
         const auto count = file.write(bytes + written, chunk_size);
         if (count <= 0) {
@@ -69,9 +75,34 @@ std::expected<void, std::string> write_staged_bytes(
     return {};
 }
 
+std::expected<void, std::string> wait_for_process(
+    QProcess& process,
+    int timeout_ms,
+    std::stop_token stop_token
+) {
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while (process.state() != QProcess::NotRunning) {
+        if (stop_token.stop_requested()) {
+            process.kill();
+            process.waitForFinished(3000);
+            return std::unexpected("extraction canceled");
+        }
+        const auto remaining = timeout_ms - static_cast<int>(elapsed.elapsed());
+        if (remaining <= 0) {
+            process.kill();
+            process.waitForFinished(3000);
+            return std::unexpected("ffmpeg timed out");
+        }
+        process.waitForFinished(std::min(remaining, 100));
+    }
+    return {};
+}
+
 std::expected<void, std::string> validate_mux_output_file(
     const std::filesystem::path& ffmpeg_path,
-    const std::filesystem::path& output_path
+    const std::filesystem::path& output_path,
+    std::stop_token stop_token
 ) {
     QProcess ffmpeg_process;
     ffmpeg_process.start(
@@ -94,10 +125,12 @@ std::expected<void, std::string> validate_mux_output_file(
             QStringLiteral("-"),
         }
     );
-    const auto finished = ffmpeg_process.waitForFinished(10000);
+    const auto finished = wait_for_process(ffmpeg_process, 10000, stop_token);
+    if (!finished) {
+        return std::unexpected(finished.error());
+    }
     const auto stderr_text = ffmpeg_error_text(ffmpeg_process);
     if (
-        finished &&
         ffmpeg_process.exitStatus() == QProcess::NormalExit &&
         ffmpeg_process.exitCode() == 0 &&
         !has_video_decode_error(stderr_text)
@@ -112,8 +145,12 @@ std::expected<void, std::string> validate_mux_output_file(
 std::expected<void, std::string> write_mux_extract_file(
     const MuxPreview& mux,
     const std::filesystem::path& output_path,
-    const std::filesystem::path& ffmpeg_path
+    const std::filesystem::path& ffmpeg_path,
+    std::stop_token stop_token
 ) {
+    if (stop_token.stop_requested()) {
+        return std::unexpected("extraction canceled");
+    }
     if (ffmpeg_path.empty()) {
         return std::unexpected("ffmpeg not configured for mux extraction");
     }
@@ -138,7 +175,8 @@ std::expected<void, std::string> write_mux_extract_file(
             video_file,
             reinterpret_cast<const char*>(mux.video_bytes.data()),
             mux.video_bytes.size(),
-            "mux video stream"); !written) {
+            "mux video stream",
+            stop_token); !written) {
         return std::unexpected(written.error());
     }
     video_file.close();
@@ -154,7 +192,8 @@ std::expected<void, std::string> write_mux_extract_file(
                 audio_file,
                 reinterpret_cast<const char*>(mux.audio_wav_bytes.data()),
                 mux.audio_wav_bytes.size(),
-                "mux audio stream"); !written) {
+                "mux audio stream",
+                stop_token); !written) {
             return std::unexpected(written.error());
         }
         audio_file.close();
@@ -163,6 +202,9 @@ std::expected<void, std::string> write_mux_extract_file(
     QStringList subtitle_paths;
     subtitle_paths.reserve(static_cast<qsizetype>(mux.subtitle_choices.size()));
     for (size_t index = 0; index < mux.subtitle_choices.size(); ++index) {
+        if (stop_token.stop_requested()) {
+            return std::unexpected("extraction canceled");
+        }
         const auto& subtitle = mux.subtitle_choices[index];
         const auto subtitle_path = temp_dir.filePath(QStringLiteral("subtitle-%1.srt").arg(index));
         QFile subtitle_file(subtitle_path);
@@ -173,7 +215,8 @@ std::expected<void, std::string> write_mux_extract_file(
                 subtitle_file,
                 subtitle.srt_text.data(),
                 subtitle.srt_text.size(),
-                "mux subtitle stream"); !written) {
+                "mux subtitle stream",
+                stop_token); !written) {
             return std::unexpected(written.error());
         }
         subtitle_file.close();
@@ -229,18 +272,21 @@ std::expected<void, std::string> write_mux_extract_file(
 
     QProcess ffmpeg_process;
     ffmpeg_process.start(path_to_qstring(ffmpeg_path), arguments);
-    const auto mux_ok =
-        ffmpeg_process.waitForFinished(30000) &&
+    const auto waited = wait_for_process(ffmpeg_process, 30000, stop_token);
+    const auto mux_ok = waited &&
         ffmpeg_process.exitStatus() == QProcess::NormalExit &&
         ffmpeg_process.exitCode() == 0 &&
         QFileInfo::exists(path_to_qstring(output_path));
     if (!mux_ok) {
         std::error_code ec;
         std::filesystem::remove(output_path, ec);
+        if (!waited) {
+            return std::unexpected(waited.error());
+        }
         return std::unexpected("ffmpeg stream-copy mux failed: " + ffmpeg_error_text(ffmpeg_process));
     }
 
-    if (auto valid = validate_mux_output_file(ffmpeg_path, output_path); !valid) {
+    if (auto valid = validate_mux_output_file(ffmpeg_path, output_path, stop_token); !valid) {
         std::error_code ec;
         std::filesystem::remove(output_path, ec);
         return std::unexpected(valid.error());

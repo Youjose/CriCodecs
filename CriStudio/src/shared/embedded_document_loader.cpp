@@ -85,7 +85,7 @@ std::optional<LoadedDocument> summarize_embedded(
         rejection_reason = loaded.error();
         return std::nullopt;
     }
-    auto doc = summarizer(path_from_utf8(entry.name), *loaded);
+    auto doc = summarizer(path_from_utf8_lossy(entry.name), *loaded);
     fix_embedded_source_info(doc, entry, bytes.size());
     return doc;
 }
@@ -142,7 +142,7 @@ std::optional<LoadedDocument> summarize_embedded_bytes(
         tried.push_back(type);
 
         if (type == "sbt") {
-            auto doc = modules::usm::summarize_sbt_subtitles(path_from_utf8(entry.name), bytes, rejection_reason);
+            auto doc = modules::usm::summarize_sbt_subtitles(path_from_utf8_lossy(entry.name), bytes, rejection_reason);
             if (rejection_reason.empty()) {
                 fix_embedded_source_info(doc, entry, bytes.size());
                 return doc;
@@ -158,7 +158,7 @@ std::optional<LoadedDocument> summarize_embedded_bytes(
         } else if (type == "wav") {
             cricodecs::wav::WavContainer wav;
             if (auto result = wav.load(bytes); result) {
-                auto doc = modules::wav::summarize(path_from_utf8(entry.name), wav);
+                auto doc = modules::wav::summarize(path_from_utf8_lossy(entry.name), wav);
                 fix_embedded_source_info(doc, entry, bytes.size());
                 return doc;
             } else {
@@ -167,7 +167,7 @@ std::optional<LoadedDocument> summarize_embedded_bytes(
         } else if (type == "usm") {
             cricodecs::usm::UsmReader usm;
             if (auto result = usm.load(bytes); result) {
-                auto doc = modules::usm::summarize(path_from_utf8(entry.name), usm, usm_video_format_probe);
+                auto doc = modules::usm::summarize(path_from_utf8_lossy(entry.name), usm, usm_video_format_probe);
                 fix_embedded_source_info(doc, entry, bytes.size());
                 return doc;
             } else {
@@ -184,7 +184,7 @@ std::optional<LoadedDocument> summarize_embedded_bytes(
         } else if (type == "aix") {
             cricodecs::aix::Aix aix;
             if (auto result = aix.load(bytes); result) {
-                auto doc = modules::aix::summarize(path_from_utf8(entry.name), aix);
+                auto doc = modules::aix::summarize(path_from_utf8_lossy(entry.name), aix);
                 fix_embedded_source_info(doc, entry, bytes.size());
                 return doc;
             } else {

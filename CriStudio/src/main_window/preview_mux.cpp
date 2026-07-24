@@ -28,7 +28,9 @@
 #include <QtConcurrentRun>
 
 #include <algorithm>
+#include <exception>
 #include <filesystem>
+#include <typeinfo>
 #include <utility>
 
 namespace cristudio {
@@ -249,42 +251,68 @@ void MainWindow::start_document_mux_preview(const LoadedDocument& document, int 
     }
 
     const auto request_id = ++m_preview_request_id;
+    append_log(QStringLiteral("Mux preview started [%1, audio %2]: %3")
+        .arg(request_id)
+        .arg(audio_choice)
+        .arg(path_to_qstring(document.path)));
     m_preview_running = true;
     auto keys = m_decryption_keys;
     m_preview_watcher->setFuture(QtConcurrent::run([document, request_id, audio_choice, keys = std::move(keys)] {
-        const auto make_result = [request_id, &document, audio_choice](const DecryptionKeys& preview_keys) {
+        auto stage = QStringLiteral("extracting and decoding USM/SFD streams");
+        try {
+            const auto make_result = [request_id, &document, audio_choice, &stage](const DecryptionKeys& preview_keys) {
+                PreviewResult result;
+                result.request_id = request_id;
+                result.document = document;
+                stage = QStringLiteral("extracting and decoding USM/SFD streams");
+                auto mux = build_mux_preview(document, audio_choice, preview_keys);
+                if (!mux) {
+                    result.message = QString::fromStdString(mux.error());
+                    return result;
+                }
+                stage = QStringLiteral("writing temporary streams and running FFmpeg remux");
+                prepare_mux_preview_for_playback(*mux);
+                if (mux->playable_path.empty() && !mux->note.empty()) {
+                    result.message = QString::fromStdString(mux->note);
+                }
+                result.mux = std::move(*mux);
+                return result;
+            };
+
+            auto result = make_result(keys);
+            if (keys.has_cri_key && (!result.mux || result.mux->playable_path.empty())) {
+                auto fallback_keys = keys;
+                fallback_keys.has_cri_key = false;
+                fallback_keys.cri_key = 0;
+                auto fallback_result = make_result(fallback_keys);
+                if (fallback_result.mux && !fallback_result.mux->playable_path.empty()) {
+                    if (result.mux) {
+                        remove_preview_temporary_directory(*result.mux);
+                    }
+                    result = std::move(fallback_result);
+                } else if (fallback_result.mux) {
+                    remove_preview_temporary_directory(*fallback_result.mux);
+                }
+            }
+            return result;
+        } catch (const std::exception& error) {
             PreviewResult result;
             result.request_id = request_id;
             result.document = document;
-            auto mux = build_mux_preview(document, audio_choice, preview_keys);
-            if (!mux) {
-                result.message = QString::fromStdString(mux.error());
-                return result;
-            }
-            prepare_mux_preview_for_playback(*mux);
-            if (mux->playable_path.empty() && !mux->note.empty()) {
-                result.message = QString::fromStdString(mux->note);
-            }
-            result.mux = std::move(*mux);
+            result.message = QStringLiteral("Mux preview failed while %1: %2 [%3]")
+                .arg(
+                    stage,
+                    QString::fromLocal8Bit(error.what()),
+                    QString::fromLatin1(typeid(error).name())
+                );
             return result;
-        };
-
-        auto result = make_result(keys);
-        if (keys.has_cri_key && (!result.mux || result.mux->playable_path.empty())) {
-            auto fallback_keys = keys;
-            fallback_keys.has_cri_key = false;
-            fallback_keys.cri_key = 0;
-            auto fallback_result = make_result(fallback_keys);
-            if (fallback_result.mux && !fallback_result.mux->playable_path.empty()) {
-                if (result.mux) {
-                    remove_preview_temporary_directory(*result.mux);
-                }
-                result = std::move(fallback_result);
-            } else if (fallback_result.mux) {
-                remove_preview_temporary_directory(*fallback_result.mux);
-            }
+        } catch (...) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            result.message = QStringLiteral("Mux preview failed while %1 with an unknown exception").arg(stage);
+            return result;
         }
-        return result;
     }));
 }
 

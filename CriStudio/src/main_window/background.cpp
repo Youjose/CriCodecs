@@ -17,6 +17,7 @@
 #include <QStringList>
 #include <QTextStream>
 #include <QTimer>
+#include <QToolButton>
 #include <QUrl>
 #include <QtConcurrentRun>
 
@@ -275,15 +276,22 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
     auto progress = std::make_shared<ExtractionProgress>();
     progress->target_count.store(targets.size(), std::memory_order_relaxed);
     m_extract_progress = progress;
+    m_extract_stop_source = std::stop_source{};
     m_loading_status_label->setText(QStringLiteral("0/%1 targets · 0 extracted · 0 failed").arg(targets.size()));
     m_loading_status_label->show();
     m_loading_bar->show();
+    if (m_cancel_extraction_button != nullptr) {
+        m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+        m_cancel_extraction_button->setEnabled(true);
+        m_cancel_extraction_button->show();
+    }
     statusBar()->showMessage(mode == ExtractionMode::Raw ? QStringLiteral("Raw extraction running...") : QStringLiteral("Extraction running..."));
     m_extract_running = true;
     const auto keys = m_decryption_keys;
     ExtractionOptions options;
     options.include_mux_outputs = m_allow_mux_extract_outputs;
     options.mux_audio_choice = mux_audio_choice.value_or(0);
+    options.stop_token = m_extract_stop_source.get_token();
     if (options.include_mux_outputs) {
         options.ffmpeg_path = path_from_qstring(ffmpeg_executable_path());
     }
@@ -326,7 +334,9 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
 
             auto combined = extract_targets(targets, output_dir, mode, keys, worker_options);
             combined.messages_logged_live = live_log_open;
-            progress->processed_count.store(targets.size(), std::memory_order_relaxed);
+            if (!combined.canceled) {
+                progress->processed_count.store(targets.size(), std::memory_order_relaxed);
+            }
             const auto report_name = QStringLiteral("cristudio_extraction_report_%1.txt")
                 .arg(QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMddTHHmmssZ")));
             const auto report_path = output_dir / qt_to_utf8_local(report_name);
@@ -337,6 +347,7 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
                 stream << "Time: " << QDateTime::currentDateTimeUtc().toString(Qt::ISODate) << "\n";
                 stream << "Mode: " << (mode == ExtractionMode::Raw ? "raw" : "decoded") << "\n";
                 stream << "Output: " << path_to_qstring(output_dir) << "\n";
+                stream << "Status: " << (combined.canceled ? "canceled" : "completed") << "\n";
                 stream << "Summary: " << combined.extracted << " extracted, " << combined.failed << " failed, " << combined.total << " total\n\n";
 
                 stream << "Failures and warnings\n";
@@ -376,7 +387,8 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
                 combined.messages.push_back("Could not write extraction report: " + qt_to_utf8_local(report_file.errorString()));
             }
             write_live_log(
-                QStringLiteral("Extraction finished: %1 extracted, %2 failed, %3 total")
+                QStringLiteral("Extraction %1: %2 extracted, %3 failed, %4 total")
+                    .arg(combined.canceled ? QStringLiteral("canceled") : QStringLiteral("finished"))
                     .arg(combined.extracted)
                     .arg(combined.failed)
                     .arg(combined.total)
@@ -388,6 +400,20 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
         }
     ));
     m_work_timer->start(50);
+}
+
+void MainWindow::cancel_extraction() {
+    if (!m_extract_running || m_extract_stop_source.stop_requested()) {
+        return;
+    }
+    m_extract_stop_source.request_stop();
+    if (m_cancel_extraction_button != nullptr) {
+        m_cancel_extraction_button->setText(QStringLiteral("Canceling..."));
+        m_cancel_extraction_button->setEnabled(false);
+    }
+    statusBar()->showMessage(QStringLiteral("Canceling extraction..."));
+    append_log(QStringLiteral("Extraction cancellation requested"));
+    update_extraction_indicator();
 }
 
 void MainWindow::poll_background_work() {
@@ -424,12 +450,16 @@ void MainWindow::update_extraction_indicator() {
     const auto processed = m_extract_progress->processed_count.load(std::memory_order_relaxed);
     const auto extracted = m_extract_progress->extracted_count.load(std::memory_order_relaxed);
     const auto failed = m_extract_progress->failed_count.load(std::memory_order_relaxed);
+    const auto state = m_extract_stop_source.stop_requested()
+        ? QStringLiteral(" · canceling")
+        : QString{};
     m_loading_status_label->setText(
-        QStringLiteral("%1/%2 targets · %3 extracted · %4 failed")
+        QStringLiteral("%1/%2 targets · %3 extracted · %4 failed%5")
             .arg(processed)
             .arg(total)
             .arg(extracted)
             .arg(failed)
+            .arg(state)
     );
 }
 
@@ -579,12 +609,16 @@ void MainWindow::consume_extract_result() {
     }
 
     m_loading_bar->hide();
+    if (m_cancel_extraction_button != nullptr) {
+        m_cancel_extraction_button->hide();
+        m_cancel_extraction_button->setEnabled(true);
+        m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+    }
     if (m_loading_status_label != nullptr) {
         m_loading_status_label->hide();
     }
     m_extract_progress.reset();
-    statusBar()->showMessage(
-        report.diagnostic_path.has_value()
+    const auto summary = report.diagnostic_path.has_value()
             ? QStringLiteral("%1 extracted, %2 failed, %3 total · report: %4")
                 .arg(report.extracted)
                 .arg(report.failed)
@@ -593,7 +627,9 @@ void MainWindow::consume_extract_result() {
             : QStringLiteral("%1 extracted, %2 failed, %3 total")
             .arg(report.extracted)
             .arg(report.failed)
-            .arg(report.total),
+            .arg(report.total);
+    statusBar()->showMessage(
+        report.canceled ? QStringLiteral("Extraction canceled · %1").arg(summary) : summary,
         7000
     );
 }

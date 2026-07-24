@@ -42,6 +42,10 @@ inline std::filesystem::path path_from_qstring(const QString& text) {
 #endif
 }
 
+inline std::filesystem::path path_from_utf8_lossy(std::string_view text) {
+    return path_from_qstring(utf8_to_qstring(text));
+}
+
 inline std::filesystem::path path_from_utf8(std::string_view text) {
     std::u8string utf8;
     utf8.reserve(text.size());

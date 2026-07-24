@@ -541,7 +541,7 @@ private:
         case cricodecs::usm::UsmChunkType::SBT: {
             std::string reason;
             auto document = modules::usm::summarize_sbt_subtitles(
-                path_from_utf8(entry.name), *bytes, reason);
+                path_from_utf8_lossy(entry.name), *bytes, reason);
             if (reason.empty()) {
                 show_document_preview(document, *bytes);
                 return;
@@ -708,17 +708,25 @@ private:
         });
         connect(m_ui.media_seek_slider, &QSlider::sliderPressed, this, [this] {
             m_editor_slider_dragging = true;
+            m_editor_resume_after_seek = m_editor_media_player != nullptr &&
+                m_editor_media_player->playbackState() == QMediaPlayer::PlayingState;
+            if (m_editor_resume_after_seek) {
+                m_editor_media_player->pause();
+            }
         });
         connect(m_ui.media_seek_slider, &QSlider::sliderReleased, this, [this] {
             m_editor_slider_dragging = false;
             if (m_editor_media_player != nullptr) {
                 m_editor_media_player->setPosition(m_ui.media_seek_slider->value());
+                if (m_editor_resume_after_seek) {
+                    m_editor_media_player->play();
+                }
             }
+            m_editor_resume_after_seek = false;
+            update_editor_media_time();
         });
-        connect(m_ui.media_seek_slider, &QSlider::sliderMoved, this, [this](int value) {
-            if (m_editor_media_player != nullptr) {
-                m_editor_media_player->setPosition(value);
-            }
+        connect(m_ui.media_seek_slider, &QSlider::sliderMoved, this, [this](int) {
+            update_editor_media_time();
         });
         connect(m_ui.media_volume_slider, &QSlider::valueChanged, this, [this](int value) {
             if (m_editor_audio_output != nullptr) {
@@ -2841,6 +2849,7 @@ private:
             m_ui.mux_video_widget->clearFocus();
         }
         m_editor_slider_dragging = false;
+        m_editor_resume_after_seek = false;
         if (m_ui.media_seek_slider != nullptr) {
             m_ui.media_seek_slider->setRange(0, 0);
             m_ui.media_seek_slider->setValue(0);
@@ -2945,8 +2954,11 @@ private:
         if (m_editor_media_player == nullptr || m_ui.media_time_label == nullptr) {
             return;
         }
+        const auto position = m_editor_slider_dragging && m_ui.media_seek_slider != nullptr
+            ? static_cast<qint64>(m_ui.media_seek_slider->value())
+            : m_editor_media_player->position();
         m_ui.media_time_label->setText(
-            time_text(m_editor_media_player->position()) + QStringLiteral(" / ") +
+            time_text(position) + QStringLiteral(" / ") +
             time_text(m_editor_media_player->duration()));
     }
 
@@ -3868,6 +3880,7 @@ private:
     uint64_t m_audio_preview_request_id = 0;
     uint64_t m_prepared_media_request_id = 0;
     bool m_editor_slider_dragging = false;
+    bool m_editor_resume_after_seek = false;
     bool m_editor_loop_seeking = false;
     uint32_t m_editor_audio_sample_rate = 0;
     std::vector<AudioLoop> m_editor_audio_loops;

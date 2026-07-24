@@ -19,6 +19,10 @@ bool extract_sbt_sidecars(
     ExtractionReport& report,
     const ExtractionOptions& options
 ) {
+    if (options.stop_token.stop_requested()) {
+        report.canceled = true;
+        return true;
+    }
     if (!is_sbt_entry(entry)) {
         return false;
     }
@@ -31,18 +35,34 @@ bool extract_sbt_sidecars(
     const auto label = entry.name.empty() ? std::string("SBT subtitles") : entry.name;
     const auto base = output_dir / without_extension(safe_relative_path(entry.name.empty() ? "subtitles.sbt" : entry.name));
     const auto write_bytes = [&](std::filesystem::path path, std::span<const uint8_t> payload, std::string_view output_label) {
+        if (options.stop_token.stop_requested()) {
+            report.canceled = true;
+            return;
+        }
         ++report.total;
         path = context.output_paths.allocate(path);
-        if (auto written = write_binary_file(path, payload); !written) {
+        if (auto written = write_binary_file(path, payload, options.stop_token); !written) {
+            if (options.stop_token.stop_requested()) {
+                report.canceled = true;
+                return;
+            }
             add_report_failure(report, output_label, written.error(), options);
         } else {
             add_report_success(report, path, output_label, options);
         }
     };
     const auto write_text = [&](std::filesystem::path path, std::string_view text, std::string_view output_label) {
+        if (options.stop_token.stop_requested()) {
+            report.canceled = true;
+            return;
+        }
         ++report.total;
         path = context.output_paths.allocate(path);
-        if (auto written = write_text_file(path, text); !written) {
+        if (auto written = write_text_file(path, text, options.stop_token); !written) {
+            if (options.stop_token.stop_requested()) {
+                report.canceled = true;
+                return;
+            }
             add_report_failure(report, output_label, written.error(), options);
         } else {
             add_report_success(report, path, output_label, options);
@@ -50,14 +70,26 @@ bool extract_sbt_sidecars(
     };
 
     write_bytes(with_extension(base, ".sbt"), bytes, label + " raw SBT");
+    if (options.stop_token.stop_requested()) {
+        report.canceled = true;
+        return true;
+    }
     if (auto source = cricodecs::usm::sbt_to_subtitle_source_text(bytes)) {
         write_text(with_stem_suffix(base, "_source", ".txt"), *source, label + " source text");
     } else {
         ++report.total;
         add_report_failure(report, label + " source text", source.error(), options);
     }
+    if (options.stop_token.stop_requested()) {
+        report.canceled = true;
+        return true;
+    }
     if (auto tracks = cricodecs::usm::sbt_to_srt_tracks(bytes)) {
         for (const auto& [language_id, srt] : *tracks) {
+            if (options.stop_token.stop_requested()) {
+                report.canceled = true;
+                return true;
+            }
             write_text(
                 with_stem_suffix(base, "_lang" + number(language_id), ".srt"),
                 srt,
@@ -67,6 +99,10 @@ bool extract_sbt_sidecars(
     } else {
         ++report.total;
         add_report_failure(report, label + " SRT", tracks.error(), options);
+    }
+    if (options.stop_token.stop_requested()) {
+        report.canceled = true;
+        return true;
     }
     if (auto ass = cricodecs::usm::sbt_to_ass(bytes, archive_leaf_name(label))) {
         write_text(with_extension(base, ".ass"), *ass, label + " ASS");

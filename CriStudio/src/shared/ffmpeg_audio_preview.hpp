@@ -6,6 +6,7 @@
 
 #include <expected>
 #include <span>
+#include <stop_token>
 #include <string>
 
 namespace cristudio {
@@ -14,7 +15,8 @@ namespace cristudio {
 
 [[nodiscard]] std::expected<AudioPreview, std::string> ffmpeg_audio_preview_from_bytes(
     cricodecs::awb::EntryCodec codec,
-    std::span<const uint8_t> bytes
+    std::span<const uint8_t> bytes,
+    std::stop_token stop_token = {}
 );
 
 } // namespace cristudio

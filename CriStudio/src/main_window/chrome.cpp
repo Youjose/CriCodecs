@@ -1415,8 +1415,16 @@ void MainWindow::build_ui() {
     m_loading_status_label->setMinimumWidth(220);
     m_loading_status_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_loading_status_label->hide();
+    m_cancel_extraction_button = new QToolButton(this);
+    m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+    m_cancel_extraction_button->setIcon(style()->standardIcon(QStyle::SP_DialogCancelButton));
+    m_cancel_extraction_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_cancel_extraction_button->setToolTip(QStringLiteral("Stop the current extraction"));
+    m_cancel_extraction_button->hide();
+    connect(m_cancel_extraction_button, &QToolButton::clicked, this, &MainWindow::cancel_extraction);
     statusBar()->addPermanentWidget(m_loading_status_label);
     statusBar()->addPermanentWidget(m_loading_bar);
+    statusBar()->addPermanentWidget(m_cancel_extraction_button);
 
     m_work_timer = new QTimer(this);
     connect(m_work_timer, &QTimer::timeout, this, &MainWindow::poll_background_work);
@@ -1605,17 +1613,25 @@ void MainWindow::build_ui() {
     });
     connect(m_audio_progress, &QSlider::sliderPressed, this, [this] {
         m_audio_slider_dragging = true;
+        m_audio_resume_after_seek = m_audio_player != nullptr &&
+            m_audio_player->playbackState() == QMediaPlayer::PlayingState;
+        if (m_audio_resume_after_seek) {
+            m_audio_player->pause();
+        }
     });
     connect(m_audio_progress, &QSlider::sliderReleased, this, [this] {
         m_audio_slider_dragging = false;
         if (m_audio_player != nullptr) {
             m_audio_player->setPosition(m_audio_progress->value());
+            if (m_audio_resume_after_seek) {
+                m_audio_player->play();
+            }
         }
+        m_audio_resume_after_seek = false;
+        update_audio_time_label();
     });
-    connect(m_audio_progress, &QSlider::sliderMoved, this, [this](int value) {
-        if (m_audio_player != nullptr) {
-            m_audio_player->setPosition(value);
-        }
+    connect(m_audio_progress, &QSlider::sliderMoved, this, [this](int) {
+        update_audio_time_label();
     });
     connect(m_audio_volume_slider, &QSlider::valueChanged, this, [this](int value) {
         if (m_audio_output != nullptr) {

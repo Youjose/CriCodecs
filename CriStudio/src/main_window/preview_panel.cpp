@@ -38,9 +38,11 @@
 #include <QtConcurrentRun>
 
 #include <algorithm>
+#include <exception>
 #include <array>
 #include <filesystem>
 #include <system_error>
+#include <typeinfo>
 #include <utility>
 
 namespace cristudio {
@@ -143,68 +145,90 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
         m_preview_tabs->setTabEnabled(1, false);
     }
     show_pending_media_preview(QStringLiteral("Loading preview..."));
+    append_log(QStringLiteral("Entry preview started [%1]: %2")
+        .arg(request_id)
+        .arg(utf8_to_qstring(entry.name)));
     m_preview_running = true;
     auto keys = m_decryption_keys;
     m_preview_watcher->setFuture(QtConcurrent::run([entry, request_id, keys = std::move(keys)] {
-        const auto make_result = [request_id](EmbeddedPreview preview) {
+        auto stage = QStringLiteral("extracting and identifying the embedded entry");
+        try {
+            const auto make_result = [request_id, &stage](EmbeddedPreview preview) {
+                PreviewResult result;
+                result.request_id = request_id;
+                if (preview.document) {
+                    result.document = std::move(*preview.document);
+                }
+                if (preview.audio) {
+                    result.audio = std::move(*preview.audio);
+                }
+                if (preview.video) {
+                    stage = QStringLiteral("preparing the embedded video for playback");
+                    prepare_video_preview_for_playback(*preview.video);
+                    result.video = std::move(*preview.video);
+                }
+                result.message = QString::fromStdString(preview.message);
+                result.hex_dump = QString::fromStdString(preview.hex_dump);
+                if (!preview.raw_preview_bytes.empty()) {
+                    result.raw_bytes = QByteArray(
+                        reinterpret_cast<const char*>(preview.raw_preview_bytes.data()),
+                        static_cast<qsizetype>(preview.raw_preview_bytes.size())
+                    );
+                    result.raw_total_size = preview.raw_total_size;
+                }
+                if (!preview.preview_bytes.empty()) {
+                    result.preview_bytes = QByteArray(
+                        reinterpret_cast<const char*>(preview.preview_bytes.data()),
+                        static_cast<qsizetype>(preview.preview_bytes.size())
+                    );
+                }
+                result.hex_truncated = preview.hex_truncated;
+                return result;
+            };
+
+            auto result = make_result(load_embedded_entry_preview(entry, keys));
+            const auto should_try_without_cri_key =
+                keys.has_cri_key &&
+                entry.source_format == "USM" &&
+                (
+                    (result.video && result.video->playable_path.empty()) ||
+                    (!result.video && !result.audio && !result.document)
+                );
+            if (should_try_without_cri_key) {
+                auto fallback_keys = keys;
+                fallback_keys.has_cri_key = false;
+                fallback_keys.cri_key = 0;
+                auto fallback_result = make_result(load_embedded_entry_preview(entry, fallback_keys));
+                const auto fallback_usable =
+                    (fallback_result.video && !fallback_result.video->playable_path.empty()) ||
+                    fallback_result.audio ||
+                    fallback_result.document;
+                if (fallback_usable) {
+                    if (result.video) {
+                        remove_preview_temporary_directory(*result.video);
+                    }
+                    result = std::move(fallback_result);
+                } else if (fallback_result.video) {
+                    remove_preview_temporary_directory(*fallback_result.video);
+                }
+            }
+            return result;
+        } catch (const std::exception& error) {
             PreviewResult result;
             result.request_id = request_id;
-            if (preview.document) {
-                result.document = std::move(*preview.document);
-            }
-            if (preview.audio) {
-                result.audio = std::move(*preview.audio);
-            }
-            if (preview.video) {
-                prepare_video_preview_for_playback(*preview.video);
-                result.video = std::move(*preview.video);
-            }
-            result.message = QString::fromStdString(preview.message);
-            result.hex_dump = QString::fromStdString(preview.hex_dump);
-            if (!preview.raw_preview_bytes.empty()) {
-                result.raw_bytes = QByteArray(
-                    reinterpret_cast<const char*>(preview.raw_preview_bytes.data()),
-                    static_cast<qsizetype>(preview.raw_preview_bytes.size())
+            result.message = QStringLiteral("Preview failed while %1: %2 [%3]")
+                .arg(
+                    stage,
+                    QString::fromLocal8Bit(error.what()),
+                    QString::fromLatin1(typeid(error).name())
                 );
-                result.raw_total_size = preview.raw_total_size;
-            }
-            if (!preview.preview_bytes.empty()) {
-                result.preview_bytes = QByteArray(
-                    reinterpret_cast<const char*>(preview.preview_bytes.data()),
-                    static_cast<qsizetype>(preview.preview_bytes.size())
-                );
-            }
-            result.hex_truncated = preview.hex_truncated;
             return result;
-        };
-
-        auto result = make_result(load_embedded_entry_preview(entry, keys));
-        const auto should_try_without_cri_key =
-            keys.has_cri_key &&
-            entry.source_format == "USM" &&
-            (
-                (result.video && result.video->playable_path.empty()) ||
-                (!result.video && !result.audio && !result.document)
-            );
-        if (should_try_without_cri_key) {
-            auto fallback_keys = keys;
-            fallback_keys.has_cri_key = false;
-            fallback_keys.cri_key = 0;
-            auto fallback_result = make_result(load_embedded_entry_preview(entry, fallback_keys));
-            const auto fallback_usable =
-                (fallback_result.video && !fallback_result.video->playable_path.empty()) ||
-                fallback_result.audio ||
-                fallback_result.document;
-            if (fallback_usable) {
-                if (result.video) {
-                    remove_preview_temporary_directory(*result.video);
-                }
-                result = std::move(fallback_result);
-            } else if (fallback_result.video) {
-                remove_preview_temporary_directory(*fallback_result.video);
-            }
+        } catch (...) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.message = QStringLiteral("Preview failed while %1 with an unknown exception").arg(stage);
+            return result;
         }
-        return result;
     }));
 }
 
@@ -270,7 +294,17 @@ void MainWindow::show_entry_inspector(const EntrySummary& entry) {
 }
 
 void MainWindow::consume_preview_result() {
-    auto result = m_preview_watcher->future().takeResult();
+    PreviewResult result;
+    try {
+        result = m_preview_watcher->future().takeResult();
+    } catch (const std::exception& error) {
+        result.request_id = m_preview_request_id;
+        result.message = QStringLiteral("Preview failed: %1 [%2]")
+            .arg(QString::fromLocal8Bit(error.what()), QString::fromLatin1(typeid(error).name()));
+    } catch (...) {
+        result.request_id = m_preview_request_id;
+        result.message = QStringLiteral("Preview failed with an unknown exception");
+    }
     m_preview_running = false;
 
     const auto discard_result_files = [&result] {
@@ -308,6 +342,15 @@ void MainWindow::consume_preview_result() {
     if (result.request_id != m_preview_request_id) {
         discard_result_files();
         return;
+    }
+
+    const auto preview_succeeded = result.audio.has_value() || result.video.has_value() ||
+        (result.mux.has_value() && !result.mux->playable_path.empty()) ||
+        result.document.has_value() || !result.hex_dump.isEmpty();
+    if (!result.message.isEmpty() && !is_low_signal_loader_message(result.message)) {
+        append_log(QStringLiteral("Preview result [%1]: %2").arg(result.request_id).arg(result.message));
+    } else if (preview_succeeded) {
+        append_log(QStringLiteral("Preview completed [%1]").arg(result.request_id));
     }
 
     if (m_raw_hex != nullptr) {
@@ -412,11 +455,6 @@ void MainWindow::consume_preview_result() {
         m_nested_body->hide();
         if (m_preview_tabs != nullptr) {
             m_preview_tabs->setCurrentIndex(1);
-        }
-        if (!result.message.isEmpty()) {
-            if (!is_low_signal_loader_message(result.message)) {
-                append_log(QStringLiteral("Preview diagnostic: ") + result.message);
-            }
         }
     } else {
         reset_audio_preview();

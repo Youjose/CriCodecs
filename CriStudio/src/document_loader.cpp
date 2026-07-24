@@ -94,22 +94,22 @@ DecryptionKeys preview_keys_for_entry(const EntrySummary& entry, const Decryptio
 std::expected<AudioPreview, std::string> audio_preview_from_entry_bytes(
     const EntrySummary& entry,
     std::span<const uint8_t> bytes,
-    const DecryptionKeys& keys
+    const DecryptionKeys& keys,
+    std::stop_token stop_token = {}
 ) {
     const auto preview_keys = preview_keys_for_entry(entry, keys);
 
     std::string reason;
     if (auto doc = summarize_embedded_bytes(entry, bytes, reason)) {
         if (is_direct_audio_format(doc->format)) {
-            return audio_preview_from_bytes(*doc, bytes, preview_keys);
+            return audio_preview_from_bytes(*doc, bytes, preview_keys, stop_token);
         }
     }
 
     LoadedDocument fallback;
-    fallback.path = path_from_utf8(entry.name);
     fallback.display_name = entry.name;
     fallback.format = entry.type.empty() ? "audio" : entry.type;
-    if (auto audio = audio_preview_from_bytes(fallback, bytes, preview_keys)) {
+    if (auto audio = audio_preview_from_bytes(fallback, bytes, preview_keys, stop_token)) {
         return audio;
     }
     return std::unexpected(reason.empty() ? "audio stream is not directly decodable" : reason);
@@ -130,22 +130,32 @@ bool is_mux_video_entry(const EntrySummary& entry) {
         text.find("vp9") != std::string::npos;
 }
 
+bool extraction_canceled(ExtractionReport& report, const ExtractionOptions& options) {
+    if (!options.stop_token.stop_requested()) {
+        return false;
+    }
+    report.canceled = true;
+    return true;
+}
+
 std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> decoded_entry_payload(
     const EntrySummary& entry,
-    std::span<const uint8_t> bytes,
-    const DecryptionKeys& keys
+    std::vector<uint8_t>&& bytes,
+    const DecryptionKeys& keys,
+    std::stop_token stop_token
 ) {
-    if (auto audio = audio_preview_from_entry_bytes(entry, bytes, keys)) {
+    if (auto audio = audio_preview_from_entry_bytes(entry, bytes, keys, stop_token)) {
         return std::make_pair(std::move(audio->wav_bytes), std::string(".wav"));
     } else if (is_audio_entry(entry)) {
         return std::unexpected("audio decode failed: " + audio.error());
     }
-    return std::make_pair(std::vector<uint8_t>(bytes.begin(), bytes.end()), std::string{});
+    return std::make_pair(std::move(bytes), std::string{});
 }
 
 std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> decoded_document_payload(
     const LoadedDocument& document,
-    const DecryptionKeys& keys
+    const DecryptionKeys& keys,
+    std::stop_token stop_token
 ) {
     if (is_direct_audio_format(document.format)) {
         auto audio = build_audio_preview(document, keys);
@@ -155,7 +165,7 @@ std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> decoded
         return std::make_pair(std::move(audio->wav_bytes), std::string(".wav"));
     }
 
-    auto bytes = read_binary_file(document.path);
+    auto bytes = read_binary_file(document.path, stop_token);
     if (!bytes) {
         return std::unexpected(bytes.error());
     }
@@ -181,6 +191,9 @@ void extract_document_into_report(
     ExtractionContext& context,
     ExtractionReport& report
 ) {
+    if (extraction_canceled(report, options)) {
+        return;
+    }
     if (is_archive_like_document(document)) {
         const auto base_dir = output_dir / without_extension(safe_document_name(document));
         const auto archive_label = document.display_name.empty() ? filename_of(document.path) : document.display_name;
@@ -190,21 +203,43 @@ void extract_document_into_report(
             options
         );
         if (mode == ExtractionMode::Decoded && options.include_mux_outputs && is_mux_document_format(document.format)) {
+            if (extraction_canceled(report, options)) {
+                return;
+            }
             ++report.total;
             const auto label = archive_label;
-            if (auto mux = build_mux_preview(document, options.mux_audio_choice, keys)) {
+            if (auto mux = build_mux_preview(document, options.mux_audio_choice, keys, options.stop_token)) {
+                if (extraction_canceled(report, options)) {
+                    return;
+                }
                 auto output_path = context.output_paths.allocate(output_dir / with_extension(safe_document_name(document), ".mkv"));
-                if (auto written = write_mux_extract_file(*mux, output_path, options.ffmpeg_path); !written) {
+                if (auto written = write_mux_extract_file(
+                        *mux,
+                        output_path,
+                        options.ffmpeg_path,
+                        options.stop_token); !written) {
+                    if (extraction_canceled(report, options)) {
+                        return;
+                    }
                     add_report_failure(report, label, "mux output unavailable: " + written.error(), options);
                 } else {
                     add_report_success(report, output_path, label + " mux output", options);
                 }
             } else {
+                if (extraction_canceled(report, options)) {
+                    return;
+                }
                 add_report_failure(report, label, "mux output unavailable: " + mux.error(), options);
             }
         }
         for (const auto& entry : document.entries) {
+            if (extraction_canceled(report, options)) {
+                return;
+            }
             extract_entry_into_report(entry, base_dir, mode, keys, options, context, report);
+        }
+        if (extraction_canceled(report, options)) {
+            return;
         }
         add_report_message(
             report,
@@ -219,16 +254,21 @@ void extract_document_into_report(
     std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> payload =
         std::unexpected("extraction was not started");
     if (mode == ExtractionMode::Raw) {
-        auto bytes = read_binary_file(document.path);
+        auto bytes = read_binary_file(document.path, options.stop_token);
         if (!bytes) {
             payload = std::unexpected(bytes.error());
-        } else if (auto raw = raw_extract_transform(*bytes, keys); raw) {
+        } else if (extraction_canceled(report, options)) {
+            return;
+        } else if (auto raw = raw_extract_transform(std::move(*bytes), keys); raw) {
             payload = std::make_pair(std::move(*raw), std::string{});
         } else {
             payload = std::unexpected(raw.error());
         }
     } else {
-        payload = decoded_document_payload(document, keys);
+        payload = decoded_document_payload(document, keys, options.stop_token);
+    }
+    if (extraction_canceled(report, options)) {
+        return;
     }
     if (!payload) {
         add_report_failure(report, label, payload.error(), options);
@@ -240,7 +280,10 @@ void extract_document_into_report(
         output_path = with_extension(output_path, payload->second);
     }
     output_path = context.output_paths.allocate(output_path);
-    if (auto written = write_binary_file(output_path, payload->first); !written) {
+    if (auto written = write_binary_file(output_path, payload->first, options.stop_token); !written) {
+        if (extraction_canceled(report, options)) {
+            return;
+        }
         add_report_failure(report, label, written.error(), options);
         return;
     }
@@ -256,11 +299,17 @@ void extract_entry_into_report(
     ExtractionContext& context,
     ExtractionReport& report
 ) {
+    if (extraction_canceled(report, options)) {
+        return;
+    }
     const auto label = entry.name.empty() ? entry.type : entry.name;
     const auto payload_purpose = mode == ExtractionMode::Decoded && is_audio_entry(entry)
         ? EmbeddedPayloadPurpose::Playback
         : EmbeddedPayloadPurpose::Raw;
     auto bytes = context.embedded_entries.extract(entry, keys, payload_purpose);
+    if (extraction_canceled(report, options)) {
+        return;
+    }
     if (!bytes) {
         ++report.total;
         add_report_failure(report, label, bytes.error(), options);
@@ -282,6 +331,9 @@ void extract_entry_into_report(
                 options
             );
             for (const auto& nested_entry : nested_doc->entries) {
+                if (extraction_canceled(report, options)) {
+                    return;
+                }
                 extract_entry_into_report(
                     nested_entry,
                     output_dir / without_extension(safe_relative_path(archive_leaf_name(entry.name))),
@@ -291,6 +343,9 @@ void extract_entry_into_report(
                     context,
                     report
                 );
+            }
+            if (extraction_canceled(report, options)) {
+                return;
             }
             add_report_message(
                 report,
@@ -305,13 +360,16 @@ void extract_entry_into_report(
     std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> payload =
         std::unexpected("extraction was not started");
     if (mode == ExtractionMode::Raw) {
-        if (auto raw = raw_extract_transform(*bytes, keys); raw) {
+        if (auto raw = raw_extract_transform(std::move(*bytes), keys); raw) {
             payload = std::make_pair(std::move(*raw), std::string{});
         } else {
             payload = std::unexpected(raw.error());
         }
     } else {
-        payload = decoded_entry_payload(entry, *bytes, keys);
+        payload = decoded_entry_payload(entry, std::move(*bytes), keys, options.stop_token);
+    }
+    if (extraction_canceled(report, options)) {
+        return;
     }
     if (!payload) {
         add_report_failure(report, label, payload.error(), options);
@@ -323,7 +381,10 @@ void extract_entry_into_report(
         output_path = with_extension(output_path, payload->second);
     }
     output_path = context.output_paths.allocate(output_path);
-    if (auto written = write_binary_file(output_path, payload->first); !written) {
+    if (auto written = write_binary_file(output_path, payload->first, options.stop_token); !written) {
+        if (extraction_canceled(report, options)) {
+            return;
+        }
         add_report_failure(report, label, written.error(), options);
         return;
     }
@@ -665,7 +726,8 @@ std::expected<AudioPreview, std::string> build_audio_preview(
 std::expected<MuxPreview, std::string> build_mux_preview(
     const LoadedDocument& document,
     int audio_choice,
-    const DecryptionKeys& keys
+    const DecryptionKeys& keys,
+    std::stop_token stop_token
 ) {
     if (!is_mux_document_format(document.format)) {
         return std::unexpected("mux preview is only available for USM/SFD documents");
@@ -675,6 +737,9 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     std::vector<const EntrySummary*> audio_entries;
     std::vector<MuxSubtitleChoice> subtitle_choices;
     for (const auto& entry : document.entries) {
+        if (stop_token.stop_requested()) {
+            return std::unexpected("extraction canceled");
+        }
         if (!entry.has_source) {
             continue;
         }
@@ -758,10 +823,13 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     preview.selected_audio = static_cast<int>(selected);
     const auto& audio_entry = *audio_entries[selected];
     auto audio_bytes = extract_embedded_entry_payload(audio_entry, keys, EmbeddedPayloadPurpose::Playback);
+    if (stop_token.stop_requested()) {
+        return std::unexpected("extraction canceled");
+    }
     if (!audio_bytes) {
         return std::unexpected("audio stream extract failed: " + audio_bytes.error());
     }
-    auto audio = audio_preview_from_entry_bytes(audio_entry, *audio_bytes, keys);
+    auto audio = audio_preview_from_entry_bytes(audio_entry, *audio_bytes, keys, stop_token);
     if (!audio) {
         return std::unexpected("audio stream preview failed: " + audio.error());
     }
@@ -877,6 +945,10 @@ ExtractionReport extract_targets(
     const ExtractionOptions& options
 ) {
     ExtractionReport report;
+    if (extraction_canceled(report, options)) {
+        add_report_message(report, "Extraction canceled before it started", options);
+        return report;
+    }
     std::error_code filesystem_error;
     std::filesystem::create_directories(output_dir, filesystem_error);
     if (filesystem_error) {
@@ -896,6 +968,9 @@ ExtractionReport extract_targets(
 
     ExtractionContext context;
     for (const auto& target : targets) {
+        if (extraction_canceled(report, options)) {
+            break;
+        }
         switch (target.kind) {
         case ExtractionTarget::Kind::Document:
             extract_document_into_report(target.document, output_dir, mode, keys, options, context, report);
@@ -904,9 +979,20 @@ ExtractionReport extract_targets(
             extract_entry_into_report(target.entry, output_dir, mode, keys, options, context, report);
             break;
         }
+        if (extraction_canceled(report, options)) {
+            break;
+        }
         if (options.event_callback) {
             options.event_callback(ExtractionEvent{.processed_delta = 1});
         }
+    }
+
+    if (report.canceled) {
+        add_report_message(
+            report,
+            "Extraction canceled after " + std::to_string(report.extracted) + " output(s)",
+            options
+        );
     }
 
     return report;
