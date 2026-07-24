@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20...4.2)
-set(CRICODECS_VERSION "1.1.1" CACHE STRING "CriCodecs release version")
+set(CRICODECS_VERSION "1.1.2" CACHE STRING "CriCodecs release version")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" cricodecs_numeric_version "${CRICODECS_VERSION}")
 if(NOT cricodecs_numeric_version)
     message(FATAL_ERROR "CRICODECS_VERSION must begin with major.minor.patch")

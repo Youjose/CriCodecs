@@ -180,6 +180,7 @@ jobs:
         assert 'sample_rate=' in text; print(text)"
       CMAKE_ARGS: >-
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+        -DCRICODECS_ENABLE_PCH=ON
         -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
         -DCRICODECS_PREBUILT_CORE_PREFIX=build/wheel-core-install
 
@@ -311,6 +312,7 @@ jobs:
         assert 'sample_rate=' in repr(cricodecs.adx.AdxEncodeConfig())"
       CMAKE_ARGS: >-
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+        -DCRICODECS_ENABLE_PCH=ON
         -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
         -DCRICODECS_PREBUILT_CORE_PREFIX=build/wheel-core-install
 

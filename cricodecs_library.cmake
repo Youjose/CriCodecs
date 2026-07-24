@@ -1,12 +1,17 @@
 function(cricodecs_add_library target_name)
     include(GNUInstallDirs)
 
+    option(CRICODECS_ENABLE_PCH
+        "Use a standard-library precompiled header for local and release C++ builds"
+        OFF
+    )
+
     if(NOT DEFINED CRICODECS_REPO_ROOT)
         message(FATAL_ERROR "CRICODECS_REPO_ROOT must be set before including cricodecs_library.cmake")
     endif()
 
     if(NOT DEFINED CRICODECS_VERSION)
-        set(CRICODECS_VERSION "1.1.1")
+        set(CRICODECS_VERSION "1.1.2")
     endif()
     if(NOT DEFINED CRICODECS_VERSION_MAJOR)
         set(CRICODECS_VERSION_MAJOR 1)
@@ -15,7 +20,7 @@ function(cricodecs_add_library target_name)
         set(CRICODECS_VERSION_MINOR 1)
     endif()
     if(NOT DEFINED CRICODECS_VERSION_PATCH)
-        set(CRICODECS_VERSION_PATCH 1)
+        set(CRICODECS_VERSION_PATCH 2)
     endif()
 
     set(cricodecs_generated_include_dir "${CMAKE_CURRENT_BINARY_DIR}/cricodecs-generated")
@@ -134,6 +139,33 @@ function(cricodecs_add_library target_name)
 
     find_package(Threads REQUIRED)
     target_compile_features(${target_name} PUBLIC cxx_std_23)
+
+    if(CRICODECS_ENABLE_PCH)
+        target_precompile_headers(${target_name} PRIVATE
+            <algorithm>
+            <array>
+            <bit>
+            <cmath>
+            <concepts>
+            <cstddef>
+            <cstdint>
+            <cstring>
+            <expected>
+            <filesystem>
+            <fstream>
+            <functional>
+            <limits>
+            <map>
+            <optional>
+            <span>
+            <string>
+            <string_view>
+            <type_traits>
+            <unordered_map>
+            <utility>
+            <vector>
+        )
+    endif()
     target_link_libraries(${target_name} PUBLIC Threads::Threads)
     target_compile_definitions(${target_name} PRIVATE
         CRICODECS_VERSION="${CRICODECS_VERSION}"
