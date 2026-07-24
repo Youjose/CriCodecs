@@ -429,6 +429,7 @@ jobs:
           ${{ matrix.cmake_platform }}
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCRICODECS_ENABLE_PCH=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=OFF
@@ -442,6 +443,7 @@ jobs:
           ${{ matrix.cmake_platform }}
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.shared_ipo }}
+          -DCRICODECS_ENABLE_PCH=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=OFF
@@ -559,6 +561,7 @@ jobs:
           ${{ matrix.cmake_platform }}
           ${{ matrix.link_flags }}
           -DCMAKE_BUILD_TYPE=Release
+          -DCRICODECS_ENABLE_PCH=ON
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
           -DCRICODECS_BUILD_PYTHON=OFF
@@ -727,6 +730,7 @@ jobs:
           cmake -S . -B build-gui -G "${{ matrix.generator }}"
           ${{ matrix.cmake_platform }}
           -DCMAKE_BUILD_TYPE=Release
+          -DCRICODECS_ENABLE_PCH=ON
           -DCMAKE_INSTALL_BINDIR=bin
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
           "-DCRICODECS_VERSION=${{ needs.validate.outputs.version }}"
