@@ -361,9 +361,9 @@ void mdct_transform(HcaChannel& channel, int subframe) {
 
     for (int i = 0; i < half; ++i) {
         const float a = -window[half - i - 1] * wave[half + i];
-        const float b = window[half + i] * wave[half - i - 1];
+        const float b = -window[half + i] * wave[half - i - 1];
         const float c = window[i] * previous[i];
-        const float d = window[size - i - 1] * previous[size - i - 1];
+        const float d = -window[size - i - 1] * previous[size - i - 1];
         scratch[i] = a - b;
         scratch[half + i] = c - d;
     }
