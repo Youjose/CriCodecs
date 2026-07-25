@@ -49,6 +49,28 @@ nanobind_add_module(cricodecs
 
 target_link_libraries(cricodecs PRIVATE CriCodecs)
 
+if(CRICODECS_ENABLE_PCH)
+    target_precompile_headers(cricodecs PRIVATE
+        <algorithm>
+        <array>
+        <cstdint>
+        <filesystem>
+        <memory>
+        <optional>
+        <span>
+        <string>
+        <string_view>
+        <type_traits>
+        <unordered_map>
+        <utility>
+        <vector>
+        <nanobind/nanobind.h>
+        <nanobind/stl/optional.h>
+        <nanobind/stl/string.h>
+        <nanobind/stl/vector.h>
+    )
+endif()
+
 set_target_properties(cricodecs PROPERTIES
     OUTPUT_NAME "__init__"
     LIBRARY_OUTPUT_DIRECTORY "${cricodecs_python_package_dir}"

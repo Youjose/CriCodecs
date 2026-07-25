@@ -133,6 +133,55 @@ qt_add_executable(CriStudio
     src/shared/video_probe.cpp
 )
 
+if(CRICODECS_ENABLE_PCH)
+    target_precompile_headers(CriStudio PRIVATE
+        <algorithm>
+        <array>
+        <cstdint>
+        <filesystem>
+        <memory>
+        <optional>
+        <span>
+        <string>
+        <string_view>
+        <unordered_map>
+        <utility>
+        <vector>
+        <QApplication>
+        <QAudioOutput>
+        <QCheckBox>
+        <QComboBox>
+        <QDialog>
+        <QDialogButtonBox>
+        <QFile>
+        <QFileDialog>
+        <QFileInfo>
+        <QFormLayout>
+        <QGridLayout>
+        <QHBoxLayout>
+        <QHeaderView>
+        <QLabel>
+        <QLineEdit>
+        <QListWidget>
+        <QMessageBox>
+        <QPlainTextEdit>
+        <QProcess>
+        <QProgressBar>
+        <QPushButton>
+        <QScrollArea>
+        <QSignalBlocker>
+        <QSplitter>
+        <QString>
+        <QStringList>
+        <QTabWidget>
+        <QTimer>
+        <QToolButton>
+        <QTreeView>
+        <QVBoxLayout>
+        <QWidget>
+    )
+endif()
+
 qt_add_resources(CriStudio cristudio_branding
     PREFIX "/branding"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
