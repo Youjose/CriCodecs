@@ -51,6 +51,8 @@ struct MediaBuildConfig {
     cricodecs::sfd::SfdBuildProfile sfd_profile = cricodecs::sfd::SfdBuildProfile::sofdec_stream_standard_fixed_2048;
     std::filesystem::path video_source;
     std::filesystem::path alpha_source;
+    std::string video_filename;
+    std::string alpha_filename;
     std::filesystem::path output_path;
     std::filesystem::path ffmpeg_path;
     DecryptionKeys keys;
@@ -61,6 +63,7 @@ struct MediaBuildConfig {
         std::filesystem::path source;
         MediaAudioPrep prep = MediaAudioPrep::UsePrepared;
         std::optional<uint8_t> channel_no = std::nullopt;
+        std::string filename;
     };
     std::vector<AudioTrack> audio_tracks;
 
@@ -69,6 +72,7 @@ struct MediaBuildConfig {
         cricodecs::usm::UsmSubtitleFormat format = cricodecs::usm::UsmSubtitleFormat::Auto;
         uint32_t language_id = 0;
         std::optional<uint8_t> channel_no = std::nullopt;
+        std::string filename;
     };
     std::vector<SubtitleTrack> subtitle_tracks;
 
@@ -86,6 +90,7 @@ struct MediaBuildConfig {
         uint8_t channel = 0;
         std::optional<cricodecs::usm::UsmAudioCodec> audio_codec = std::nullopt;
         std::string label;
+        std::string filename;
         std::filesystem::path replacement_source;
         MediaVideoPrep video_prep = MediaVideoPrep::UsePrepared;
         MediaAudioPrep audio_prep = MediaAudioPrep::UsePrepared;

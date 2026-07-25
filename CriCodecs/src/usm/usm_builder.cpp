@@ -326,9 +326,14 @@ void transform_stream_chunk_payload_with_padding(UsmChunk& chunk, const UsmCrypt
 
 std::expected<std::string, std::string> encode_path_filename(
     const std::filesystem::path& path,
-    const text::EncodingOptions& encoding
+    const text::EncodingOptions& encoding,
+    std::string_view logical_filename = {},
+    std::string_view fallback_prefix = {}
 ) {
-    auto encoded = text::encode_cri_string(path.filename().string(), encoding);
+    const auto filename = logical_filename.empty()
+        ? std::string(fallback_prefix) + path.filename().string()
+        : std::string(logical_filename);
+    auto encoded = text::encode_cri_string(filename, encoding);
     if (!encoded) {
         return std::unexpected("USM build failed: could not encode CRID filename: " + encoded.error());
     }
@@ -413,11 +418,11 @@ std::expected<SubtitleBuildInfo, std::string> build_subtitle_chunks(
     }
 
     SubtitleBuildInfo info;
-    auto filename = text::encode_cri_string(":" + track.path.filename().string(), encoding);
+    auto filename = encode_path_filename(track.path, encoding, track.filename, ":");
     if (!filename) {
         return std::unexpected("USM build failed: could not encode subtitle filename: " + filename.error());
     }
-    info.filename = std::string(filename->begin(), filename->end());
+    info.filename = *filename;
     info.filesize = static_cast<uint32_t>(payload->size());
     info.content_size = info.filesize;
     info.channel_no = channel_no;
@@ -474,7 +479,8 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
     const std::filesystem::path& path,
     const UsmCrypto* crypto,
     const text::EncodingOptions& encoding,
-    UsmChunkType stream_type
+    UsmChunkType stream_type,
+    std::string_view logical_filename
 ) {
     video::IvfReader reader;
     if (auto result = reader.open(path); !result) {
@@ -488,7 +494,7 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
 
     VideoBuildInfo info;
     info.stream_type = stream_type;
-    auto filename = encode_path_filename(path, encoding);
+    auto filename = encode_path_filename(path, encoding, logical_filename);
     if (!filename) {
         return std::unexpected(filename.error());
     }
@@ -571,7 +577,8 @@ std::expected<VideoBuildInfo, std::string> build_mpeg_video_chunks(
     const std::filesystem::path& path,
     const UsmCrypto* crypto,
     const text::EncodingOptions& encoding,
-    UsmChunkType stream_type
+    UsmChunkType stream_type,
+    std::string_view logical_filename
 ) {
     video::MpegVideoReader reader;
     if (auto result = reader.open(path); !result) {
@@ -583,7 +590,7 @@ std::expected<VideoBuildInfo, std::string> build_mpeg_video_chunks(
 
     VideoBuildInfo info;
     info.stream_type = stream_type;
-    auto filename = encode_path_filename(path, encoding);
+    auto filename = encode_path_filename(path, encoding, logical_filename);
     if (!filename) {
         return std::unexpected(filename.error());
     }
@@ -658,7 +665,8 @@ std::expected<VideoBuildInfo, std::string> build_h264_video_chunks(
     const std::filesystem::path& path,
     const UsmCrypto* crypto,
     const text::EncodingOptions& encoding,
-    UsmChunkType stream_type
+    UsmChunkType stream_type,
+    std::string_view logical_filename
 ) {
     video::H264VideoReader reader;
     if (auto result = reader.open(path); !result) {
@@ -670,7 +678,7 @@ std::expected<VideoBuildInfo, std::string> build_h264_video_chunks(
 
     VideoBuildInfo info;
     info.stream_type = stream_type;
-    auto filename = encode_path_filename(path, encoding);
+    auto filename = encode_path_filename(path, encoding, logical_filename);
     if (!filename) {
         return std::unexpected(filename.error());
     }
@@ -748,19 +756,20 @@ std::expected<VideoBuildInfo, std::string> build_video_chunks(
     const std::filesystem::path& path,
     const UsmCrypto* crypto,
     const text::EncodingOptions& encoding,
-    UsmChunkType stream_type
+    UsmChunkType stream_type,
+    std::string_view logical_filename
 ) {
-    auto ivf = build_ivf_video_chunks(path, crypto, encoding, stream_type);
+    auto ivf = build_ivf_video_chunks(path, crypto, encoding, stream_type, logical_filename);
     if (ivf) {
         return ivf;
     }
 
-    auto mpeg = build_mpeg_video_chunks(path, crypto, encoding, stream_type);
+    auto mpeg = build_mpeg_video_chunks(path, crypto, encoding, stream_type, logical_filename);
     if (mpeg) {
         return mpeg;
     }
 
-    auto h264 = build_h264_video_chunks(path, crypto, encoding, stream_type);
+    auto h264 = build_h264_video_chunks(path, crypto, encoding, stream_type, logical_filename);
     if (h264) {
         return h264;
     }
@@ -776,7 +785,8 @@ std::expected<AudioBuildInfo, std::string> build_adx_audio_chunks(
     uint8_t channel_no,
     const UsmCrypto* crypto,
     bool encrypt_audio,
-    const text::EncodingOptions& encoding
+    const text::EncodingOptions& encoding,
+    std::string_view logical_filename
 ) {
     adx::AdxDecoder decoder;
     if (auto result = decoder.load(path.string()); !result) {
@@ -792,7 +802,7 @@ std::expected<AudioBuildInfo, std::string> build_adx_audio_chunks(
     const auto file_bytes = reader.data();
 
     AudioBuildInfo info;
-    auto filename = encode_path_filename(path, encoding);
+    auto filename = encode_path_filename(path, encoding, logical_filename);
     if (!filename) {
         return std::unexpected(filename.error());
     }
@@ -878,7 +888,8 @@ std::expected<AudioBuildInfo, std::string> build_hca_audio_chunks(
     uint8_t channel_no,
     bool encrypt_audio,
     uint64_t key,
-    const text::EncodingOptions& encoding
+    const text::EncodingOptions& encoding,
+    std::string_view logical_filename
 ) {
     auto source_bytes = source.bytes();
     if (!source_bytes) {
@@ -916,7 +927,7 @@ std::expected<AudioBuildInfo, std::string> build_hca_audio_chunks(
     }
 
     AudioBuildInfo info;
-    auto filename = encode_path_filename(path, encoding);
+    auto filename = encode_path_filename(path, encoding, logical_filename);
     if (!filename) {
         return std::unexpected(filename.error());
     }
@@ -999,11 +1010,19 @@ std::expected<AudioBuildInfo, std::string> build_audio_chunks(
             channel_no,
             encrypt_audio,
             key,
-            encoding
+            encoding,
+            track.filename
         );
     }
     if (codec == UsmAudioCodec::Adx) {
-        return build_adx_audio_chunks(track.path, channel_no, crypto, encrypt_audio, encoding);
+        return build_adx_audio_chunks(
+            track.path,
+            channel_no,
+            crypto,
+            encrypt_audio,
+            encoding,
+            track.filename
+        );
     }
     return std::unexpected("USM build failed: unsupported audio codec");
 }
@@ -1260,7 +1279,13 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
         crypto.init_key(input.key);
     }
 
-    auto video = build_video_chunks(input.video_path, &crypto, input.encoding, UsmChunkType::SFV);
+    auto video = build_video_chunks(
+        input.video_path,
+        &crypto,
+        input.encoding,
+        UsmChunkType::SFV,
+        input.video_filename
+    );
     if (!video) {
         return std::unexpected(video.error());
     }
@@ -1270,7 +1295,8 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
             *input.alpha_path,
             &crypto,
             input.encoding,
-            UsmChunkType::ALP
+            UsmChunkType::ALP,
+            input.alpha_filename
         );
         if (!built_alpha) {
             return std::unexpected("USM alpha-video build failed: " + built_alpha.error());

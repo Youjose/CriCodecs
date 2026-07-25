@@ -1,6 +1,8 @@
 #include "modules/usm/media_build.hpp"
 #include "modules/usm/media_build_validation.hpp"
 
+#include "modules/adx/adx_edit.hpp"
+#include "modules/hca/hca_edit.hpp"
 #include "path_text.hpp"
 #include "shared/document_extract_helpers.hpp"
 
@@ -43,6 +45,83 @@ QString command_line_text(const std::filesystem::path& executable, const QString
         parts.push_back(quoted_arg(argument));
     }
     return parts.join(QLatin1Char(' '));
+}
+
+std::string prepared_video_filename(
+    const std::filesystem::path& source,
+    MediaVideoPrep prep,
+    std::string filename
+) {
+    if (!filename.empty()) {
+        return filename;
+    }
+    auto logical_path = source.filename();
+    switch (prep) {
+    case MediaVideoPrep::FfmpegVp9:
+        logical_path.replace_extension(".ivf");
+        break;
+    case MediaVideoPrep::FfmpegH264:
+        logical_path.replace_extension(".264");
+        break;
+    case MediaVideoPrep::FfmpegMpeg1:
+        logical_path.replace_extension(".m1v");
+        break;
+    case MediaVideoPrep::FfmpegMpeg2:
+        logical_path.replace_extension(".m2v");
+        break;
+    case MediaVideoPrep::UsePrepared:
+        break;
+    }
+    return logical_path.string();
+}
+
+std::string prepared_audio_filename(
+    const std::filesystem::path& source,
+    MediaAudioPrep prep,
+    std::string filename
+) {
+    if (!filename.empty()) {
+        return filename;
+    }
+    auto logical_path = source.filename();
+    if (prep == MediaAudioPrep::FfmpegToAdx) {
+        logical_path.replace_extension(".adx");
+    } else if (prep == MediaAudioPrep::FfmpegToHca) {
+        logical_path.replace_extension(".hca");
+    }
+    return logical_path.string();
+}
+
+bool is_prepared_cri_audio(const std::filesystem::path& source) {
+    const auto extension = path_to_qstring(source.extension()).toLower();
+    return extension == QStringLiteral(".adx") || extension == QStringLiteral(".hca");
+}
+
+bool prepared_cri_audio_matches_target(
+    const std::filesystem::path& source,
+    MediaAudioPrep prep
+) {
+    const auto extension = path_to_qstring(source.extension()).toLower();
+    return prep == MediaAudioPrep::UsePrepared ||
+        (prep == MediaAudioPrep::FfmpegToAdx && extension == QStringLiteral(".adx")) ||
+        (prep == MediaAudioPrep::FfmpegToHca && extension == QStringLiteral(".hca"));
+}
+
+bool native_wav_can_supply_pcm16(const std::filesystem::path& source) {
+    if (source.empty()) {
+        return false;
+    }
+    cricodecs::wav::WavContainer wav;
+    return wav.load(source).has_value() && wav.get_pcm16().has_value();
+}
+
+bool audio_prep_requires_ffmpeg(
+    const std::filesystem::path& source,
+    MediaAudioPrep prep
+) {
+    return prep != MediaAudioPrep::UsePrepared &&
+        !is_prepared_cri_audio(source) &&
+        !native_wav_can_supply_pcm16(source);
 }
 
 std::expected<void, QString> run_process_logged(
@@ -241,6 +320,7 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
 std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_source(
     const std::filesystem::path& source,
     MediaAudioPrep prep,
+    const DecryptionKeys& keys,
     const std::filesystem::path& ffmpeg_path,
     const std::filesystem::path& stage_dir,
     std::string_view stage_name,
@@ -256,43 +336,81 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
         push_log(log, QStringLiteral("Using prepared ADX/HCA audio source: %1").arg(path_to_qstring(source)));
         return std::optional<std::filesystem::path>{source};
     }
-    if (ffmpeg_path.empty()) {
-        return std::unexpected(QStringLiteral("FFmpeg is required for selected audio preparation"));
+    if (is_prepared_cri_audio(source) && prepared_cri_audio_matches_target(source, prep)) {
+        push_log(log, QStringLiteral(
+            "Using CriCodecs-supported ADX/HCA source without FFmpeg transcoding: %1"
+        ).arg(path_to_qstring(source)));
+        return std::optional<std::filesystem::path>{source};
     }
-
     const auto wav_path = stage_dir / (std::string(stage_name) + ".wav");
     const bool hca_output = prep == MediaAudioPrep::FfmpegToHca;
     const auto encoded_path = stage_dir / (std::string(stage_name) + (hca_output ? ".hca" : ".adx"));
-    QStringList arguments = {
-        QStringLiteral("-y"),
-        QStringLiteral("-xerror"),
-        QStringLiteral("-err_detect"),
-        QStringLiteral("explode"),
-        QStringLiteral("-i"),
-        path_to_qstring(source),
-        QStringLiteral("-vn"),
-        QStringLiteral("-acodec"),
-        QStringLiteral("pcm_s16le"),
-        QStringLiteral("-f"),
-        QStringLiteral("wav"),
-        path_to_qstring(wav_path)
-    };
-    if (auto result = run_process_logged(ffmpeg_path, arguments, QStringLiteral("FFmpeg audio prepare"), log); !result) {
-        return std::unexpected(result.error());
+    bool use_native_wav = native_wav_can_supply_pcm16(source);
+    if (is_prepared_cri_audio(source)) {
+        auto bytes = read_binary_file(source);
+        if (!bytes) {
+            return std::unexpected(utf8_to_qstring(bytes.error()));
+        }
+        const auto extension = path_to_qstring(source.extension()).toLower();
+        auto decoded = extension == QStringLiteral(".adx")
+            ? cristudio::modules::adx::decode_to_wav_bytes(*bytes, keys)
+            : cristudio::modules::hca::decode_to_wav_bytes(*bytes, keys);
+        if (!decoded) {
+            return std::unexpected(QStringLiteral("Native CRI audio decode failed: %1")
+                .arg(utf8_to_qstring(decoded.error())));
+        }
+        if (auto written = write_binary_file(wav_path, *decoded); !written) {
+            return std::unexpected(utf8_to_qstring(written.error()));
+        }
+        use_native_wav = false;
+        push_log(log, QStringLiteral("Decoded CRI audio to PCM with CriCodecs: %1")
+            .arg(path_to_qstring(source)));
+    }
+    const auto& prepared_wav_path = use_native_wav ? source : wav_path;
+    if (use_native_wav) {
+        push_log(log, QStringLiteral("Using native WAV PCM conversion: %1").arg(path_to_qstring(source)));
+    } else if (!is_prepared_cri_audio(source)) {
+        if (ffmpeg_path.empty()) {
+            return std::unexpected(QStringLiteral(
+                "FFmpeg is required because the selected audio source is not convertible by the native WAV module"
+            ));
+        }
+        QStringList arguments = {
+            QStringLiteral("-y"),
+            QStringLiteral("-xerror"),
+            QStringLiteral("-err_detect"),
+            QStringLiteral("explode"),
+            QStringLiteral("-i"),
+            path_to_qstring(source),
+            QStringLiteral("-vn"),
+            QStringLiteral("-acodec"),
+            QStringLiteral("pcm_s16le"),
+            QStringLiteral("-f"),
+            QStringLiteral("wav"),
+            path_to_qstring(wav_path)
+        };
+        if (auto result = run_process_logged(
+                ffmpeg_path,
+                arguments,
+                QStringLiteral("FFmpeg audio prepare"),
+                log);
+            !result) {
+            return std::unexpected(result.error());
+        }
     }
 
-    auto validated = validate_prepared_pcm_wav(wav_path);
+    auto validated = validate_prepared_pcm_wav(prepared_wav_path);
     if (!validated) {
         return std::unexpected(utf8_to_qstring(validated.error()));
     }
-    push_log(log, QStringLiteral("Validated FFmpeg audio output: %1 sample frames, %2 ms, %3 Hz, %4 channel(s).")
+    push_log(log, QStringLiteral("Validated prepared audio: %1 sample frames, %2 ms, %3 Hz, %4 channel(s).")
         .arg(validated->sample_count)
         .arg(validated->duration_ms)
         .arg(validated->sample_rate)
         .arg(validated->channels));
 
     cricodecs::wav::WavContainer wav;
-    if (auto result = wav.load(wav_path); !result) {
+    if (auto result = wav.load(prepared_wav_path); !result) {
         return std::unexpected(QStringLiteral("Prepared WAV load failed: %1").arg(utf8_to_qstring(result.error())));
     }
     std::expected<std::vector<uint8_t>, std::string> encoded;
@@ -463,8 +581,10 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             }
             if (is_alpha) {
                 input.alpha_path = source_path;
+                input.alpha_filename = track.filename;
             } else {
                 input.video_path = source_path;
+                input.video_filename = track.filename;
                 has_video = true;
             }
             break;
@@ -480,6 +600,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
                 auto prepared = prepare_audio_source(
                     track.replacement_source,
                     track.audio_prep,
+                    config.keys,
                     config.ffmpeg_path,
                     stage_dir,
                     "replacement_audio_" + std::to_string(track.stream_index),
@@ -496,6 +617,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             input.audio_tracks.push_back(cricodecs::usm::UsmBuildInput::AudioTrack{
                 .path = source_path,
                 .channel_no = track.channel,
+                .filename = track.filename,
             });
             break;
         }
@@ -514,6 +636,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
                 .language_id = track.subtitle_language_id,
                 .format = track.subtitle_format,
                 .channel_no = track.channel,
+                .filename = track.filename,
             });
             break;
         }
@@ -533,6 +656,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
         auto prepared = prepare_audio_source(
             track.source,
             track.prep,
+            config.keys,
             config.ffmpeg_path,
             stage_dir,
             "added_audio_" + std::to_string(index),
@@ -545,6 +669,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             input.audio_tracks.push_back(cricodecs::usm::UsmBuildInput::AudioTrack{
                 .path = **prepared,
                 .channel_no = track.channel_no,
+                .filename = prepared_audio_filename(track.source, track.prep, track.filename),
             });
         }
     }
@@ -554,6 +679,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             .language_id = track.language_id,
             .format = track.format,
             .channel_no = track.channel_no,
+            .filename = track.filename,
         });
     }
     if (!config.alpha_source.empty()) {
@@ -575,6 +701,11 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             return std::unexpected(prepared.error());
         }
         input.alpha_path = *prepared;
+        input.alpha_filename = prepared_video_filename(
+            config.alpha_source,
+            config.alpha_prep,
+            config.alpha_filename
+        );
     }
 
     if (!has_video) {
@@ -617,6 +748,10 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
             if (!track.enabled) {
                 continue;
             }
+            if (track.filename.empty()) {
+                return QStringLiteral("Stream %1 needs a non-empty stream name.")
+                    .arg(track.stream_index);
+            }
             switch (track.kind) {
             case MediaBuildConfig::ExistingUsmTrack::Kind::Video:
                 ++video_count;
@@ -634,7 +769,8 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                 }
                 audio_channels[track.channel] = true;
                 needs_ffmpeg = needs_ffmpeg ||
-                    (!track.replacement_source.empty() && track.audio_prep != MediaAudioPrep::UsePrepared);
+                    (!track.replacement_source.empty() &&
+                     audio_prep_requires_ffmpeg(track.replacement_source, track.audio_prep));
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
                 if (subtitle_channels[track.channel]) {
@@ -665,7 +801,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
             if (track.source.empty()) {
                 return QStringLiteral("Remove empty audio tracks or choose their source files.");
             }
-            needs_ffmpeg = needs_ffmpeg || track.prep != MediaAudioPrep::UsePrepared;
+            needs_ffmpeg = needs_ffmpeg || audio_prep_requires_ffmpeg(track.source, track.prep);
             if (track.channel_no.has_value()) {
                 if (audio_channels[*track.channel_no]) {
                     return QStringLiteral("Audio channel %1 is assigned more than once.").arg(*track.channel_no);
@@ -732,7 +868,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
         if (track.source.empty()) {
             return QStringLiteral("Remove empty audio tracks or choose their source files.");
         }
-        needs_ffmpeg = needs_ffmpeg || track.prep != MediaAudioPrep::UsePrepared;
+        needs_ffmpeg = needs_ffmpeg || audio_prep_requires_ffmpeg(track.source, track.prep);
         if (track.channel_no.has_value()) {
             if (audio_channels[*track.channel_no]) {
                 return QStringLiteral("Audio channel %1 is assigned more than once.").arg(*track.channel_no);
@@ -863,6 +999,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         auto prepared = prepare_audio_source(
             track.source,
             track.prep,
+            config.keys,
             config.ffmpeg_path,
             stage_dir,
             "audio_" + std::to_string(index),
@@ -879,6 +1016,11 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
     if (config.target == MediaBuildTarget::Usm) {
         cricodecs::usm::UsmBuildInput input;
         input.video_path = *video_path;
+        input.video_filename = prepared_video_filename(
+            config.video_source,
+            config.video_prep,
+            config.video_filename
+        );
         if (!config.alpha_source.empty()) {
             auto alpha_path = prepare_video_source(
                 config.alpha_source,
@@ -893,6 +1035,11 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
                 return std::unexpected(alpha_path.error());
             }
             input.alpha_path = *alpha_path;
+            input.alpha_filename = prepared_video_filename(
+                config.alpha_source,
+                config.alpha_prep,
+                config.alpha_filename
+            );
         }
         input.key = config.keys.has_cri_key ? config.keys.cri_key : 0;
         input.encrypt_audio = config.encrypt_audio;
@@ -901,6 +1048,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
             input.audio_tracks.push_back(cricodecs::usm::UsmBuildInput::AudioTrack{
                 .path = audio_paths[index],
                 .channel_no = source.channel_no,
+                .filename = prepared_audio_filename(source.source, source.prep, source.filename),
             });
         }
         for (const auto& subtitle : config.subtitle_tracks) {
@@ -909,6 +1057,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
                 .language_id = subtitle.language_id,
                 .format = subtitle.format,
                 .channel_no = subtitle.channel_no,
+                .filename = subtitle.filename,
             });
             push_log(log, QStringLiteral("USM subtitle source: %1, language %2.")
                 .arg(path_to_qstring(subtitle.source))

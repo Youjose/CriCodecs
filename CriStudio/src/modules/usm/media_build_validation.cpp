@@ -220,13 +220,14 @@ std::expected<PreparedAudioInfo, std::string> validate_prepared_pcm_wav(
 ) {
     cricodecs::wav::WavContainer wav;
     if (auto loaded = wav.load(path); !loaded) {
-        return std::unexpected("FFmpeg audio output rejected: " + loaded.error());
+        return std::unexpected("Audio WAV rejected: " + loaded.error());
     }
-    if (wav.format().compression_mode != 1u || wav.format().bit_depth != 16u) {
-        return std::unexpected("FFmpeg audio output rejected: expected 16-bit PCM WAV");
-    }
+    // WavContainer::get_pcm16() is the conversion boundary. In particular,
+    // FFmpeg may wrap pcm_s16le in WAVE_FORMAT_EXTENSIBLE for multichannel
+    // output, and the native PCM reader also supports convertible integer and
+    // float WAV inputs.
     if (auto pcm = wav.get_pcm16(); !pcm) {
-        return std::unexpected("FFmpeg audio output rejected: " + pcm.error());
+        return std::unexpected("Audio WAV rejected: cannot convert to 16-bit PCM: " + pcm.error());
     }
 
     const auto samples = static_cast<uint64_t>(wav.sample_count());
@@ -234,7 +235,7 @@ std::expected<PreparedAudioInfo, std::string> validate_prepared_pcm_wav(
     const auto audio_duration_ms = duration_ms(samples, rate);
     if (samples == 0) {
         return std::unexpected(
-            "FFmpeg audio output rejected: the prepared WAV contains no sample frames. "
+            "Audio WAV rejected: the prepared WAV contains no sample frames. "
             "The input may be encrypted, damaged, or only partially decoded");
     }
     return PreparedAudioInfo{

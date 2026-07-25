@@ -67,25 +67,36 @@ class UsmMuxAudioTrack:
     path: str
     encrypt: bool | None
     channel_no: int | None
-    def __init__(self, path: Any, encrypt: bool | None = None, channel_no: int | None = None) -> None: ...
+    filename: str
+    def __init__(
+        self,
+        path: Any,
+        encrypt: bool | None = None,
+        channel_no: int | None = None,
+        filename: str = "",
+    ) -> None: ...
 
 class UsmMuxSubtitleTrack:
     path: str
     language_id: int
     format: UsmSubtitleFormat
     channel_no: int | None
+    filename: str
     def __init__(
         self,
         path: Any,
         language_id: int = 0,
         format: UsmSubtitleFormat = UsmSubtitleFormat.AUTO,
         channel_no: int | None = None,
+        filename: str = "",
     ) -> None: ...
 
 class UsmMuxConfig:
     """USM mux configuration with optional alpha video and repeatable audio/subtitle tracks."""
     video_path: str
     alpha_path: str | None
+    video_filename: str
+    alpha_filename: str
     audio_tracks: list[UsmMuxAudioTrack]
     subtitle_tracks: list[UsmMuxSubtitleTrack]
     key: int | None
@@ -99,6 +110,8 @@ class UsmMuxConfig:
         key: int | None = None,
         encoding: str | None = None,
         alpha_path: Any | None = None,
+        video_filename: str = "",
+        alpha_filename: str = "",
     ) -> None: ...
 
 class UsmInfo:

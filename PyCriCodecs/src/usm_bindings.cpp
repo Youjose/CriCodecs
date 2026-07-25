@@ -212,21 +212,29 @@ void bind_usm_module(nb::module_& module) {
             cricodecs::usm::UsmBuildInput::AudioTrack* self,
             const nb::object& path,
             std::optional<bool> encrypt,
-            std::optional<uint8_t> channel_no
+            std::optional<uint8_t> channel_no,
+            std::string filename
         ) {
             cricodecs::usm::UsmBuildInput::AudioTrack track;
             track.path = require_python_path(path, "path");
             track.encrypt = std::move(encrypt);
             track.channel_no = channel_no;
+            track.filename = std::move(filename);
             new (self) cricodecs::usm::UsmBuildInput::AudioTrack(std::move(track));
-        }, nb::arg("path"), nb::arg("encrypt") = nb::none(), nb::arg("channel_no") = nb::none())
+        },
+            nb::arg("path"),
+            nb::arg("encrypt") = nb::none(),
+            nb::arg("channel_no") = nb::none(),
+            nb::arg("filename") = std::string{}
+        )
         .def_prop_rw("path", [](const cricodecs::usm::UsmBuildInput::AudioTrack& self) {
             return self.path.generic_string();
         }, [](cricodecs::usm::UsmBuildInput::AudioTrack& self, const nb::object& path) {
             self.path = require_python_path(path, "path");
         })
         .def_rw("encrypt", &cricodecs::usm::UsmBuildInput::AudioTrack::encrypt)
-        .def_rw("channel_no", &cricodecs::usm::UsmBuildInput::AudioTrack::channel_no);
+        .def_rw("channel_no", &cricodecs::usm::UsmBuildInput::AudioTrack::channel_no)
+        .def_rw("filename", &cricodecs::usm::UsmBuildInput::AudioTrack::filename);
 
     nb::class_<cricodecs::usm::UsmBuildInput::SubtitleTrack>(module, "UsmMuxSubtitleTrack")
         .def(nb::init<>())
@@ -235,19 +243,22 @@ void bind_usm_module(nb::module_& module) {
             const nb::object& path,
             uint32_t language_id,
             cricodecs::usm::UsmSubtitleFormat format,
-            std::optional<uint8_t> channel_no
+            std::optional<uint8_t> channel_no,
+            std::string filename
         ) {
             cricodecs::usm::UsmBuildInput::SubtitleTrack track;
             track.path = require_python_path(path, "path");
             track.language_id = language_id;
             track.format = format;
             track.channel_no = channel_no;
+            track.filename = std::move(filename);
             new (self) cricodecs::usm::UsmBuildInput::SubtitleTrack(std::move(track));
         },
             nb::arg("path"),
             nb::arg("language_id") = static_cast<uint32_t>(0),
             nb::arg("format") = cricodecs::usm::UsmSubtitleFormat::Auto,
-            nb::arg("channel_no") = nb::none()
+            nb::arg("channel_no") = nb::none(),
+            nb::arg("filename") = std::string{}
         )
         .def_prop_rw("path", [](const cricodecs::usm::UsmBuildInput::SubtitleTrack& self) {
             return self.path.generic_string();
@@ -256,7 +267,8 @@ void bind_usm_module(nb::module_& module) {
         })
         .def_rw("language_id", &cricodecs::usm::UsmBuildInput::SubtitleTrack::language_id)
         .def_rw("format", &cricodecs::usm::UsmBuildInput::SubtitleTrack::format)
-        .def_rw("channel_no", &cricodecs::usm::UsmBuildInput::SubtitleTrack::channel_no);
+        .def_rw("channel_no", &cricodecs::usm::UsmBuildInput::SubtitleTrack::channel_no)
+        .def_rw("filename", &cricodecs::usm::UsmBuildInput::SubtitleTrack::filename);
 
     nb::class_<cricodecs::usm::UsmBuildInput>(module, "UsmMuxConfig")
         .def(nb::init<>())
@@ -268,7 +280,9 @@ void bind_usm_module(nb::module_& module) {
             std::optional<bool> encrypt_audio,
             const nb::object& key,
             const nb::object& encoding,
-            const nb::object& alpha_path
+            const nb::object& alpha_path,
+            std::string video_filename,
+            std::string alpha_filename
         ) {
             cricodecs::usm::UsmBuildInput input;
             input.video_path = require_python_path(video_path, "video_path");
@@ -277,6 +291,8 @@ void bind_usm_module(nb::module_& module) {
             }
             input.audio_tracks = audio_tracks;
             input.subtitle_tracks = subtitle_tracks;
+            input.video_filename = std::move(video_filename);
+            input.alpha_filename = std::move(alpha_filename);
             input.encrypt_audio = std::move(encrypt_audio);
             input.key = usm_key_from_python(key);
             input.encoding = encoding_options_from_python(encoding);
@@ -288,7 +304,9 @@ void bind_usm_module(nb::module_& module) {
             nb::arg("encrypt_audio") = nb::none(),
             nb::arg("key") = nb::none(),
             nb::arg("encoding") = nb::none(),
-            nb::arg("alpha_path") = nb::none()
+            nb::arg("alpha_path") = nb::none(),
+            nb::arg("video_filename") = std::string{},
+            nb::arg("alpha_filename") = std::string{}
         )
         .def_prop_rw("video_path", [](const cricodecs::usm::UsmBuildInput& self) {
             return self.video_path.generic_string();
@@ -304,6 +322,8 @@ void bind_usm_module(nb::module_& module) {
                 ? std::nullopt
                 : std::optional<std::filesystem::path>(require_python_path(path, "alpha_path"));
         })
+        .def_rw("video_filename", &cricodecs::usm::UsmBuildInput::video_filename)
+        .def_rw("alpha_filename", &cricodecs::usm::UsmBuildInput::alpha_filename)
         .def_rw("audio_tracks", &cricodecs::usm::UsmBuildInput::audio_tracks)
         .def_rw("subtitle_tracks", &cricodecs::usm::UsmBuildInput::subtitle_tracks)
         .def_rw("encrypt_audio", &cricodecs::usm::UsmBuildInput::encrypt_audio)
@@ -450,9 +470,9 @@ void bind_usm_module(nb::module_& module) {
     install_attr_repr(module, "UsmStreamInfo", {"filename", "stream_id", "channel_no", "audio_codec", "fmtver", "filesize", "minchk", "minbuf", "avbps"});
     install_attr_repr(module, "KeyCandidate", {"key", "score", "source_count", "evidence_count", "sample_blocks", "video_chunks", "audio_chunks", "audio_score", "hca_streams", "hca_score", "hca_video_supported"});
     install_attr_repr(module, "KeyRecoveryResult", {"candidates", "source_count", "evidence_count"});
-    install_attr_repr(module, "UsmMuxAudioTrack", {"path", "encrypt", "channel_no"});
-    install_attr_repr(module, "UsmMuxSubtitleTrack", {"path", "language_id", "format", "channel_no"});
-    install_attr_repr(module, "UsmMuxConfig", {"video_path", "alpha_path", "audio_tracks", "subtitle_tracks", "encrypt_audio", "key"});
+    install_attr_repr(module, "UsmMuxAudioTrack", {"path", "encrypt", "channel_no", "filename"});
+    install_attr_repr(module, "UsmMuxSubtitleTrack", {"path", "language_id", "format", "channel_no", "filename"});
+    install_attr_repr(module, "UsmMuxConfig", {"video_path", "alpha_path", "video_filename", "alpha_filename", "audio_tracks", "subtitle_tracks", "encrypt_audio", "key"});
     install_attr_repr(module, "Usm", {"source_path", "container_filename", "stream_count", "streams"});
 
     module.def(

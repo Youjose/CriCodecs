@@ -492,6 +492,10 @@ struct UsmStreamInfo {
 struct UsmBuildInput {
     std::filesystem::path video_path;
     std::optional<std::filesystem::path> alpha_path;
+    // Logical CRID stream filenames. Empty values derive the name from the
+    // corresponding source path.
+    std::string video_filename{};
+    std::string alpha_filename{};
     text::EncodingOptions encoding;
 
     // Audio paths may contain ADX or HCA. Encryption is codec-aware: ADX uses
@@ -501,6 +505,7 @@ struct UsmBuildInput {
         std::filesystem::path path;
         std::optional<bool> encrypt;
         std::optional<uint8_t> channel_no;
+        std::string filename{};
     };
     std::vector<AudioTrack> audio_tracks;
 
@@ -509,6 +514,7 @@ struct UsmBuildInput {
         uint32_t language_id = 0;
         UsmSubtitleFormat format = UsmSubtitleFormat::Auto;
         std::optional<uint8_t> channel_no;
+        std::string filename{};
     };
     std::vector<SubtitleTrack> subtitle_tracks;
 

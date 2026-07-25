@@ -66,6 +66,11 @@ QString key_display(uint64_t key) {
     return QStringLiteral("%1").arg(key, 16, 16, QLatin1Char('0')).toUpper();
 }
 
+std::string utf8_string(const QString& text) {
+    const auto utf8 = text.toUtf8();
+    return std::string(utf8.constData(), static_cast<size_t>(utf8.size()));
+}
+
 std::optional<QString> apply_cri_key_text(DecryptionKeys& keys, QString text, int base) {
     text = text.trimmed();
     if (text.isEmpty()) {
@@ -217,8 +222,8 @@ QComboBox* make_video_prep_combo(QWidget* parent, MediaVideoPrep default_value) 
 QComboBox* make_audio_prep_combo(QWidget* parent, MediaAudioPrep default_value) {
     auto* combo = new QComboBox(parent);
     combo->addItem(QStringLiteral("Use prepared stream"), static_cast<int>(MediaAudioPrep::UsePrepared));
-    combo->addItem(QStringLiteral("Convert with FFmpeg to ADX"), static_cast<int>(MediaAudioPrep::FfmpegToAdx));
-    combo->addItem(QStringLiteral("Convert with FFmpeg to HCA"), static_cast<int>(MediaAudioPrep::FfmpegToHca));
+    combo->addItem(QStringLiteral("Encode to ADX (native WAV / FFmpeg fallback)"), static_cast<int>(MediaAudioPrep::FfmpegToAdx));
+    combo->addItem(QStringLiteral("Encode to HCA (native WAV / FFmpeg fallback)"), static_cast<int>(MediaAudioPrep::FfmpegToHca));
     combo->setCurrentIndex((std::max)(0, combo->findData(static_cast<int>(default_value))));
     return combo;
 }
@@ -237,6 +242,7 @@ QComboBox* subtitle_format_combo(QWidget* parent, cricodecs::usm::UsmSubtitleFor
 struct ExistingTrackControls {
     MediaBuildConfig::ExistingUsmTrack base;
     QCheckBox* enabled = nullptr;
+    QLineEdit* filename = nullptr;
     QLineEdit* replacement = nullptr;
     QComboBox* prep = nullptr;
     QSpinBox* language = nullptr;
@@ -245,12 +251,14 @@ struct ExistingTrackControls {
 struct AudioTrackControls {
     QWidget* row = nullptr;
     QLineEdit* source = nullptr;
+    QLineEdit* filename = nullptr;
     QSpinBox* channel = nullptr;
 };
 
 struct SubtitleTrackControls {
     QWidget* row = nullptr;
     QLineEdit* source = nullptr;
+    QLineEdit* filename = nullptr;
     QComboBox* format = nullptr;
     QSpinBox* language = nullptr;
     QSpinBox* channel = nullptr;
@@ -345,6 +353,10 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
 
     auto* video_edit = new QLineEdit(&dialog);
     form->addRow(QStringLiteral("Video"), path_picker_row(dialog, *video_edit, QStringLiteral("Choose video source"), false));
+    auto* video_filename_edit = new QLineEdit(&dialog);
+    video_filename_edit->setPlaceholderText(QStringLiteral("Source filename (converted extension when needed)"));
+    video_filename_edit->setClearButtonEnabled(true);
+    form->addRow(QStringLiteral("Video stream name"), video_filename_edit);
 
     auto* video_prep_combo = new QComboBox(&dialog);
     video_prep_combo->addItem(QStringLiteral("Use prepared source"), static_cast<int>(MediaVideoPrep::UsePrepared));
@@ -370,6 +382,10 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         false,
         QStringLiteral("Video streams (*.ivf *.264 *.h264 *.m1v *.m2v *.mpg *.mpeg);;All files (*)")
     ));
+    auto* alpha_filename_edit = new QLineEdit(&dialog);
+    alpha_filename_edit->setPlaceholderText(QStringLiteral("Source filename (converted extension when needed)"));
+    alpha_filename_edit->setClearButtonEnabled(true);
+    form->addRow(QStringLiteral("Alpha stream name"), alpha_filename_edit);
     auto* alpha_prep_combo = make_video_prep_combo(&dialog, MediaVideoPrep::UsePrepared);
     form->addRow(QStringLiteral("Alpha prep"), alpha_prep_combo);
 
@@ -412,12 +428,17 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
             false,
             audio_source_filter()
         ), 0, 0, 1, 5);
-        row_layout->addWidget(new QLabel(QStringLiteral("Channel"), controls.row), 1, 0);
+        row_layout->addWidget(new QLabel(QStringLiteral("Stream name"), controls.row), 1, 0);
+        controls.filename = new QLineEdit(controls.row);
+        controls.filename->setPlaceholderText(QStringLiteral("Source filename (converted extension when needed)"));
+        controls.filename->setClearButtonEnabled(true);
+        row_layout->addWidget(controls.filename, 1, 1, 1, 4);
+        row_layout->addWidget(new QLabel(QStringLiteral("Channel"), controls.row), 2, 0);
         controls.channel = channel_spin(controls.row);
-        row_layout->addWidget(controls.channel, 1, 1);
+        row_layout->addWidget(controls.channel, 2, 1);
         auto* remove = new QToolButton(controls.row);
         remove->setText(QStringLiteral("Remove"));
-        row_layout->addWidget(remove, 1, 2);
+        row_layout->addWidget(remove, 2, 2);
         audio_layout->insertWidget(audio_layout->count() - 1, controls.row);
         audio_controls.push_back(controls);
         if (add_audio_button != nullptr) {
@@ -425,6 +446,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         }
 
         QObject::connect(controls.source, &QLineEdit::textChanged, &dialog, [&](const QString&) {
+            if (refresh_validation) refresh_validation();
+        });
+        QObject::connect(controls.filename, &QLineEdit::textChanged, &dialog, [&](const QString&) {
             if (refresh_validation) refresh_validation();
         });
         QObject::connect(controls.channel, qOverload<int>(&QSpinBox::valueChanged), &dialog, [&](int) {
@@ -471,20 +495,25 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
             false,
             QStringLiteral("Subtitles (*.srt *.ass *.ssa *.sbt *.txt);;All files (*)")
         ), 0, 0, 1, 7);
+        row_layout->addWidget(new QLabel(QStringLiteral("Stream name"), controls.row), 1, 0);
+        controls.filename = new QLineEdit(controls.row);
+        controls.filename->setPlaceholderText(QStringLiteral(":source filename"));
+        controls.filename->setClearButtonEnabled(true);
+        row_layout->addWidget(controls.filename, 1, 1, 1, 6);
         controls.format = subtitle_format_combo(controls.row, cricodecs::usm::UsmSubtitleFormat::Auto);
-        row_layout->addWidget(controls.format, 1, 0, 1, 2);
-        row_layout->addWidget(new QLabel(QStringLiteral("Language"), controls.row), 1, 2);
+        row_layout->addWidget(controls.format, 2, 0, 1, 2);
+        row_layout->addWidget(new QLabel(QStringLiteral("Language"), controls.row), 2, 2);
         controls.language = new QSpinBox(controls.row);
         controls.language->setButtonSymbols(QAbstractSpinBox::PlusMinus);
         controls.language->setRange(0, (std::numeric_limits<int>::max)());
         controls.language->setMinimumWidth(112);
-        row_layout->addWidget(controls.language, 1, 3);
-        row_layout->addWidget(new QLabel(QStringLiteral("Channel"), controls.row), 1, 4);
+        row_layout->addWidget(controls.language, 2, 3);
+        row_layout->addWidget(new QLabel(QStringLiteral("Channel"), controls.row), 2, 4);
         controls.channel = channel_spin(controls.row);
-        row_layout->addWidget(controls.channel, 1, 5);
+        row_layout->addWidget(controls.channel, 2, 5);
         auto* remove = new QToolButton(controls.row);
         remove->setText(QStringLiteral("Remove"));
-        row_layout->addWidget(remove, 1, 6);
+        row_layout->addWidget(remove, 2, 6);
         subtitle_layout->insertWidget(subtitle_layout->count() - 1, controls.row);
         subtitle_controls.push_back(controls);
         if (add_subtitle_button != nullptr) {
@@ -492,6 +521,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         }
 
         QObject::connect(controls.source, &QLineEdit::textChanged, &dialog, [&](const QString&) {
+            if (refresh_validation) refresh_validation();
+        });
+        QObject::connect(controls.filename, &QLineEdit::textChanged, &dialog, [&](const QString&) {
             if (refresh_validation) refresh_validation();
         });
         QObject::connect(controls.format, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [&](int) {
@@ -561,6 +593,7 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
             controls.base.kind = stream_kind(stream.stream_id);
             controls.base.channel = stream.channel_no;
             controls.base.audio_codec = stream.audio_codec;
+            controls.base.filename = stream.filename.empty() ? stream.filename_raw : stream.filename;
             const auto label_utf8 = stream_label(stream, static_cast<uint32_t>(index)).toUtf8();
             controls.base.label.assign(label_utf8.constData(), static_cast<size_t>(label_utf8.size()));
 
@@ -581,6 +614,10 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 existing_controls.push_back(std::move(controls));
                 continue;
             }
+            controls.filename = new QLineEdit(utf8_to_qstring(controls.base.filename), stream_group);
+            controls.filename->setClearButtonEnabled(true);
+            controls.filename->setToolTip(QStringLiteral("Filename stored in the rebuilt USM stream metadata."));
+            stream_form->addRow(QStringLiteral("Stream name"), controls.filename);
             controls.replacement = new QLineEdit(stream_group);
             const auto filter =
                 (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Video ||
@@ -607,9 +644,11 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 controls.language->setValue(static_cast<int>(stream.channel_no));
                 stream_form->addRow(QStringLiteral("Replacement language ID"), controls.language);
             }
-            const auto sync_replacement_options = [enabled = controls.enabled, replacement = controls.replacement,
+            const auto sync_replacement_options = [enabled = controls.enabled, filename = controls.filename,
+                                                    replacement = controls.replacement,
                                                     prep = controls.prep, language = controls.language] {
                 const auto active = enabled->isChecked() && !replacement->text().trimmed().isEmpty();
+                filename->setEnabled(enabled->isChecked());
                 if (prep != nullptr) prep->setEnabled(active);
                 if (language != nullptr) language->setEnabled(active);
             };
@@ -647,6 +686,8 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         config.sfd_profile = static_cast<cricodecs::sfd::SfdBuildProfile>(sfd_profile_combo->currentData().toInt());
         config.video_source = path_from_qstring(video_edit->text().trimmed());
         config.alpha_source = path_from_qstring(alpha_edit->text().trimmed());
+        config.video_filename = utf8_string(video_filename_edit->text().trimmed());
+        config.alpha_filename = utf8_string(alpha_filename_edit->text().trimmed());
         config.output_path = path_from_qstring(output_edit->text().trimmed());
         config.ffmpeg_path = path_from_qstring(ffmpeg_exe);
         config.keys = keys;
@@ -667,6 +708,7 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 .source = source,
                 .prep = audio_prep_for_source(source, audio_target),
                 .channel_no = optional_channel(*controls.channel),
+                .filename = utf8_string(controls.filename->text().trimmed()),
             });
         }
         if (config.target == MediaBuildTarget::Usm) {
@@ -680,6 +722,7 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                     .format = static_cast<cricodecs::usm::UsmSubtitleFormat>(controls.format->currentData().toInt()),
                     .language_id = static_cast<uint32_t>(controls.language->value()),
                     .channel_no = optional_channel(*controls.channel),
+                    .filename = utf8_string(controls.filename->text().trimmed()),
                 });
             }
         }
@@ -693,6 +736,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
             for (const auto& controls : existing_controls) {
                 auto track = controls.base;
                 track.enabled = controls.enabled == nullptr || controls.enabled->isChecked();
+                track.filename = controls.filename == nullptr
+                    ? track.filename
+                    : utf8_string(controls.filename->text().trimmed());
                 track.replacement_source = controls.replacement == nullptr
                     ? std::filesystem::path{}
                     : path_from_qstring(controls.replacement->text().trimmed());
@@ -729,6 +775,8 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         audio_group->setEnabled(true);
         subtitle_group->setVisible(target == MediaBuildTarget::Usm);
         form->setRowVisible(alpha_edit, target == MediaBuildTarget::Usm);
+        form->setRowVisible(video_filename_edit, target == MediaBuildTarget::Usm && current_usm == nullptr);
+        form->setRowVisible(alpha_filename_edit, target == MediaBuildTarget::Usm);
         form->setRowVisible(alpha_prep_combo, target == MediaBuildTarget::Usm);
         alpha_prep_combo->setEnabled(
             target == MediaBuildTarget::Usm && !alpha_edit->text().trimmed().isEmpty()
@@ -804,7 +852,13 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         }
     };
     const auto refresh_from_edit = [&refresh_validation](const QString&) { refresh_validation(); };
-    for (auto* edit : {video_edit, alpha_edit, output_edit, cri_key_edit}) {
+    for (auto* edit : {
+             video_edit,
+             video_filename_edit,
+             alpha_edit,
+             alpha_filename_edit,
+             output_edit,
+             cri_key_edit}) {
         QObject::connect(edit, &QLineEdit::textChanged, &dialog, refresh_from_edit);
     }
     QObject::connect(encrypt_audio_check, &QCheckBox::toggled, &dialog, [&refresh_validation](bool) {
@@ -827,6 +881,9 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         });
         if (controls.replacement != nullptr) {
             QObject::connect(controls.replacement, &QLineEdit::textChanged, &dialog, refresh_from_edit);
+        }
+        if (controls.filename != nullptr) {
+            QObject::connect(controls.filename, &QLineEdit::textChanged, &dialog, refresh_from_edit);
         }
         if (controls.prep != nullptr) {
             QObject::connect(controls.prep, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [&refresh_validation](int) {
