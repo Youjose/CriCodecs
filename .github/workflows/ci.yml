@@ -65,7 +65,7 @@ jobs:
         run: cmake --version
 
       - name: Configure core library and CLI
-        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
+        run: cmake -S . -B build -G "${{ matrix.generator }}" ${{ matrix.platform }} -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON
 
       - name: Build core library and CLI
         run: cmake --build build --config Release --target cricodecs_cli --parallel 4
@@ -100,7 +100,6 @@ jobs:
         run: >-
           cmake -S . -B build -G "Visual Studio 18 2026" -A x64
           -DCMAKE_BUILD_TYPE=Release
-          -DCRICODECS_BUILD_TESTS=OFF
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=ON
           -DCRICODECS_BUILD_CRISTUDIO=ON
@@ -129,7 +128,7 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work \
             gcc:16.1 \
-            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_TESTS=OFF -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON && python3 -m cmake --build build-gcc16 --target cricodecs_cli --parallel 4 && ./build-gcc16/cricodecs --help >/dev/null"
+            bash -lc "apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && python3 -m pip install --break-system-packages cmake ninja && c++ --version && python3 -m cmake -S . -B build-gcc16 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCRICODECS_BUILD_PYTHON=OFF -DCRICODECS_BUILD_CLI=ON && python3 -m cmake --build build-gcc16 --target cricodecs_cli --parallel 4 && ./build-gcc16/cricodecs --help >/dev/null"
 
   pip-install:
     name: Pip install (windows-x86_64, Python 3.12)
@@ -207,7 +206,6 @@ jobs:
           cmake -S . -B build-cristudio-diagnostics -G "Visual Studio 18 2026" -A x64
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
-          -DCRICODECS_BUILD_TESTS=OFF
           -DCRICODECS_BUILD_PYTHON=OFF
           -DCRICODECS_BUILD_CLI=OFF
           -DCRICODECS_BUILD_CRISTUDIO=ON
