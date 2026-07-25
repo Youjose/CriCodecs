@@ -4,6 +4,11 @@ namespace cricodecs::cli::detail {
 
 namespace {
 
+void print_cri_key_recovery_note(std::ostream& out) {
+    out << "note: CRI key recovery returns only the effective low 56 bits; "
+           "the original upper byte is unrecoverable.\n";
+}
+
 [[nodiscard]] bool is_hca_payload(std::span<const uint8_t> bytes) {
     const auto formats = sniff_format_order(bytes, false);
     return std::ranges::find(formats, Format::hca) != formats.end();
@@ -360,6 +365,7 @@ std::expected<HcaRecoveryOutput, std::string> perform_hca_key_recovery(
 }
 
 void print_hca_key_recovery_text(std::ostream& out, const HcaRecoveryOutput& result) {
+    print_cri_key_recovery_note(out);
     out << "candidates: " << result.recovery.candidates.size() << '\n';
     for (size_t index = 0; index < result.recovery.candidates.size(); ++index) {
         const auto& candidate = result.recovery.candidates[index];
@@ -768,6 +774,7 @@ std::expected<std::vector<UsmRecoveryOutput>, std::string> perform_usm_key_recov
 }
 
 void print_usm_key_recovery_text(std::ostream& out, std::span<const UsmRecoveryOutput> results) {
+    print_cri_key_recovery_note(out);
     for (size_t index = 0; index < results.size(); ++index) {
         if (index != 0) {
             out << '\n';

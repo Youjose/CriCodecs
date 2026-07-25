@@ -244,7 +244,9 @@ void MainWindow::consume_usm_key_recovery_result() {
     }
     text += QStringLiteral("Candidates were not applied to the global CRI key.\n"
                            "The evidence rank uses the strongest applicable video, ADX, or HCA score; "
-                           "it is not proof that a USM is masked.");
+                           "it is not proof that a USM is masked.\n"
+                           "CRI key recovery returns only the effective low 56 bits; "
+                           "the original upper byte is unrecoverable.");
     auto groups = group_results(task.report->recovered);
     QStringList keys;
     keys.reserve(static_cast<qsizetype>(groups.size()));

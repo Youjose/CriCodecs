@@ -359,7 +359,8 @@ void MainWindow::consume_hca_key_recovery_result() {
     }
     details += QStringLiteral(
         "Candidates were not applied globally. Scores are normalized structural agreement, not probability. "
-        "Rows are ranked by score, file support, filename, and key.");
+        "Rows are ranked by score, file support, filename, and key.\n"
+        "CRI key recovery returns only the effective low 56 bits; the original upper byte is unrecoverable.");
 
     auto groups = group_key_recovery_candidates(candidates);
     QStringList keys;
