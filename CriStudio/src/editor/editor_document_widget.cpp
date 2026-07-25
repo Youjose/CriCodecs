@@ -293,27 +293,13 @@ private:
         const auto job_label = std::exchange(m_active_job_label, {});
         m_active_job_saves_document = false;
         if (result) {
-            bool applied_media_build = false;
-            if (m_apply_media_build_path) {
-                const auto path = std::move(*m_apply_media_build_path);
-                m_apply_media_build_path.reset();
-                if (auto bytes = read_file_bytes(path)) {
-                    m_bytes = std::move(*bytes);
-                    m_request.source_path = path;
-                    m_request.source_bytes.reset();
-                    std::string reason;
-                    m_document = load_document_summary(path, reason, m_request.keys);
-                    try_load_transform(&path);
-                    m_dirty = true;
-                    applied_media_build = true;
-                    refresh_summary();
-                    append_log(QStringLiteral("Applied successful USM build to this editor session: %1").arg(path_to_qstring(path)));
-                    QTimer::singleShot(0, this, [this] { preview_current_mux(); });
-                } else {
-                    append_log(QStringLiteral("Build completed, but applying its output failed: %1").arg(bytes.error()));
-                }
+            bool applied_job_output = false;
+            if (m_apply_job_output_path) {
+                const auto path = std::move(*m_apply_job_output_path);
+                m_apply_job_output_path.reset();
+                applied_job_output = apply_generated_output(path);
             }
-            if (saves_document && !applied_media_build) {
+            if (saves_document && !applied_job_output) {
                 m_dirty = false;
             }
             append_log(saves_document
@@ -324,12 +310,87 @@ private:
                 close_tab();
             }
         } else {
-            m_apply_media_build_path.reset();
+            m_apply_job_output_path.reset();
             m_close_after_save = false;
             const auto failure_title = saves_document ? QStringLiteral("Save failed") : job_label + QStringLiteral(" failed");
             append_log(QStringLiteral("%1: %2").arg(failure_title, result.error()));
             QMessageBox::warning(this, failure_title, result.error());
         }
+    }
+
+    bool apply_generated_output(const std::filesystem::path& path) {
+        auto bytes = read_file_bytes(path);
+        if (!bytes) {
+            append_log(QStringLiteral("Job completed, but loading its output failed: %1").arg(bytes.error()));
+            return false;
+        }
+
+        dismiss_editor_media_preview();
+        m_bytes = std::move(*bytes);
+        m_document.reset();
+        m_selected_entry.reset();
+        m_utf.reset();
+        m_afs.reset();
+        m_awb.reset();
+        m_acx.reset();
+        m_cpk.reset();
+        m_cvm.reset();
+        m_adx.reset();
+        m_hca.reset();
+        m_aax.reset();
+        m_aix.reset();
+        m_usm.reset();
+        m_sfd.reset();
+        m_csb.reset();
+        m_acb.reset();
+        m_archive_kind = ArchiveKind::None;
+        m_transform_kind = TransformKind::None;
+        m_has_utf = false;
+        m_utf_transposed = false;
+        m_cpk_obfuscate_utf = false;
+        m_cvm_scramble_key.clear();
+
+        m_request.source_kind = EditorOpenRequest::SourceKind::Path;
+        m_request.display_name = filename_to_utf8(path);
+        m_request.detected_format.clear();
+        m_request.source_path = path;
+        m_request.source_archive_path.clear();
+        m_request.source_archive_format.clear();
+        m_request.source_index = 0;
+        m_request.document.reset();
+        m_request.entry.reset();
+        m_request.source_bytes.reset();
+
+        std::string reason;
+        m_document = load_document_summary(path, reason, m_request.keys);
+        if (m_document) {
+            m_request.detected_format = m_document->format;
+        } else if (!reason.empty()) {
+            append_log(QStringLiteral("Generated output summary unavailable: %1")
+                .arg(utf8_to_qstring(reason)));
+        }
+        try_load_transform(&path);
+        try_load_utf();
+        try_load_archive();
+
+        m_title = editor_label(m_request.display_name);
+        m_ui.title_label->setText(m_title);
+        m_ui.subtitle_label->setText(editor_format_label(m_request));
+        m_last_save_file_path = path;
+        m_dirty = false;
+        refresh_summary();
+        sync_local_cri_key_ui();
+        update_header_actions();
+        refresh_title();
+        append_log(QStringLiteral("Loaded generated output into this editor session: %1")
+            .arg(path_to_qstring(path)));
+
+        if (m_transform_kind == TransformKind::Usm || m_transform_kind == TransformKind::Sfd) {
+            QTimer::singleShot(0, this, [this] { preview_current_mux(); });
+        } else if (m_document && is_direct_audio_format(m_document->format)) {
+            QTimer::singleShot(0, this, [this] { preview_current_audio(); });
+        }
+        return true;
     }
 
     void set_preview_tabs(bool preview_available, bool raw_available, int preferred_tab) {
@@ -2720,6 +2781,7 @@ private:
             return;
         }
         auto config = std::move(**selected);
+        m_apply_job_output_path = config.output_path;
 
         auto log = std::make_shared<BuildJobLog>();
         start_transform_file_job(
@@ -2810,7 +2872,7 @@ private:
             return false;
         }
         auto config = std::move(**selected);
-        m_apply_media_build_path = config.apply_to_editor
+        m_apply_job_output_path = config.apply_to_editor
             ? std::optional<std::filesystem::path>(config.output_path)
             : std::nullopt;
 
@@ -3872,7 +3934,7 @@ private:
     bool m_active_job_saves_document = false;
     QString m_active_job_label;
     std::filesystem::path m_last_save_path;
-    std::optional<std::filesystem::path> m_apply_media_build_path = std::nullopt;
+    std::optional<std::filesystem::path> m_apply_job_output_path = std::nullopt;
     QMediaPlayer* m_editor_media_player = nullptr;
     QAudioOutput* m_editor_audio_output = nullptr;
     QFutureWatcher<EditorAudioPreviewResult>* m_audio_preview_watcher = nullptr;

@@ -621,7 +621,8 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
         }
         content_layout->addWidget(group);
         apply_to_editor_check = new QCheckBox(QStringLiteral("Replace this editor session after a successful build"), &dialog);
-        apply_to_editor_check->setToolTip(QStringLiteral("Reload the built USM into this tab. The tab becomes dirty until you Save it."));
+        apply_to_editor_check->setChecked(true);
+        apply_to_editor_check->setToolTip(QStringLiteral("Reload the built USM into this tab for immediate inspection."));
         content_layout->addWidget(apply_to_editor_check);
     }
 
@@ -654,7 +655,7 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
             cri_key_edit->text(),
             cri_key_base->currentData().toInt()
         ));
-        config.apply_to_editor = apply_to_editor_check != nullptr && apply_to_editor_check->isChecked();
+        config.apply_to_editor = apply_to_editor_check == nullptr || apply_to_editor_check->isChecked();
         config.encrypt_audio = config.target == MediaBuildTarget::Usm && encrypt_audio_check->isChecked();
         const auto audio_target = static_cast<MediaAudioPrep>(audio_codec_combo->currentData().toInt());
         for (const auto& controls : audio_controls) {
