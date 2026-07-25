@@ -1,15 +1,35 @@
-# CriCodecs and CriStudio
+# CriStudio GUI and CriCodecs
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Youjose/CriCodecs/main/CriStudio/packaging/linux/io.github.Youjose.CriStudio.svg" width="128" alt="CriStudio logo">
 </p>
 
-CriStudio is the desktop interface for inspecting, previewing, extracting,
-editing, and building CRI middleware files. It is powered by CriCodecs, a
-C++23 codec and container library with a standalone CLI and Python bindings.
+<p align="center">
+  <strong>Desktop GUI and Python/C++ toolkit for CRI middleware game files, including CPK, USM, ACB/AWB, HCA, ADX, and UTF.</strong>
+</p>
 
-Most users should download CriStudio. The CLI, Python package, and C++ SDK are
-available for automation, scripting, and application integration.
+<p align="center">
+  <a href="https://github.com/Youjose/CriCodecs/releases/latest"><img src="https://img.shields.io/badge/Download-CriStudio_GUI-2ea44f?style=for-the-badge&logo=github" alt="Download CriStudio GUI"></a>
+  <a href="https://pypi.org/project/cricodecs/"><img src="https://img.shields.io/badge/pip_install-cricodecs-3775A9?style=for-the-badge&logo=pypi&logoColor=white" alt="pip install cricodecs"></a>
+</p>
+
+## Download CriStudio GUI
+
+[**Download the latest CriStudio release for Windows, Linux, or macOS →**](https://github.com/Youjose/CriCodecs/releases/latest)
+
+The portable GUI is the recommended option for most users. It can inspect,
+preview, extract, edit, and build CRI middleware files without requiring
+Python.
+
+## Install CriCodecs for Python
+
+```console
+pip install cricodecs
+```
+
+The Python package provides native codec/container bindings and the shared
+`cricodecs` command-line interface. CriCodecs is also available as a standalone
+C++23 library and CLI for application integration and batch workflows.
 
 ![CriStudio USM playback](https://raw.githubusercontent.com/Youjose/CriCodecs/main/docs/images/cristudio-usm-preview.png)
 
@@ -19,7 +39,7 @@ available for automation, scripting, and application integration.
 
 *Browse nested CPK entries and inspect structured binary data without extracting it first.*
 
-## Download
+## Downloads and packages
 
 The [latest GitHub release](https://github.com/Youjose/CriCodecs/releases/latest)
 provides platform-specific downloads:
