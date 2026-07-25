@@ -12,6 +12,7 @@ struct AudioKeyGuess {
     uint64_t key = 0;
     float score = 0.0f;
     size_t audio_chunks = 0;
+    size_t audio_streams = 0;
     bool used_zero_window = false;
 };
 

@@ -299,6 +299,7 @@ struct ScoredMask {
         .key = UsmCrypto::recover_key_from_audio_mask(selected.mask),
         .score = static_cast<float>(std::clamp(selected.confidence, 0.0, 1.0)),
         .audio_chunks = evidence.audio_chunks,
+        .audio_streams = 1u,
         .used_zero_window = selected.used_zero_window,
     };
 }
@@ -306,7 +307,7 @@ struct ScoredMask {
 } // namespace
 
 std::optional<AudioKeyGuess> recover_adx_audio_key(const UsmReader& source) {
-    std::optional<AudioKeyGuess> best;
+    std::vector<AudioKeyGuess> guesses;
     for (const auto& stream : source.streams()) {
         if (stream.stream_id != UsmChunkType::SFA) {
             continue;
@@ -316,11 +317,37 @@ std::optional<AudioKeyGuess> recover_adx_audio_key(const UsmReader& source) {
             continue;
         }
         auto guess = recover_track(*evidence);
-        if (guess && (!best || guess->score > best->score)) {
-            best = *guess;
+        if (!guess) {
+            continue;
         }
+        const auto matching = std::ranges::find(guesses, guess->key, &AudioKeyGuess::key);
+        if (matching == guesses.end()) {
+            guesses.push_back(*guess);
+            continue;
+        }
+        matching->score = std::max(matching->score, guess->score);
+        matching->audio_chunks += guess->audio_chunks;
+        matching->audio_streams += guess->audio_streams;
+        matching->used_zero_window = matching->used_zero_window || guess->used_zero_window;
     }
-    return best;
+    if (guesses.empty()) {
+        return std::nullopt;
+    }
+    const auto better_guess = [](const AudioKeyGuess& left, const AudioKeyGuess& right) {
+        if (left.used_zero_window != right.used_zero_window) {
+            return left.used_zero_window;
+        }
+        if (left.audio_streams != right.audio_streams) {
+            return left.audio_streams > right.audio_streams;
+        }
+        if (left.score != right.score) {
+            return left.score > right.score;
+        }
+        return left.audio_chunks > right.audio_chunks;
+    };
+    return *std::ranges::max_element(guesses, [&](const auto& left, const auto& right) {
+        return better_guess(right, left);
+    });
 }
 
 } // namespace cricodecs::usm

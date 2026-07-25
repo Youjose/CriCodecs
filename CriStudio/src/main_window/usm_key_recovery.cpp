@@ -39,6 +39,17 @@ namespace {
     return QStringLiteral("Unknown");
 }
 
+[[nodiscard]] float evidence_rank_score(const UsmKeyRecoveryResult& result) noexcept {
+    float score = result.score;
+    if (result.audio_chunks != 0u) {
+        score = std::max(score, result.audio_score);
+    }
+    if (result.hca_video_supported) {
+        score = std::max(score, result.hca_score);
+    }
+    return score;
+}
+
 [[nodiscard]] std::vector<KeyRecoveryGroup> group_results(
     const std::vector<UsmKeyRecoveryResult>& results,
     size_t max_groups = 0) {
@@ -50,7 +61,7 @@ namespace {
         candidates.push_back(KeyRecoveryCandidate{
             .identity = result.key,
             .key = key_text(result.key),
-            .score = result.score,
+            .score = evidence_rank_score(result),
             .file = utf8_to_qstring(result.source),
             .recommended = recommended,
         });
@@ -196,21 +207,23 @@ void MainWindow::consume_usm_key_recovery_result() {
     std::map<std::string, float> best_by_source;
     for (const auto& result : task.report->recovered) {
         auto& best = best_by_source[result.source];
-        best = std::max(best, result.score);
+        best = std::max(best, evidence_rank_score(result));
     }
     QString text;
     size_t visible_candidate_count = 0;
     for (const auto& result : task.report->recovered) {
-        if (!show_key_recovery_candidate(result.score, best_by_source[result.source])) continue;
+        const float rank_score = evidence_rank_score(result);
+        if (!show_key_recovery_candidate(rank_score, best_by_source[result.source])) continue;
         ++visible_candidate_count;
         const auto key = key_text(result.key);
-        const auto score = QString::number(result.score, 'f', 6);
-        text += QStringLiteral("%1\nKey: %2\nScore: %3\nMasking: %4\n"
-                               "Video chunks: %5\nADX audio chunks: %6\nADX audio score: %7\n"
-                               "HCA streams: %8\nHCA score: %9\nHCA/video agreement: %10\nSample blocks: %11\n\n")
+        const auto score = QString::number(rank_score, 'f', 6);
+        text += QStringLiteral("%1\nKey: %2\nEvidence rank score: %3\nVideo model score: %4\nMasking: %5\n"
+                               "Video chunks: %6\nADX audio chunks: %7\nADX audio score: %8\n"
+                               "HCA streams: %9\nHCA score: %10\nHCA/video agreement: %11\nSample blocks: %12\n\n")
                     .arg(utf8_to_qstring(result.source))
                     .arg(key)
                     .arg(score)
+                    .arg(QString::number(result.score, 'f', 6))
                     .arg(masking_inference(result))
                     .arg(result.video_chunks)
                     .arg(result.audio_chunks)
@@ -230,7 +243,8 @@ void MainWindow::consume_usm_key_recovery_result() {
         text += QLatin1Char('\n');
     }
     text += QStringLiteral("Candidates were not applied to the global CRI key.\n"
-                           "A score ranks model agreement; it is not proof that a USM is masked.");
+                           "The evidence rank uses the strongest applicable video, ADX, or HCA score; "
+                           "it is not proof that a USM is masked.");
     auto groups = group_results(task.report->recovered);
     QStringList keys;
     keys.reserve(static_cast<qsizetype>(groups.size()));
@@ -243,7 +257,7 @@ void MainWindow::consume_usm_key_recovery_result() {
         : (candidate_count == 1
             ? QStringLiteral("Recovered key: %1\nScore: %2")
                   .arg(keys.front())
-                  .arg(QString::number(task.report->recovered.front().score, 'f', 6))
+                  .arg(QString::number(groups.front().mean_score, 'f', 6))
             : QStringLiteral("Recovered %1 candidates in %2 exact-key groups.")
                   .arg(candidate_count)
                   .arg(groups.size()));

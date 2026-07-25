@@ -842,16 +842,18 @@ std::expected<KeyRecoveryResult, std::string> recover_key(const UsmReader& sourc
         if (std::ranges::contains(recovered, key, &KeyCandidate::key)) {
             continue;
         }
+        const bool matches_audio = audio_guess && key == audio_guess->key;
         recovered.push_back(KeyCandidate{
             .key = key,
             .score = scale == 0 ? 0.0f : static_cast<float>(
                 static_cast<double>(candidate.score) / static_cast<double>(scale)),
             .source_count = 1,
-            .evidence_count = evidence.sample_blocks,
+            .evidence_count = evidence.sample_blocks +
+                (matches_audio ? audio_guess->audio_chunks : 0u),
             .sample_blocks = evidence.sample_blocks,
             .video_chunks = evidence.video_chunks,
-            .audio_chunks = audio_guess ? audio_guess->audio_chunks : 0u,
-            .audio_score = audio_guess ? audio_guess->score : 0.0f,
+            .audio_chunks = matches_audio ? audio_guess->audio_chunks : 0u,
+            .audio_score = matches_audio ? audio_guess->score : 0.0f,
             .hca_streams = hca_guess && key == hca_guess->key ? hca_guess->stream_count : 0u,
             .hca_score = hca_guess && key == hca_guess->key ? hca_guess->score : 0.0f,
             .hca_video_supported = hca_guess && key == hca_guess->key && hca_guess->video_supported,
@@ -863,7 +865,8 @@ std::expected<KeyRecoveryResult, std::string> recover_key(const UsmReader& sourc
     return KeyRecoveryResult{
         .candidates = std::move(recovered),
         .source_count = 1,
-        .evidence_count = evidence.sample_blocks,
+        .evidence_count = evidence.sample_blocks +
+            (audio_guess ? audio_guess->audio_chunks : 0u),
     };
 }
 
