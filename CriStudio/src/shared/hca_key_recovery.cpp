@@ -34,9 +34,9 @@ struct CollectedHca {
 
 [[nodiscard]] bool text_supports_hca(std::string text) {
     const auto lowered = lower_ascii(std::move(text));
-    return lowered.find("hca") != std::string::npos ||
-        lowered.find("usm") != std::string::npos ||
-        lowered.find("sofdec") != std::string::npos;
+    return lowered == "hca" ||
+        lowered.find("hca audio") != std::string::npos ||
+        lowered.find(".hca") != std::string::npos;
 }
 
 [[nodiscard]] bool entry_tree_supports_hca(const EntrySummary& entry) {
@@ -287,9 +287,6 @@ struct CollectedHca {
 } // namespace
 
 bool supports_hca_key_recovery(const LoadedDocument& document) {
-    if (lower_ascii(document.loader_tag) == "cpk") {
-        return true;
-    }
     if (text_supports_hca(document.loader_tag + " " + document.format)) {
         return true;
     }
