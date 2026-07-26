@@ -9,13 +9,15 @@
 
 namespace cristudio {
 
-inline constexpr size_t file_sniff_prefix_size = 0x804;
+inline constexpr size_t file_sniff_prefix_size = 64 * 1024;
 
 [[nodiscard]] std::string lower_ascii(std::string_view text);
 
+[[nodiscard]] bool has_acx_header(std::span<const uint8_t> bytes);
 [[nodiscard]] bool has_cvm_header(std::span<const uint8_t> bytes);
 [[nodiscard]] bool has_cvm_header(const std::filesystem::path& path);
 [[nodiscard]] bool has_hca_signature(std::span<const uint8_t> bytes);
+[[nodiscard]] bool has_sfd_signature(std::span<const uint8_t> bytes);
 
 [[nodiscard]] std::vector<std::string> sniff_format_order(
     std::span<const uint8_t> bytes,
