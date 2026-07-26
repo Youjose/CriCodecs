@@ -301,9 +301,17 @@ std::expected<void, AixError> Aix::parse() {
 
         while (block_offset + 8 <= segment_end) {
             const uint32_t block_id = read_be<uint32_t>(view.data() + block_offset + 0x00);
-            const uint32_t block_size = read_be<uint32_t>(view.data() + block_offset + 0x04) + 0x08u;
 
-            if (block_size < 8 || block_offset + block_size > segment_end) {
+            // vgmstream treats AIXE as a data-less terminal marker. Producers
+            // disagree on whether its size field describes the padded tail or
+            // the compact eight-byte marker, so do not apply AIXP sizing to it.
+            if (block_id == aixe_magic) {
+                break;
+            }
+
+            const uint64_t block_size =
+                static_cast<uint64_t>(read_be<uint32_t>(view.data() + block_offset + 0x04)) + 0x08u;
+            if (block_size > segment_end - block_offset) {
                 return std::unexpected("AIX block extends past the segment");
             }
 
@@ -314,7 +322,7 @@ std::expected<void, AixError> Aix::parse() {
 
                 AixPacket packet;
                 packet.file_offset = static_cast<uint32_t>(block_offset);
-                packet.total_size = block_size;
+                packet.total_size = static_cast<uint32_t>(block_size);
                 packet.layer_index = static_cast<int8_t>(view[block_offset + 0x08]);
                 packet.layer_count = view[block_offset + 0x09];
                 packet.payload_size = read_be<uint16_t>(view.data() + block_offset + 0x0A);
@@ -333,11 +341,7 @@ std::expected<void, AixError> Aix::parse() {
                 packets.push_back(packet);
             }
 
-            block_offset += block_size;
-
-            if (block_id == aixe_magic) {
-                break;
-            }
+            block_offset += static_cast<size_t>(block_size);
         }
 
         if (packets.empty()) {
