@@ -85,29 +85,6 @@ bool supports_file_backed_metadata_index(std::string_view type) {
         type == "aix" || type == "usm" || type == "sfd" || type == "sbt";
 }
 
-std::optional<LoadedDocument> probe_generic_media_document(
-    const std::filesystem::path& path,
-    std::string& rejection_reason
-) {
-    auto media = probe_ffmpeg_media_file(path);
-    if (!media) {
-        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
-        return std::nullopt;
-    }
-
-    auto doc = base_document(path, media->format);
-    doc.loader_tag = media->has_video ? "ffmpeg-video" : "ffmpeg-audio";
-    doc.info.push_back(translated_info_row_with_value(
-        "DocumentLoader",
-        "Preview",
-        "DocumentLoader",
-        "Validated with ffmpeg"));
-    doc.info.push_back(translated_info_row("DocumentLoader", "Audio stream", bool_text(media->has_audio)));
-    doc.info.push_back(translated_info_row("DocumentLoader", "Video stream", bool_text(media->has_video)));
-    rejection_reason.clear();
-    return doc;
-}
-
 DecryptionKeys preview_keys_for_entry(const EntrySummary& entry, const DecryptionKeys& keys) {
     DecryptionKeys preview_keys = keys;
     if (preview_keys.hca_subkey == 0 && entry.hca_subkey != 0) {
@@ -643,18 +620,10 @@ std::optional<LoadedDocument> load_document_summary(
 
     const auto order = sniff_file_format_order(path);
     if (order.empty()) {
-        return probe_generic_media_document(path, rejection_reason);
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
+        return std::nullopt;
     }
-    auto document = load_document_summary_with_order(path, order, rejection_reason, keys);
-    if (document) {
-        return document;
-    }
-    const auto native_rejection = rejection_reason;
-    if (auto media = probe_generic_media_document(path, rejection_reason)) {
-        return media;
-    }
-    rejection_reason = native_rejection;
-    return std::nullopt;
+    return load_document_summary_with_order(path, order, rejection_reason, keys);
 }
 
 std::optional<LoadedDocument> probe_document_summary(
@@ -669,7 +638,8 @@ std::optional<LoadedDocument> probe_document_summary(
 
     const auto order = sniff_file_format_order(path);
     if (order.empty()) {
-        return probe_generic_media_document(path, rejection_reason);
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
+        return std::nullopt;
     }
 
     // These path loaders keep their archive bytes file-backed. Parse their
@@ -680,11 +650,6 @@ std::optional<LoadedDocument> probe_document_summary(
         auto doc = load_document_summary_with_order(
             path, {order.front()}, rejection_reason, no_keys);
         if (!doc) {
-            const auto native_rejection = rejection_reason;
-            if (auto media = probe_generic_media_document(path, rejection_reason)) {
-                return media;
-            }
-            rejection_reason = native_rejection;
             return std::nullopt;
         }
         doc->loader_tag = order.front();

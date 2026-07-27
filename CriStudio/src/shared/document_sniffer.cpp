@@ -11,7 +11,6 @@ namespace cristudio {
 namespace {
 
 constexpr uint32_t max_reasonable_acx_entries = 0x10000;
-constexpr size_t initial_file_sniff_prefix_size = 0x804;
 constexpr size_t utf_hint_prefix_size = 0x804;
 
 uint32_t be32(std::span<const uint8_t> bytes, size_t offset = 0) {
@@ -274,33 +273,18 @@ std::vector<std::string> sniff_format_order(const std::filesystem::path& path, b
         return {};
     }
 
-    std::array<uint8_t, file_sniff_prefix_size> header{};
+    std::array<uint8_t, file_sniff_prefix_size> header;
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return {};
     }
     input.read(
         reinterpret_cast<char*>(header.data()),
-        static_cast<std::streamsize>(initial_file_sniff_prefix_size)
+        static_cast<std::streamsize>(header.size())
     );
     size_t read_size = static_cast<size_t>(std::max<std::streamsize>(input.gcount(), 0));
     auto header_bytes = std::span<const uint8_t>(header.data(), read_size);
     auto order = sniff_format_order_impl(header_bytes, source_size, include_riff_wave);
-
-    // Most supported formats identify within the first 0x804 bytes. Only
-    // extend the scan for otherwise-unknown files so normal directory loads
-    // keep the original low-I/O fast path.
-    if (order.empty() &&
-        read_size == initial_file_sniff_prefix_size &&
-        source_size > read_size) {
-        input.read(
-            reinterpret_cast<char*>(header.data() + read_size),
-            static_cast<std::streamsize>(header.size() - read_size)
-        );
-        read_size += static_cast<size_t>(std::max<std::streamsize>(input.gcount(), 0));
-        header_bytes = std::span<const uint8_t>(header.data(), read_size);
-        order = sniff_format_order_impl(header_bytes, source_size, include_riff_wave);
-    }
 
     const auto table_size = acx_table_size(header_bytes, source_size);
     if (table_size && *table_size > header_bytes.size()) {
@@ -314,8 +298,10 @@ std::vector<std::string> sniff_format_order(const std::filesystem::path& path, b
         if (static_cast<size_t>(std::max<std::streamsize>(input.gcount(), 0)) == table.size() &&
             has_acx_table(table, source_size)) {
             order.insert(order.begin(), "acx");
+            return order;
         }
     }
+
     return order;
 }
 

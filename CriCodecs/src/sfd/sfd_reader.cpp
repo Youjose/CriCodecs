@@ -26,6 +26,9 @@ using util::trim_ascii;
 
 constexpr std::array<uint8_t, 4> pack_start_code = {0x00, 0x00, 0x01, 0xBA};
 constexpr std::array<uint8_t, 4> program_end_code = {0x00, 0x00, 0x01, 0xB9};
+constexpr std::array<uint8_t, 13> legacy_sofdec_stream_preamble = {
+    'S', 'o', 'f', 'd', 'e', 'c', ' ', 'S', 't', 'r', 'e', 'a', 'm'
+};
 constexpr std::array<uint8_t, 24> sofdec_stream_label = {
     'S', 'o', 'f', 'd', 'e', 'c', 'S', 't', 'r', 'e', 'a', 'm',
     ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '
@@ -83,6 +86,15 @@ constexpr size_t sofdec_stream2_header_summary_relative_offset = 160;
         return data.size();
     }
     return static_cast<size_t>(std::distance(data.begin(), it));
+}
+
+[[nodiscard]] bool has_legacy_sofdec_preamble(std::span<const uint8_t> data) noexcept {
+    return data.size() >= legacy_sofdec_stream_preamble.size() &&
+        std::equal(
+            legacy_sofdec_stream_preamble.begin(),
+            legacy_sofdec_stream_preamble.end(),
+            data.begin()
+        );
 }
 
 [[nodiscard]] std::string read_c_string(std::span<const uint8_t> bytes) {
@@ -502,6 +514,9 @@ std::expected<void, std::string> SfdContainer::parse() {
 
     if (m_streams.empty()) {
         return std::unexpected("SFD contained no extractable audio, video, or private streams");
+    }
+    if (!m_header_summary.has_value() && !has_legacy_sofdec_preamble(data)) {
+        return std::unexpected("SFD parse failed: MPEG program stream has no SofDec header");
     }
 
     for (auto& stream : m_streams) {
