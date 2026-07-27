@@ -1,5 +1,7 @@
 #include "shared/document_sniffer.hpp"
 
+#include "utf_table.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -11,7 +13,6 @@ namespace cristudio {
 namespace {
 
 constexpr uint32_t max_reasonable_acx_entries = 0x10000;
-constexpr size_t utf_hint_prefix_size = 0x804;
 
 uint32_t be32(std::span<const uint8_t> bytes, size_t offset = 0) {
     if (bytes.size() < offset + 4) {
@@ -78,11 +79,6 @@ bool has_acx_table(std::span<const uint8_t> bytes, uint64_t source_size) {
     return true;
 }
 
-bool contains_ascii(std::span<const uint8_t> bytes, std::string_view needle) {
-    return needle.empty() ||
-           std::search(bytes.begin(), bytes.end(), needle.begin(), needle.end()) != bytes.end();
-}
-
 bool has_sbt_records(std::span<const uint8_t> bytes, uint64_t source_size) {
     constexpr uint64_t record_header_size = 0x14;
     if (source_size < record_header_size || bytes.size() < record_header_size) {
@@ -115,38 +111,32 @@ bool has_sbt_records(std::span<const uint8_t> bytes, uint64_t source_size) {
     return found_record && offset == source_size;
 }
 
-void move_to_front(std::vector<std::string>& order, std::string_view type) {
-    const auto it = std::ranges::find(order, type);
-    if (it == order.end() || it == order.begin()) {
-        return;
-    }
-    auto value = *it;
-    order.erase(it);
-    order.insert(order.begin(), std::move(value));
+bool looks_like_acb_root(const cricodecs::utf::UtfTable& table) {
+    return table.table_name() == "Header" &&
+           table.row_count() == 1 &&
+           table.find_column("WaveformTable") >= 0 &&
+           (table.find_column("CueNameTable") >= 0 ||
+            table.find_column("CueTable") >= 0 ||
+            table.find_column("AwbFile") >= 0);
 }
 
-bool has_ordered_type(const std::vector<std::string>& order, std::string_view type) {
-    return std::ranges::find(order, type) != order.end();
+std::vector<std::string> utf_family_order(
+    const cricodecs::utf::UtfTable& table
+) {
+    std::vector<std::string> order;
+    if (table.table_name() == "TBLCSB") {
+        order.push_back("csb");
+    } else if (table.table_name() == "AAX") {
+        order.push_back("aax");
+    } else if (looks_like_acb_root(table)) {
+        order.push_back("acb");
+    }
+    order.push_back("utf");
+    return order;
 }
 
-void apply_utf_family_hint(std::vector<std::string>& order, std::string_view hint) {
-    if (!has_ordered_type(order, "utf")) {
-        return;
-    }
-
-    if (hint.find(".acb") != std::string_view::npos ||
-        hint.find("acb") != std::string_view::npos) {
-        move_to_front(order, "acb");
-    } else if (hint.find(".csb") != std::string_view::npos ||
-               hint.find("csb") != std::string_view::npos) {
-        move_to_front(order, "csb");
-    } else if (hint.find(".aax") != std::string_view::npos ||
-               hint.find("aax") != std::string_view::npos) {
-        move_to_front(order, "aax");
-    } else if (hint.find(".utf") != std::string_view::npos ||
-               hint.find("utf") != std::string_view::npos) {
-        move_to_front(order, "utf");
-    }
+bool is_utf_family_type(std::string_view type) {
+    return type == "csb" || type == "acb" || type == "aax" || type == "utf";
 }
 
 std::vector<std::string> sniff_format_order_impl(
@@ -177,17 +167,13 @@ std::vector<std::string> sniff_format_order_impl(
         order.push_back("aix");
     }
     if (has_magic_at(bytes, 0, "@UTF")) {
-        order.insert(order.end(), {"csb", "acb", "aax", "utf"});
-        const auto sniff_bytes = bytes.first(std::min(bytes.size(), utf_hint_prefix_size));
-        if (contains_ascii(sniff_bytes, "CueNameTable") ||
-            contains_ascii(sniff_bytes, "WaveformTable") ||
-            contains_ascii(sniff_bytes, "AwbFile")) {
-            move_to_front(order, "acb");
-        } else if (contains_ascii(sniff_bytes, "SOUND_ELEMENT") ||
-                   contains_ascii(sniff_bytes, "TBLSDL")) {
-            move_to_front(order, "csb");
-        } else if (contains_ascii(sniff_bytes, "AAX")) {
-            move_to_front(order, "aax");
+        if (bytes.size() == source_size) {
+            if (auto table = cricodecs::utf::UtfTable::load(bytes)) {
+                auto family = utf_family_order(*table);
+                order.insert(order.end(), family.begin(), family.end());
+            }
+        } else {
+            order.push_back("utf");
         }
     }
     if (has_sfd_signature(bytes)) {
@@ -286,6 +272,24 @@ std::vector<std::string> sniff_format_order(const std::filesystem::path& path, b
     auto header_bytes = std::span<const uint8_t>(header.data(), read_size);
     auto order = sniff_format_order_impl(header_bytes, source_size, include_riff_wave);
 
+    if (has_magic_at(header_bytes, 0, "@UTF")) {
+        const auto first_family = std::ranges::find_if(order, [](const std::string& type) {
+            return is_utf_family_type(type);
+        });
+        const auto insert_index = static_cast<size_t>(std::distance(order.begin(), first_family));
+        std::erase_if(order, [](const std::string& type) {
+            return is_utf_family_type(type);
+        });
+        if (auto table = cricodecs::utf::UtfTable::load(path)) {
+            auto family = utf_family_order(*table);
+            order.insert(
+                order.begin() + static_cast<std::ptrdiff_t>(std::min(insert_index, order.size())),
+                family.begin(),
+                family.end()
+            );
+        }
+    }
+
     const auto table_size = acx_table_size(header_bytes, source_size);
     if (table_size && *table_size > header_bytes.size()) {
         std::vector<uint8_t> table(*table_size);
@@ -322,16 +326,12 @@ std::vector<std::string> sniff_embedded_format_order(
     );
     if (order.empty() && lower_source.find("sbt") != std::string::npos) {
         order.push_back("sbt");
-    } else {
-        apply_utf_family_hint(order, lower_ascii(std::string(name) + " " + std::string(type)));
     }
     return order;
 }
 
 std::vector<std::string> sniff_file_format_order(const std::filesystem::path& path) {
-    auto order = sniff_format_order(path, false);
-    apply_utf_family_hint(order, lower_ascii(path.filename().generic_string()));
-    return order;
+    return sniff_format_order(path, false);
 }
 
 } // namespace cristudio

@@ -82,7 +82,8 @@ std::string display_format_for_loader_tag(std::string_view type) {
 
 bool supports_file_backed_metadata_index(std::string_view type) {
     return type == "cpk" || type == "afs" || type == "acx" || type == "awb" ||
-        type == "aix" || type == "usm" || type == "sfd" || type == "sbt";
+        type == "aix" || type == "usm" || type == "sfd" || type == "sbt" ||
+        type == "adx";
 }
 
 DecryptionKeys preview_keys_for_entry(const EntrySummary& entry, const DecryptionKeys& keys) {
