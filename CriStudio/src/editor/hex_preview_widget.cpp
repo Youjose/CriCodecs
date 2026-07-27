@@ -549,9 +549,9 @@ void HexPreviewWidget::ensure_lazy_usm_chunks_until(uint64_t target_end) const {
         m_lazy_usm_chunks.push_back(LazyUsmChunk{
             .offset = m_lazy_usm_scanned_until,
             .chunk_size = chunk_size,
-            .header_offset = header[0x09],
+            .payload_offset = cricodecs::io::read_be<uint16_t>(header.data() + 0x08),
             .channel = header[0x0C],
-            .payload_type = header[0x0F],
+            .payload_type_and_flags = cricodecs::io::read_be<uint16_t>(header.data() + 0x0E),
             .header = header,
             .magic = magic_text(view.first(4))
         });
@@ -802,7 +802,7 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
         return std::nullopt;
     }
     const auto header_end = chunk.offset + 0x20u;
-    const auto payload_offset = chunk.offset + 0x08u + chunk.header_offset;
+    const auto payload_offset = chunk.offset + 0x08u + chunk.payload_offset;
     if (static_cast<uint64_t>(index) < header_end) {
         const auto rel = static_cast<uint64_t>(index) - chunk.offset;
         const auto field = [&](uint64_t offset, uint64_t size, QString label, QColor color) -> std::optional<ActivePattern> {
@@ -817,10 +817,7 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
         if (auto out = field(0x04, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11))) {
             return out;
         }
-        if (auto out = field(0x08, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12))) {
-            return out;
-        }
-        if (auto out = field(0x09, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13))) {
+        if (auto out = field(0x08, 2, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_offset = %1").arg(chunk.payload_offset), lazy_usm_color(chunk.offset + 12))) {
             return out;
         }
         if (auto out = field(0x0A, 2, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14))) {
@@ -829,13 +826,10 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
         if (auto out = field(0x0C, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15))) {
             return out;
         }
-        if (auto out = field(0x0D, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16))) {
+        if (auto out = field(0x0D, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16))) {
             return out;
         }
-        if (auto out = field(0x0E, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17))) {
-            return out;
-        }
-        if (auto out = field(0x0F, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18))) {
+        if (auto out = field(0x0E, 2, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type_and_flags = %1").arg(hex_word(chunk.payload_type_and_flags)), lazy_usm_color(chunk.offset + 17))) {
             return out;
         }
         if (auto out = field(0x10, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19))) {
@@ -844,10 +838,10 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
         if (auto out = field(0x14, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20))) {
             return out;
         }
-        if (auto out = field(0x18, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21))) {
+        if (auto out = field(0x18, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21))) {
             return out;
         }
-        if (auto out = field(0x1C, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22))) {
+        if (auto out = field(0x1C, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22))) {
             return out;
         }
         return ActivePattern{
@@ -856,14 +850,14 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
             .label = QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 header, channel %2, payload type 0x%3")
                 .arg(chunk.magic)
                 .arg(chunk.channel)
-                .arg(chunk.payload_type, 2, 16, QLatin1Char('0')).toUpper(),
+                .arg(chunk.payload_type_and_flags & 0x03u, 2, 16, QLatin1Char('0')).toUpper(),
             .color = lazy_usm_color(chunk.offset + 1)
         };
     }
-    if (chunk.chunk_size > chunk.header_offset && static_cast<uint64_t>(index) >= payload_offset) {
+    if (chunk.chunk_size > chunk.payload_offset && static_cast<uint64_t>(index) >= payload_offset) {
         return ActivePattern{
             .offset = payload_offset,
-            .size = chunk.chunk_size - chunk.header_offset,
+            .size = chunk.chunk_size - chunk.payload_offset,
             .label = QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 payload").arg(chunk.magic),
             .color = lazy_usm_color(chunk.offset + 2)
         };
@@ -917,36 +911,32 @@ void HexPreviewWidget::add_lazy_usm_patterns_for_row(
             QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 header, channel %2, payload type 0x%3")
                 .arg(chunk.magic)
                 .arg(chunk.channel)
-                .arg(chunk.payload_type, 2, 16, QLatin1Char('0')).toUpper(),
+                .arg(chunk.payload_type_and_flags & 0x03u, 2, 16, QLatin1Char('0')).toUpper(),
             lazy_usm_color(chunk.offset + 1));
         consider(chunk.offset + 0x00, 4,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.magic = %1").arg(chunk.magic), lazy_usm_color(chunk.offset + 10));
         consider(chunk.offset + 0x04, 4,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11));
-        consider(chunk.offset + 0x08, 1,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12));
-        consider(chunk.offset + 0x09, 1,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13));
+        consider(chunk.offset + 0x08, 2,
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_offset = %1").arg(chunk.payload_offset), lazy_usm_color(chunk.offset + 12));
         consider(chunk.offset + 0x0A, 2,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14));
         consider(chunk.offset + 0x0C, 1,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15));
         consider(chunk.offset + 0x0D, 1,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16));
-        consider(chunk.offset + 0x0E, 1,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17));
-        consider(chunk.offset + 0x0F, 1,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16));
+        consider(chunk.offset + 0x0E, 2,
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type_and_flags = %1").arg(hex_word(chunk.payload_type_and_flags)), lazy_usm_color(chunk.offset + 17));
         consider(chunk.offset + 0x10, 4,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19));
         consider(chunk.offset + 0x14, 4,
             QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20));
         consider(chunk.offset + 0x18, 4,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21));
         consider(chunk.offset + 0x1C, 4,
-            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22));
-        if (chunk.chunk_size > chunk.header_offset) {
-            consider(chunk.offset + 0x08u + chunk.header_offset, chunk.chunk_size - chunk.header_offset,
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.reserved_1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22));
+        if (chunk.chunk_size > chunk.payload_offset) {
+            consider(chunk.offset + 0x08u + chunk.payload_offset, chunk.chunk_size - chunk.payload_offset,
                 QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 payload").arg(chunk.magic),
                 lazy_usm_color(chunk.offset + 2));
         }

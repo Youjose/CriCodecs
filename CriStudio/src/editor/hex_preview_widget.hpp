@@ -76,9 +76,9 @@ private:
     struct LazyUsmChunk {
         uint64_t offset = 0;
         uint32_t chunk_size = 0;
-        uint8_t header_offset = 0;
+        uint16_t payload_offset = 0;
         uint8_t channel = 0;
-        uint8_t payload_type = 0;
+        uint16_t payload_type_and_flags = 0;
         std::array<uint8_t, 0x20> header{};
         QString magic;
     };

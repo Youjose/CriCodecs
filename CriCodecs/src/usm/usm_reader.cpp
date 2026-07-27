@@ -3,7 +3,7 @@
  * @brief USM demuxer
  *
  * Chunk layout and masking behavior are adapted from the older PyCriCodecsEx
- * implementation, then checked against the official Medianoche/Sofdec 2
+ * implementation, then checked against the official SofDec 2
  * toolchain. The reader keeps CRID UTF metadata and chunk payloads
  * inspectable, including VIDEO_HDRINFO/VIDEO_SEEKINFO inventories exposed by
  * the stream.
@@ -152,22 +152,20 @@ std::expected<UsmChunkHeader, std::string> read_chunk_header(io::reader& reader)
     UsmChunkHeader header;
     header.magic = reader.read_be<uint32_t>();
     header.chunk_size = reader.read_be<uint32_t>();
-    header.unk08 = reader.read_le<uint8_t>();
-    header.offset = reader.read_le<uint8_t>();
+    header.payload_offset = reader.read_be<uint16_t>();
     header.padding = reader.read_be<uint16_t>();
     header.channel_no = reader.read_le<uint8_t>();
-    header.unk0d = reader.read_le<uint8_t>();
-    header.unk0e = reader.read_le<uint8_t>();
-    header.type = reader.read_le<uint8_t>();
+    header.reserved_0d = reader.read_le<uint8_t>();
+    header.payload_type_and_flags = reader.read_be<uint16_t>();
     header.frame_time = reader.read_be<uint32_t>();
     header.frame_rate = reader.read_be<uint32_t>();
-    header.unk18 = reader.read_be<uint32_t>();
-    header.unk1c = reader.read_be<uint32_t>();
+    header.reserved_18 = reader.read_be<uint32_t>();
+    header.reserved_1c = reader.read_be<uint32_t>();
 
     if (header.chunk_size < UsmChunkHeader::encoded_header_size) {
         return std::unexpected("USM chunk declares an invalid size");
     }
-    if (header.offset < UsmChunkHeader::encoded_header_size) {
+    if (header.payload_offset < UsmChunkHeader::encoded_header_size) {
         return std::unexpected("USM chunk declares an invalid payload offset");
     }
 
@@ -393,8 +391,8 @@ std::expected<void, std::string> UsmReader::parse_sfsh_file() {
         .header = UsmChunkHeader{
             .magic = static_cast<uint32_t>(UsmChunkType::SFSH),
             .chunk_size = static_cast<uint32_t>(UsmChunkHeader::encoded_header_size + payload.size()),
-            .offset = UsmChunkHeader::encoded_header_size,
-            .type = static_cast<uint8_t>(UsmPayloadType::Stream),
+            .payload_offset = UsmChunkHeader::encoded_header_size,
+            .payload_type_and_flags = static_cast<uint16_t>(UsmPayloadType::Stream),
         },
         .payload = payload,
         .padding = {},

@@ -4,7 +4,7 @@
  * @brief USM stream masking API.
  *
  * Mask behavior is grounded in PyCriCodecsEx handling and checked against the
- * Medianoche/SofDec 2 toolchain during the C++23 port. Public helpers by
+ * official SofDec 2 toolchain during the C++23 port. Public helpers by
  * Youjose.
  */
 

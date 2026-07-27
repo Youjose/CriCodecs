@@ -494,6 +494,12 @@ std::expected<std::vector<uint8_t>, std::string> subtitle_source_text_to_sbt(
         if (trim(line).empty()) {
             continue;
         }
+        const auto line_offset = static_cast<size_t>(line.data() - text.data());
+        const auto line_end = line_offset + line.size();
+        const bool newline_terminated =
+            line_end < text.size() &&
+            (text[line_end] == '\n' ||
+             (text[line_end] == '\r' && line_end + 1u < text.size() && text[line_end + 1u] == '\n'));
         const auto first_comma = line.find(',');
         const auto second_comma = first_comma == std::string_view::npos
             ? std::string_view::npos
@@ -532,6 +538,7 @@ std::expected<std::vector<uint8_t>, std::string> subtitle_source_text_to_sbt(
             .start_time = *start,
             .duration = *end - *start,
             .text = trim(cue_text),
+            .terminator_size = newline_terminated ? 1u : 0u,
         });
     }
 

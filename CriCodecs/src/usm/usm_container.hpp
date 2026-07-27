@@ -4,7 +4,7 @@
  * @brief USM/SofDec 2 chunked stream container API.
  *
  * Chunk IDs, metadata schemas, SFSH handling, and stream-header behavior are
- * grounded in Medianoche/SofDec 2 evidence.
+ * grounded in official SofDec 2 tool evidence.
  * Public C++23 surface by Youjose.
  */
 
@@ -34,7 +34,7 @@
 
 namespace cricodecs::usm {
 
-// Confirmed against Medianoche/Sofdec 2. SFSH is a fixed SofDec header variant,
+// Confirmed against official SofDec 2 tools. SFSH is a fixed header variant,
 // while the uncommon @-prefixed metadata IDs are kept symbolic so demuxed
 // streams remain inspectable before their full payload semantics are modeled.
 // PST is a picture-size table, ELM is an element/index table, STA carries
@@ -102,24 +102,26 @@ struct UsmChunkHeader {
 
     uint32_t magic = 0;
     uint32_t chunk_size = 0;
-    uint8_t unk08 = 0;
-    uint8_t offset = 0x18;
+    // Big-endian offset from byte 0x08 of the chunk to the payload. The
+    // ordinary 0x18 value therefore places payload bytes at absolute 0x20.
+    uint16_t payload_offset = encoded_header_size;
     uint16_t padding = 0;
     uint8_t channel_no = 0;
-    uint8_t unk0d = 0;
-    uint8_t unk0e = 0;
-    uint8_t type = 0;
+    uint8_t reserved_0d = 0;
+    // Big-endian payload type/flags word. The low two bits select
+    // UsmPayloadType; higher bits are preserved.
+    uint16_t payload_type_and_flags = 0;
     uint32_t frame_time = 0;
     uint32_t frame_rate = 0;
-    uint32_t unk18 = 0;
-    uint32_t unk1c = 0;
+    uint32_t reserved_18 = 0;
+    uint32_t reserved_1c = 0;
 
     [[nodiscard]] uint32_t body_size() const noexcept {
         return chunk_size >= encoded_header_size ? chunk_size - encoded_header_size : 0;
     }
 
     [[nodiscard]] uint32_t data_offset() const noexcept {
-        return offset >= encoded_header_size ? offset - encoded_header_size : 0;
+        return payload_offset >= encoded_header_size ? payload_offset - encoded_header_size : 0;
     }
 };
 
@@ -138,7 +140,7 @@ public:
     [[nodiscard]] size_t offset() const noexcept { return m_offset; }
     [[nodiscard]] UsmChunkType chunk_type() const noexcept { return static_cast<UsmChunkType>(m_header.magic); }
     [[nodiscard]] UsmPayloadType payload_type() const noexcept {
-        return static_cast<UsmPayloadType>(m_header.type & 0x03u);
+        return static_cast<UsmPayloadType>(m_header.payload_type_and_flags & 0x03u);
     }
     [[nodiscard]] UsmStreamId stream_id() const noexcept {
         return UsmStreamId{
@@ -196,17 +198,15 @@ private:
         const auto* data = source.data() + offset;
         header.magic = io::read_be<uint32_t>(data + 0x00);
         header.chunk_size = io::read_be<uint32_t>(data + 0x04);
-        header.unk08 = data[0x08];
-        header.offset = data[0x09];
+        header.payload_offset = io::read_be<uint16_t>(data + 0x08);
         header.padding = io::read_be<uint16_t>(data + 0x0A);
         header.channel_no = data[0x0C];
-        header.unk0d = data[0x0D];
-        header.unk0e = data[0x0E];
-        header.type = data[0x0F];
+        header.reserved_0d = data[0x0D];
+        header.payload_type_and_flags = io::read_be<uint16_t>(data + 0x0E);
         header.frame_time = io::read_be<uint32_t>(data + 0x10);
         header.frame_rate = io::read_be<uint32_t>(data + 0x14);
-        header.unk18 = io::read_be<uint32_t>(data + 0x18);
-        header.unk1c = io::read_be<uint32_t>(data + 0x1C);
+        header.reserved_18 = io::read_be<uint32_t>(data + 0x18);
+        header.reserved_1c = io::read_be<uint32_t>(data + 0x1C);
         return header;
     }
 
@@ -216,7 +216,7 @@ private:
         }
         const auto* data = source.data() + offset;
         const auto chunk_size = io::read_be<uint32_t>(data + 0x04);
-        const auto payload_offset = data[0x09];
+        const auto payload_offset = io::read_be<uint16_t>(data + 0x08);
         const auto padding = io::read_be<uint16_t>(data + 0x0A);
         if (chunk_size < UsmChunkHeader::encoded_header_size ||
             payload_offset < UsmChunkHeader::encoded_header_size ||
@@ -409,7 +409,7 @@ struct UsmChunk {
     }
 
     [[nodiscard]] UsmPayloadType payload_type() const noexcept {
-        return static_cast<UsmPayloadType>(header.type & 0x03u);
+        return static_cast<UsmPayloadType>(header.payload_type_and_flags & 0x03u);
     }
 
     [[nodiscard]] bool is_stream() const noexcept {
@@ -442,17 +442,15 @@ struct UsmChunk {
         auto* destination = bytes.data() + header_offset;
         io::write_be<uint32_t>(destination + 0x00, header.magic);
         io::write_be<uint32_t>(destination + 0x04, header.chunk_size);
-        destination[0x08] = header.unk08;
-        destination[0x09] = header.offset;
+        io::write_be<uint16_t>(destination + 0x08, header.payload_offset);
         io::write_be<uint16_t>(destination + 0x0A, header.padding);
         destination[0x0C] = header.channel_no;
-        destination[0x0D] = header.unk0d;
-        destination[0x0E] = header.unk0e;
-        destination[0x0F] = header.type;
+        destination[0x0D] = header.reserved_0d;
+        io::write_be<uint16_t>(destination + 0x0E, header.payload_type_and_flags);
         io::write_be<uint32_t>(destination + 0x10, header.frame_time);
         io::write_be<uint32_t>(destination + 0x14, header.frame_rate);
-        io::write_be<uint32_t>(destination + 0x18, header.unk18);
-        io::write_be<uint32_t>(destination + 0x1C, header.unk1c);
+        io::write_be<uint32_t>(destination + 0x18, header.reserved_18);
+        io::write_be<uint32_t>(destination + 0x1C, header.reserved_1c);
         bytes.insert(bytes.end(), payload.begin(), payload.end());
         if (padding.size() == header.padding) {
             bytes.insert(bytes.end(), padding.begin(), padding.end());

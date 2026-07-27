@@ -3,7 +3,7 @@
  * @brief USM builder
  *
  * The mux layout started from PyCriCodecsEx behavior and has since been
- * checked against Medianoche/Sofdec 2 metadata names such as
+ * checked against official SofDec 2 metadata names such as
  * CRIUSF_DIR_STREAM, VIDEO_HDRINFO, and VIDEO_SEEKINFO. The current builder
  * accepts VP9-in-IVF, MPEG/Sofdec elementary video, H.264 Annex B, and
  * optional ADX or HCA audio, with byte-exact stream reassembly as the primary
@@ -108,8 +108,8 @@ struct SubtitleBuildInfo {
     uint32_t filesize = 0;
     uint32_t time_unit = 1000;
     uint32_t total_time = 0;
-    uint32_t channel_count = 0;
-    uint32_t content_size = 0;
+    uint8_t channel_count = 0;
+    uint32_t content_xsize = 0;
     uint32_t ixsize = 0;
     uint32_t avbps = 0;
     uint8_t channel_no = 0;
@@ -282,10 +282,10 @@ UsmChunk make_chunk(
     UsmChunkHeader header;
     header.magic = static_cast<uint32_t>(magic);
     header.chunk_size = static_cast<uint32_t>(payload.size()) + padding + UsmChunkHeader::encoded_header_size;
-    header.offset = 0x18;
+    header.payload_offset = UsmChunkHeader::encoded_header_size;
     header.padding = static_cast<uint16_t>(padding);
     header.channel_no = channel_no;
-    header.type = static_cast<uint8_t>(type);
+    header.payload_type_and_flags = static_cast<uint16_t>(type);
     header.frame_time = frame_time;
     header.frame_rate = frame_rate;
 
@@ -424,49 +424,74 @@ std::expected<SubtitleBuildInfo, std::string> build_subtitle_chunks(
     }
     info.filename = *filename;
     info.filesize = static_cast<uint32_t>(payload->size());
-    info.content_size = info.filesize;
     info.channel_no = channel_no;
 
     std::vector<uint32_t> language_ids;
     language_ids.reserve(cues->size());
-    uint32_t max_record_size = 0;
-    uint32_t max_end_time = 0;
+    uint32_t max_text_size = 0;
+    uint32_t first_start_time = std::numeric_limits<uint32_t>::max();
+    uint32_t last_start_time = 0;
     info.time_unit = cues->front().time_unit;
     for (const auto& cue : *cues) {
         if (cue.time_unit != info.time_unit) {
             return std::unexpected("USM build failed: mixed subtitle time units are unsupported");
         }
-        max_end_time = std::max(max_end_time, cue.end_time());
+        first_start_time = std::min(first_start_time, cue.start_time);
+        last_start_time = std::max(last_start_time, cue.start_time);
         language_ids.push_back(cue.language_id);
         if (cue.text.size() > std::numeric_limits<uint32_t>::max() - cue.terminator_size) {
             return std::unexpected("USM build failed: subtitle cue text is too large");
         }
-        max_record_size = std::max<uint32_t>(
-            max_record_size,
-            static_cast<uint32_t>(cue.text.size() + cue.terminator_size + 0x14u)
-        );
+        const auto text_size = static_cast<uint32_t>(cue.text.size() + cue.terminator_size);
+        max_text_size = std::max(max_text_size, text_size);
     }
     std::ranges::sort(language_ids);
     const auto last = std::ranges::unique(language_ids).begin();
     language_ids.erase(last, language_ids.end());
-
-    info.total_time = max_end_time;
-    info.channel_count = static_cast<uint32_t>(language_ids.size());
-    info.ixsize = max_record_size;
-    if (info.time_unit != 0 && info.total_time != 0) {
-        const long double duration_seconds =
-            static_cast<long double>(info.total_time) / static_cast<long double>(info.time_unit);
-        if (duration_seconds > 0.0L) {
-            info.avbps = static_cast<uint32_t>(std::llround(
-                (static_cast<long double>(info.filesize) * 8.0L) / duration_seconds
-            ));
-        }
+    if (language_ids.size() > std::numeric_limits<uint8_t>::max()) {
+        return std::unexpected("USM build failed: subtitle input has more than 255 language channels");
     }
 
-    info.chunks.push_back(BuiltChunk{
-        .chunk = make_chunk(UsmChunkType::SBT, UsmPayloadType::Stream, channel_no, 0, base_frame_rate, *payload),
-        .priority = 2,
-    });
+    // Official SUBTITLE_HDRINFO uses the mux clock here, not the
+    // source SBT record time unit. Controlled 100- and 1000-tick inputs both
+    // produce 30 and leave total_time at zero.
+    info.time_unit = 30;
+    info.total_time = 0;
+    info.channel_count = static_cast<uint8_t>(language_ids.size());
+    info.content_xsize = max_text_size;
+    const auto record_time_unit = cues->front().time_unit;
+    if (record_time_unit != 0 && last_start_time > first_start_time) {
+        const auto span_ticks = static_cast<uint64_t>(last_start_time) - first_start_time;
+        const auto bits_times_unit = static_cast<uint64_t>(info.filesize) * 8u * record_time_unit;
+        info.avbps = static_cast<uint32_t>(bits_times_unit / span_ticks);
+    } else if (record_time_unit != 0 && !cues->empty() && cues->front().duration != 0) {
+        // Native one-cue output uses an unstable near-zero scheduling span.
+        // Use the cue duration as a bounded, meaningful fallback.
+        const auto bits_times_unit = static_cast<uint64_t>(info.filesize) * 8u * record_time_unit;
+        info.avbps = static_cast<uint32_t>(bits_times_unit / cues->front().duration);
+    }
+
+    size_t payload_offset = 0;
+    uint32_t max_chunk_size = 0;
+    for (const auto& cue : *cues) {
+        const size_t record_size = 0x14u + cue.text.size() + cue.terminator_size;
+        BuiltChunk chunk{
+            .chunk = make_chunk(
+                UsmChunkType::SBT,
+                UsmPayloadType::Stream,
+                channel_no,
+                cue.start_time,
+                cue.time_unit,
+                std::span<const uint8_t>(*payload).subspan(payload_offset, record_size)
+            ),
+            .priority = 2,
+        };
+        max_chunk_size = std::max(max_chunk_size, static_cast<uint32_t>(chunk.chunk.packed_size()));
+        info.chunks.push_back(std::move(chunk));
+        payload_offset += record_size;
+    }
+    // Size the subtitle packet buffer for the largest packet this builder emits.
+    info.ixsize = max_chunk_size;
     info.chunks.push_back(BuiltChunk{
         .chunk = make_end_chunk(UsmChunkType::SBT, channel_no, contents_end_marker),
         .priority = 2,
@@ -1134,7 +1159,7 @@ UsmChunk build_subtitle_header_chunk(const SubtitleBuildInfo& subtitle, uint8_t 
     utf::UtfTable table = utf::UtfTable::create("SUBTITLE_HDRINFO");
     table.add_column("time_unit", utf::ColumnType::UInt32);
     table.add_column("total_time", utf::ColumnType::UInt32);
-    table.add_column("num_channels", utf::ColumnType::UInt32);
+    table.add_column("num_channels", utf::ColumnType::UInt8);
     table.add_column("content_xsize", utf::ColumnType::UInt32);
     table.add_column("ixsize", utf::ColumnType::UInt32);
 
@@ -1142,7 +1167,7 @@ UsmChunk build_subtitle_header_chunk(const SubtitleBuildInfo& subtitle, uint8_t 
     table.set(row, "time_unit", subtitle.time_unit).value();
     table.set(row, "total_time", subtitle.total_time).value();
     table.set(row, "num_channels", subtitle.channel_count).value();
-    table.set(row, "content_xsize", subtitle.content_size).value();
+    table.set(row, "content_xsize", subtitle.content_xsize).value();
     table.set(row, "ixsize", subtitle.ixsize).value();
     const auto payload = table.build();
     return make_chunk(UsmChunkType::SBT, UsmPayloadType::Header, channel_no, 0, 30, payload);
@@ -1177,9 +1202,10 @@ UsmChunk build_crid_chunk(
         total_avbps += audio.avbps;
         root_minbuf += audio_ixsize;
     }
+    // The reference muxer leaves the root buffer requirement unchanged when
+    // subtitle streams are added.
     for (const auto& subtitle : subtitles) {
         total_avbps += subtitle.avbps;
-        root_minbuf += subtitle.ixsize;
     }
 
     const auto root_row = table.add_row();
@@ -1238,7 +1264,7 @@ UsmChunk build_crid_chunk(
         table.set(row, "stmid", static_cast<uint32_t>(UsmChunkType::SBT)).value();
         table.set(row, "chno", static_cast<uint16_t>(subtitle.channel_no)).value();
         table.set(row, "minchk", static_cast<uint16_t>(1)).value();
-        table.set(row, "minbuf", subtitle.ixsize).value();
+        table.set(row, "minbuf", subtitle.avbps / 16u).value();
         table.set(row, "avbps", subtitle.avbps).value();
     }
 
@@ -1252,9 +1278,9 @@ UsmChunk build_crid_chunk(
     UsmChunkHeader header;
     header.magic = static_cast<uint32_t>(UsmChunkType::CRID);
     header.chunk_size = crid_total_size - 0x08;
-    header.offset = 0x18;
+    header.payload_offset = UsmChunkHeader::encoded_header_size;
     header.padding = static_cast<uint16_t>(crid_body_size - payload.size());
-    header.type = static_cast<uint8_t>(UsmPayloadType::Header);
+    header.payload_type_and_flags = static_cast<uint16_t>(UsmPayloadType::Header);
     header.frame_rate = 30;
 
     return UsmChunk{
@@ -1458,8 +1484,8 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
         );
     }
     std::stable_sort(content_chunks.begin(), content_chunks.end(), [](const BuiltChunk& lhs, const BuiltChunk& rhs) {
-        return std::tie(lhs.chunk.header.type, lhs.chunk.header.frame_time, lhs.priority) <
-            std::tie(rhs.chunk.header.type, rhs.chunk.header.frame_time, rhs.priority);
+        return std::tie(lhs.chunk.header.payload_type_and_flags, lhs.chunk.header.frame_time, lhs.priority) <
+            std::tie(rhs.chunk.header.payload_type_and_flags, rhs.chunk.header.frame_time, rhs.priority);
     });
 
     size_t header_size = 0;
