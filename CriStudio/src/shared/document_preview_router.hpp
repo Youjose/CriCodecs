@@ -33,5 +33,8 @@ namespace cristudio {
     const LoadedDocument& document,
     const DecryptionKeys& keys
 );
+[[nodiscard]] std::expected<VideoPreview, std::string> build_direct_video_preview(
+    const LoadedDocument& document
+);
 
 } // namespace cristudio

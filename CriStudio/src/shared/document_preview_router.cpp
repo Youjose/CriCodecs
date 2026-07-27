@@ -192,6 +192,9 @@ std::expected<AudioPreview, std::string> build_direct_audio_preview(
     const LoadedDocument& document,
     const DecryptionKeys& keys
 ) {
+    if (document.loader_tag == "ffmpeg-audio") {
+        return ffmpeg_audio_preview_from_file(document.path);
+    }
     if (!is_direct_audio_format(document.format)) {
         return std::unexpected("selected document is not directly playable audio");
     }
@@ -211,6 +214,28 @@ std::expected<AudioPreview, std::string> build_direct_audio_preview(
     }
 
     return std::unexpected("audio preview does not support this format yet");
+}
+
+std::expected<VideoPreview, std::string> build_direct_video_preview(
+    const LoadedDocument& document
+) {
+    if (document.loader_tag != "ffmpeg-video") {
+        return std::unexpected("selected document is not directly playable video");
+    }
+
+    auto probe = probe_ffmpeg_media_file(document.path);
+    if (!probe) {
+        return std::unexpected(probe.error());
+    }
+    if (!probe->has_video) {
+        return std::unexpected("media preview no longer contains a playable video stream");
+    }
+
+    VideoPreview preview;
+    preview.playable_path = document.path;
+    preview.format = std::move(probe->format);
+    preview.note = "Validated with ffmpeg";
+    return preview;
 }
 
 } // namespace cristudio

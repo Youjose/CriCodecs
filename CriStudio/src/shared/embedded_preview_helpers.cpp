@@ -1,7 +1,5 @@
 #include "shared/embedded_preview_helpers.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <iomanip>
 #include <sstream>
 
@@ -43,18 +41,7 @@ std::string hex_dump(std::span<const uint8_t> bytes, size_t max_bytes, bool& tru
     return out.str();
 }
 
-bool likely_image_entry(std::string_view name, std::span<const uint8_t> bytes) {
-    const auto dot = name.find_last_of('.');
-    if (dot != std::string_view::npos && dot + 1 < name.size()) {
-        std::string ext(name.substr(dot + 1));
-        std::ranges::transform(ext, ext.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
-        if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "gif" || ext == "webp") {
-            return true;
-        }
-    }
-
+bool is_supported_image_payload(std::span<const uint8_t> bytes) {
     return (bytes.size() >= 8 &&
                bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
                bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A) ||

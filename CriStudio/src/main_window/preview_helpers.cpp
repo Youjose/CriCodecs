@@ -39,12 +39,19 @@ bool is_audio_document(const LoadedDocument& document) {
 }
 
 bool is_direct_audio_document(const LoadedDocument& document) {
+    if (document.loader_tag == "ffmpeg-audio") {
+        return true;
+    }
     const auto format = utf8_to_qstring(document.format).toLower();
     return format.contains(QStringLiteral("adx")) ||
            format.contains(QStringLiteral("ahx")) ||
            format.contains(QStringLiteral("aax")) ||
            format.contains(QStringLiteral("hca")) ||
            format.contains(QStringLiteral("wav"));
+}
+
+bool is_video_document(const LoadedDocument& document) {
+    return document.loader_tag == "ffmpeg-video";
 }
 
 bool is_mux_document(const LoadedDocument& document) {
@@ -77,14 +84,16 @@ QString find_ffmpeg_executable() {
 #else
     constexpr auto executable_name = "ffmpeg";
 #endif
-    const QDir application_dir(QCoreApplication::applicationDirPath());
-    for (const auto& relative_path : {
-             QString::fromLatin1(executable_name),
-             QStringLiteral("_internal/") + QString::fromLatin1(executable_name),
-         }) {
-        const auto candidate = application_dir.filePath(relative_path);
-        if (QFileInfo(candidate).isFile()) {
-            return candidate;
+    if (QCoreApplication::instance() != nullptr) {
+        const QDir application_dir(QCoreApplication::applicationDirPath());
+        for (const auto& relative_path : {
+                 QString::fromLatin1(executable_name),
+                 QStringLiteral("_internal/") + QString::fromLatin1(executable_name),
+             }) {
+            const auto candidate = application_dir.filePath(relative_path);
+            if (QFileInfo(candidate).isFile()) {
+                return candidate;
+            }
         }
     }
     return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));

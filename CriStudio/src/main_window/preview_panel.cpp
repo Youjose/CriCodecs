@@ -562,7 +562,10 @@ void MainWindow::show_document(const LoadedDocument* document) {
     if (m_doc_extract_raw_button != nullptr) {
         m_doc_extract_raw_button->show();
     }
-    const auto has_auto_preview = is_mux_document(*document) || is_audio_document(*document);
+    const auto has_auto_preview =
+        is_mux_document(*document) ||
+        is_video_document(*document) ||
+        is_audio_document(*document);
     m_document_raw_reader.reset();
     m_document_raw_path.reset();
     if (m_raw_hex != nullptr) {
@@ -635,6 +638,8 @@ void MainWindow::show_document(const LoadedDocument* document) {
     }
     if (is_mux_document(*document)) {
         start_document_mux_preview(*document, 0);
+    } else if (is_video_document(*document)) {
+        start_document_video_preview(*document);
     } else if (is_audio_document(*document)) {
         start_document_audio_preview(*document);
     }
@@ -667,7 +672,12 @@ void MainWindow::prepare_document_raw_tab(const LoadedDocument& document) {
         m_raw_hex->set_patterns(std::move(patterns));
     }
     if (m_preview_tabs != nullptr) {
-        m_preview_tabs->setTabEnabled(0, is_mux_document(document) || is_audio_document(document));
+        m_preview_tabs->setTabEnabled(
+            0,
+            is_mux_document(document) ||
+                is_video_document(document) ||
+                is_audio_document(document)
+        );
         m_preview_tabs->setTabEnabled(1, true);
     }
 }

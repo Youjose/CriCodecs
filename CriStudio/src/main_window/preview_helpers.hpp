@@ -10,6 +10,7 @@ namespace cristudio {
 
 bool is_audio_document(const LoadedDocument& document);
 bool is_direct_audio_document(const LoadedDocument& document);
+bool is_video_document(const LoadedDocument& document);
 bool is_mux_document(const LoadedDocument& document);
 bool is_low_signal_loader_message(const QString& message);
 QString video_preview_unavailable_message();

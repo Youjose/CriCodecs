@@ -24,6 +24,7 @@
 #include "shared/document_sniffer.hpp"
 #include "shared/embedded_document_loader.hpp"
 #include "shared/embedded_preview_helpers.hpp"
+#include "shared/ffmpeg_audio_preview.hpp"
 #include "shared/mux_export_helpers.hpp"
 #include "shared/raw_extract_helpers.hpp"
 #include "shared/video_probe.hpp"
@@ -81,6 +82,28 @@ std::string display_format_for_loader_tag(std::string_view type) {
 bool supports_file_backed_metadata_index(std::string_view type) {
     return type == "cpk" || type == "afs" || type == "acx" || type == "awb" ||
         type == "aix" || type == "usm" || type == "sfd" || type == "sbt";
+}
+
+std::optional<LoadedDocument> probe_generic_media_document(
+    const std::filesystem::path& path,
+    std::string& rejection_reason
+) {
+    auto media = probe_ffmpeg_media_file(path);
+    if (!media) {
+        rejection_reason = "no supported header signature detected";
+        if (media.error().find("requires ffmpeg") != std::string::npos) {
+            rejection_reason += "; ffmpeg is unavailable for generic media probing";
+        }
+        return std::nullopt;
+    }
+
+    auto doc = base_document(path, media->format);
+    doc.loader_tag = media->has_video ? "ffmpeg-video" : "ffmpeg-audio";
+    doc.info.push_back({"Preview", "Validated with ffmpeg"});
+    doc.info.push_back({"Audio stream", bool_text(media->has_audio)});
+    doc.info.push_back({"Video stream", bool_text(media->has_video)});
+    rejection_reason.clear();
+    return doc;
 }
 
 DecryptionKeys preview_keys_for_entry(const EntrySummary& entry, const DecryptionKeys& keys) {
@@ -607,7 +630,11 @@ std::optional<LoadedDocument> load_document_summary(
         return std::nullopt;
     }
 
-    return load_document_summary_with_order(path, sniff_file_format_order(path), rejection_reason, keys);
+    const auto order = sniff_file_format_order(path);
+    if (order.empty()) {
+        return probe_generic_media_document(path, rejection_reason);
+    }
+    return load_document_summary_with_order(path, order, rejection_reason, keys);
 }
 
 std::optional<LoadedDocument> probe_document_summary(
@@ -622,8 +649,7 @@ std::optional<LoadedDocument> probe_document_summary(
 
     const auto order = sniff_file_format_order(path);
     if (order.empty()) {
-        rejection_reason = "no supported header signature detected";
-        return std::nullopt;
+        return probe_generic_media_document(path, rejection_reason);
     }
 
     // These path loaders keep their archive bytes file-backed. Parse their
@@ -907,6 +933,32 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
         return preview;
     }
 
+    constexpr size_t max_image_preview_bytes = 32u * 1024u * 1024u;
+    if (bytes->size() <= max_image_preview_bytes && is_supported_image_payload(*bytes)) {
+        preview.preview_bytes = *bytes;
+        retain_bounded_raw_preview();
+        return preview;
+    }
+
+    if (auto media = probe_ffmpeg_media_bytes(*bytes)) {
+        retain_bounded_raw_preview();
+        if (media->has_video) {
+            VideoPreview video;
+            video.video_bytes = std::move(*bytes);
+            video.file_suffix = ".bin";
+            video.format = std::move(media->format);
+            video.note = entry.name + " - validated with ffmpeg";
+            preview.video = std::move(video);
+        } else if (media->has_audio) {
+            if (auto audio = ffmpeg_audio_preview_from_bytes(*bytes)) {
+                preview.audio = std::move(*audio);
+            } else {
+                preview.message = audio.error();
+            }
+        }
+        return preview;
+    }
+
     if (entry.source_format == "USM" && !entry.has_nested_source) {
         cricodecs::usm::UsmReader usm;
         if (auto loaded = usm.load(entry.source_path); loaded && entry.source_index < usm.streams().size()) {
@@ -923,11 +975,6 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
                 preview.message = "stream payload is not directly decodable; USM masking state is unknown until key-recovery or codec validation provides evidence";
             }
         }
-    }
-
-    constexpr size_t max_image_preview_bytes = 32u * 1024u * 1024u;
-    if (bytes->size() <= max_image_preview_bytes && likely_image_entry(entry.name, *bytes)) {
-        preview.preview_bytes = *bytes;
     }
 
     if (preview.message.empty()) {

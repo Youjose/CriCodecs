@@ -3,11 +3,13 @@
 #include "preview_helpers.hpp"
 #include "ui_helpers.hpp"
 #include "../path_text.hpp"
+#include "../shared/document_preview_router.hpp"
 
 #include <QAudioOutput>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QImage>
 #include <QLabel>
 #include <QMediaPlayer>
@@ -23,13 +25,72 @@
 #include <QVideoWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtConcurrentRun>
 
 #include <algorithm>
+#include <exception>
 #include <filesystem>
 #include <system_error>
+#include <typeinfo>
 #include <utility>
 
 namespace cristudio {
+
+void MainWindow::start_document_video_preview(const LoadedDocument& document) {
+    if (m_preview_running || !is_video_document(document)) {
+        return;
+    }
+
+    m_current_preview_entry = std::nullopt;
+    set_preview_entry_actions_visible(false);
+    if (m_toggle_preview_action != nullptr) {
+        m_toggle_preview_action->setChecked(true);
+    }
+    if (m_preview_panel_button != nullptr) {
+        m_preview_panel_button->setChecked(true);
+    }
+    toggle_preview_panel();
+    show_preview_document(document);
+
+    const auto request_id = m_preview_request_id;
+    show_pending_media_preview(QStringLiteral("Loading video preview..."));
+    append_log(QStringLiteral("Video preview started [%1]: %2")
+        .arg(request_id)
+        .arg(path_to_qstring(document.path)));
+
+    m_preview_running = true;
+    m_preview_watcher->setFuture(QtConcurrent::run([document, request_id] {
+        const auto stage = QStringLiteral("validating the video stream with ffmpeg");
+        try {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            if (auto video = build_direct_video_preview(document)) {
+                result.video = std::move(*video);
+            } else {
+                result.message = utf8_to_qstring(video.error());
+            }
+            return result;
+        } catch (const std::exception& error) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            result.message = QStringLiteral("Video preview failed while %1: %2 [%3]")
+                .arg(
+                    stage,
+                    QString::fromLocal8Bit(error.what()),
+                    QString::fromLatin1(typeid(error).name())
+                );
+            return result;
+        } catch (...) {
+            PreviewResult result;
+            result.request_id = request_id;
+            result.document = document;
+            result.message = QStringLiteral("Video preview failed while %1 with an unknown exception").arg(stage);
+            return result;
+        }
+    }));
+}
 
 void prepare_video_preview_for_playback(VideoPreview& video) {
     if (!video.playable_path.empty() || video.video_bytes.empty()) {

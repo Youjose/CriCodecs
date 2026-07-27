@@ -154,6 +154,7 @@ private:
     void show_preview_document(const LoadedDocument& document);
     void clear_preview_panel();
     void start_document_audio_preview(const LoadedDocument& document);
+    void start_document_video_preview(const LoadedDocument& document);
     void start_document_mux_preview(const LoadedDocument& document, int audio_choice = 0);
     void configure_audio_preview(const AudioPreview& audio);
     void configure_video_preview(const VideoPreview& video);
