@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/embedded_document_loader.hpp"
 
 #include "modules/aax/aax_browse.hpp"
@@ -63,9 +64,10 @@ EntrySummary nested_sourced_entry(EntrySummary entry, const EntrySummary& outer_
 void fix_embedded_source_info(LoadedDocument& doc, const EntrySummary& entry, uint64_t byte_size) {
     doc.display_name = entry.name;
     doc.file_size = byte_size;
-    doc.info.insert(doc.info.begin(), {"Archive entry", entry.name});
-    doc.info.insert(doc.info.begin() + 1, {"Source archive", generic_path(entry.source_path)});
+    doc.info.insert(doc.info.begin(), {cristudio::i18n::translate_utf8("Shared.EmbeddedDocumentLoader", "Archive entry"), entry.name});
+    doc.info.insert(doc.info.begin() + 1, {cristudio::i18n::translate_utf8("Shared.EmbeddedDocumentLoader", "Source archive"), generic_path(entry.source_path)});
     for (auto& row : doc.info) {
+        // Metadata field identifier emitted by the native summary; never translate the comparison.
         if (row.name == "Size") {
             row.value = byte_count(byte_size);
             break;
@@ -130,7 +132,7 @@ std::optional<LoadedDocument> summarize_embedded_bytes(
     auto order = sniff_embedded_format_order(bytes, entry.name, entry.type, entry.source_format, entry.nested_source_format);
 
     if (order.empty()) {
-        rejection_reason = "no embedded supported header signature detected";
+        rejection_reason = cristudio::i18n::translate_utf8("Shared.EmbeddedDocumentLoader", "no embedded supported header signature detected");
         return std::nullopt;
     }
 

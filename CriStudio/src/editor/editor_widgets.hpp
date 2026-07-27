@@ -25,6 +25,7 @@ protected:
 [[nodiscard]] QLabel* dim_label(QString text, QWidget* parent);
 [[nodiscard]] QLabel* value_label(QString text, QWidget* parent);
 void add_editor_start_tab(QTabWidget* tabs);
+void retranslate_editor_start_tab(QTabWidget* tabs);
 void remove_editor_tab(QTabWidget* tabs, QWidget* widget);
 
 } // namespace cristudio

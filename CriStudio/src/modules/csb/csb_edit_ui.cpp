@@ -2,6 +2,7 @@
 
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -61,10 +62,10 @@ QWidget* directory_picker_row(QDialog& dialog, QLineEdit& edit) {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
     layout->addWidget(&edit, 1);
-    auto* browse = new QPushButton(QStringLiteral("Browse"), row);
+    auto* browse = new QPushButton(QCoreApplication::translate("Csb.CsbEditUi", "Browse"), row);
     layout->addWidget(browse, 0);
     QObject::connect(browse, &QPushButton::clicked, &dialog, [&dialog, &edit] {
-        const auto selected = QFileDialog::getExistingDirectory(&dialog, QStringLiteral("Choose extracted CSB source folder"), edit.text());
+        const auto selected = QFileDialog::getExistingDirectory(&dialog, QCoreApplication::translate("Csb.CsbEditUi", "Choose extracted CSB source folder"), edit.text());
         if (!selected.isEmpty()) {
             edit.setText(selected);
         }
@@ -79,14 +80,14 @@ QWidget* save_picker_row(QDialog& dialog, QLineEdit& edit) {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
     layout->addWidget(&edit, 1);
-    auto* browse = new QPushButton(QStringLiteral("Browse"), row);
+    auto* browse = new QPushButton(QCoreApplication::translate("Csb.CsbEditUi", "Browse"), row);
     layout->addWidget(browse, 0);
     QObject::connect(browse, &QPushButton::clicked, &dialog, [&dialog, &edit] {
         const auto selected = QFileDialog::getSaveFileName(
             &dialog,
-            QStringLiteral("Choose CSB build output"),
+            QCoreApplication::translate("Csb.CsbEditUi", "Choose CSB build output"),
             edit.text(),
-            QStringLiteral("CRI CSB (*.csb);;All files (*)")
+            QCoreApplication::translate("Csb.CsbEditUi", "CRI CSB (*.csb);;All files (*)")
         );
         if (!selected.isEmpty()) {
             edit.setText(selected);
@@ -102,7 +103,7 @@ std::expected<std::optional<DirectoryBuildConfig>, QString> choose_directory_bui
     QString title
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("CSB Folder Builder"));
+    dialog.setWindowTitle(QCoreApplication::translate("Csb.CsbEditUi", "CSB Folder Builder"));
     dialog.setMinimumWidth(540);
 
     auto* layout = new QVBoxLayout(&dialog);
@@ -110,26 +111,26 @@ std::expected<std::optional<DirectoryBuildConfig>, QString> choose_directory_bui
     form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     layout->addLayout(form);
 
-    auto* target_label = value_label(QStringLiteral("CSB directory rebuild"), &dialog);
+    auto* target_label = value_label(QCoreApplication::translate("Csb.CsbEditUi", "CSB directory rebuild"), &dialog);
     target_label->setMinimumWidth(200);
-    form->addRow(QStringLiteral("Target"), target_label);
+    form->addRow(QCoreApplication::translate("Csb.CsbEditUi", "Target"), target_label);
 
     auto* source_edit = new QLineEdit(&dialog);
-    form->addRow(QStringLiteral("Source folder"), directory_picker_row(dialog, *source_edit));
+    form->addRow(QCoreApplication::translate("Csb.CsbEditUi", "Source folder"), directory_picker_row(dialog, *source_edit));
 
     auto* output_edit = new QLineEdit(&dialog);
     output_edit->setText(safe_output_name(build_output_base_name(std::move(title)), QStringLiteral(".csb")));
-    form->addRow(QStringLiteral("Output"), save_picker_row(dialog, *output_edit));
+    form->addRow(QCoreApplication::translate("Csb.CsbEditUi", "Output"), save_picker_row(dialog, *output_edit));
 
     auto* details = dim_label(
-        QStringLiteral("The native builder recurses through the folder, uses relative paths as stream names, and supports the payload types accepted by CsbContainer."),
+        QCoreApplication::translate("Csb.CsbEditUi", "The native builder recurses through the folder, uses relative paths as stream names, and supports the payload types accepted by CsbContainer."),
         &dialog
     );
     details->setWordWrap(true);
     form->addRow(QString{}, details);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Build"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Csb.CsbEditUi", "Build"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -142,10 +143,10 @@ std::expected<std::optional<DirectoryBuildConfig>, QString> choose_directory_bui
     config.input_dir = path_from_qstring(source_edit->text().trimmed());
     config.output_path = path_from_qstring(output_edit->text().trimmed());
     if (config.input_dir.empty()) {
-        return std::unexpected(QStringLiteral("Choose a CSB source folder."));
+        return std::unexpected(QCoreApplication::translate("Csb.CsbEditUi", "Choose a CSB source folder."));
     }
     if (config.output_path.empty()) {
-        return std::unexpected(QStringLiteral("Choose an output path."));
+        return std::unexpected(QCoreApplication::translate("Csb.CsbEditUi", "Choose an output path."));
     }
     return std::optional<DirectoryBuildConfig>(std::move(config));
 }

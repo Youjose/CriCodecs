@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/utf/utf_common.hpp"
 
 #include "shared/document_helpers.hpp"
@@ -106,9 +107,9 @@ std::string data_probe_text(std::span<const uint8_t> bytes) {
         return "empty";
     }
     if (auto format = embedded_format_probe(bytes); !format.empty()) {
-        return "looks like " + format;
+        return cristudio::i18n::translate_utf8("Utf.UtfCommon", "looks like ") + format;
     }
-    return "binary data";
+    return cristudio::i18n::translate_utf8("Utf.UtfCommon", "binary data");
 }
 
 std::string value_text(const cricodecs::utf::UtfTable& utf, uint32_t row, uint32_t col) {
@@ -199,7 +200,7 @@ std::expected<std::vector<uint8_t>, std::string> extract_cell_data(
 ) {
     const auto row_col = row_col_from_source_index(utf, source_index);
     if (!row_col) {
-        return std::unexpected("UTF source index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Utf.UtfCommon", "UTF source index is out of range"));
     }
 
     const auto [row, col] = *row_col;

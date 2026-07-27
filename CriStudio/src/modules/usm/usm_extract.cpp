@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/usm/usm_extract.hpp"
 
 #include "shared/document_extract_helpers.hpp"
@@ -32,7 +33,7 @@ bool extract_sbt_sidecars(
         return false;
     }
 
-    const auto label = entry.name.empty() ? std::string("SBT subtitles") : entry.name;
+    const auto label = entry.name.empty() ? std::string(cristudio::i18n::translate_utf8("Usm.UsmExtract", "SBT subtitles")) : entry.name;
     const auto base = output_dir / without_extension(safe_relative_path(entry.name.empty() ? "subtitles.sbt" : entry.name));
     const auto write_bytes = [&](std::filesystem::path path, std::span<const uint8_t> payload, std::string_view output_label) {
         if (options.stop_token.stop_requested()) {
@@ -69,16 +70,16 @@ bool extract_sbt_sidecars(
         }
     };
 
-    write_bytes(with_extension(base, ".sbt"), bytes, label + " raw SBT");
+    write_bytes(with_extension(base, ".sbt"), bytes, label + cristudio::i18n::translate_utf8("Usm.UsmExtract", " raw SBT"));
     if (options.stop_token.stop_requested()) {
         report.canceled = true;
         return true;
     }
     if (auto source = cricodecs::usm::sbt_to_subtitle_source_text(bytes)) {
-        write_text(with_stem_suffix(base, "_source", ".txt"), *source, label + " source text");
+        write_text(with_stem_suffix(base, "_source", ".txt"), *source, label + cristudio::i18n::translate_utf8("Usm.UsmExtract", " source text"));
     } else {
         ++report.total;
-        add_report_failure(report, label + " source text", source.error(), options);
+        add_report_failure(report, label + cristudio::i18n::translate_utf8("Usm.UsmExtract", " source text"), source.error(), options);
     }
     if (options.stop_token.stop_requested()) {
         report.canceled = true;
@@ -93,7 +94,7 @@ bool extract_sbt_sidecars(
             write_text(
                 with_stem_suffix(base, "_lang" + number(language_id), ".srt"),
                 srt,
-                label + " SRT language " + number(language_id)
+                label + cristudio::i18n::translate_utf8("Usm.UsmExtract", " SRT language ") + number(language_id)
             );
         }
     } else {

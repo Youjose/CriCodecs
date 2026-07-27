@@ -3,6 +3,7 @@
 #include "editor/table_item_helpers.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QTableWidget>
 
 namespace cristudio::modules::acx {
@@ -23,12 +24,12 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::acx::Ac
     table->clear();
     table->setColumnCount(6);
     table->setHorizontalHeaderLabels({
-        QStringLiteral("Index"),
-        QStringLiteral("Type"),
-        QStringLiteral("Table Row"),
-        QStringLiteral("Offset"),
-        QStringLiteral("Size"),
-        QStringLiteral("Suggested Path")
+        QCoreApplication::translate("Acx.AcxEditUi", "Index"),
+        QCoreApplication::translate("Acx.AcxEditUi", "Type"),
+        QCoreApplication::translate("Acx.AcxEditUi", "Table Row"),
+        QCoreApplication::translate("Acx.AcxEditUi", "Offset"),
+        QCoreApplication::translate("Acx.AcxEditUi", "Size"),
+        QCoreApplication::translate("Acx.AcxEditUi", "Suggested Path")
     });
     table->setRowCount(static_cast<int>(acx.entry_count()));
     for (const auto& entry : acx.entries()) {

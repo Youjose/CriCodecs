@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "document_loader.hpp"
 
 #include "modules/aax/aax_browse.hpp"
@@ -61,21 +62,21 @@ namespace cristudio {
 namespace {
 
 std::string display_format_for_loader_tag(std::string_view type) {
-    if (type == "cpk") return "CPK archive";
-    if (type == "csb") return "CSB cue archive";
-    if (type == "acb") return "ACB cue sheet";
-    if (type == "awb") return "AWB audio bank";
-    if (type == "usm") return "USM/SofDec stream";
-    if (type == "sfd") return "SFD/SofDec movie";
-    if (type == "sbt") return "USM SBT subtitles";
-    if (type == "afs") return "AFS archive";
-    if (type == "aax") return "AAX audio wrapper";
-    if (type == "aix") return "AIX audio container";
-    if (type == "acx") return "ACX archive";
-    if (type == "adx") return "ADX audio";
-    if (type == "hca") return "HCA audio";
-    if (type == "cvm") return "CVM image";
-    if (type == "utf") return "UTF table";
+    if (type == "cpk") return cristudio::i18n::translate_utf8("DocumentLoader", "CPK archive");
+    if (type == "csb") return cristudio::i18n::translate_utf8("DocumentLoader", "CSB cue archive");
+    if (type == "acb") return cristudio::i18n::translate_utf8("DocumentLoader", "ACB cue sheet");
+    if (type == "awb") return cristudio::i18n::translate_utf8("DocumentLoader", "AWB audio bank");
+    if (type == "usm") return cristudio::i18n::translate_utf8("DocumentLoader", "USM/SofDec stream");
+    if (type == "sfd") return cristudio::i18n::translate_utf8("DocumentLoader", "SFD/SofDec movie");
+    if (type == "sbt") return cristudio::i18n::translate_utf8("DocumentLoader", "USM SBT subtitles");
+    if (type == "afs") return cristudio::i18n::translate_utf8("DocumentLoader", "AFS archive");
+    if (type == "aax") return cristudio::i18n::translate_utf8("DocumentLoader", "AAX audio wrapper");
+    if (type == "aix") return cristudio::i18n::translate_utf8("DocumentLoader", "AIX audio container");
+    if (type == "acx") return cristudio::i18n::translate_utf8("DocumentLoader", "ACX archive");
+    if (type == "adx") return cristudio::i18n::translate_utf8("DocumentLoader", "ADX audio");
+    if (type == "hca") return cristudio::i18n::translate_utf8("DocumentLoader", "HCA audio");
+    if (type == "cvm") return cristudio::i18n::translate_utf8("DocumentLoader", "CVM image");
+    if (type == "utf") return cristudio::i18n::translate_utf8("DocumentLoader", "UTF table");
     return std::string(type);
 }
 
@@ -90,18 +91,19 @@ std::optional<LoadedDocument> probe_generic_media_document(
 ) {
     auto media = probe_ffmpeg_media_file(path);
     if (!media) {
-        rejection_reason = "no supported header signature detected";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
+        // Machine-readable fragment from the FFmpeg probe error; never translate.
         if (media.error().find("requires ffmpeg") != std::string::npos) {
-            rejection_reason += "; ffmpeg is unavailable for generic media probing";
+            rejection_reason += cristudio::i18n::translate_utf8("DocumentLoader", "; ffmpeg is unavailable for generic media probing");
         }
         return std::nullopt;
     }
 
     auto doc = base_document(path, media->format);
     doc.loader_tag = media->has_video ? "ffmpeg-video" : "ffmpeg-audio";
-    doc.info.push_back({"Preview", "Validated with ffmpeg"});
-    doc.info.push_back({"Audio stream", bool_text(media->has_audio)});
-    doc.info.push_back({"Video stream", bool_text(media->has_video)});
+    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Preview"), cristudio::i18n::translate_utf8("DocumentLoader", "Validated with ffmpeg")});
+    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Audio stream"), bool_text(media->has_audio)});
+    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Video stream"), bool_text(media->has_video)});
     rejection_reason.clear();
     return doc;
 }
@@ -135,7 +137,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_entry_bytes(
     if (auto audio = audio_preview_from_bytes(fallback, bytes, preview_keys, stop_token)) {
         return audio;
     }
-    return std::unexpected(reason.empty() ? "audio stream is not directly decodable" : reason);
+    return std::unexpected(reason.empty() ? cristudio::i18n::translate_utf8("DocumentLoader", "audio stream is not directly decodable") : reason);
 }
 
 bool is_archive_like_document(const LoadedDocument& document) {
@@ -170,7 +172,7 @@ std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> decoded
     if (auto audio = audio_preview_from_entry_bytes(entry, bytes, keys, stop_token)) {
         return std::make_pair(std::move(audio->wav_bytes), std::string(".wav"));
     } else if (is_audio_entry(entry)) {
-        return std::unexpected("audio decode failed: " + audio.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "audio decode failed: ") + audio.error());
     }
     return std::make_pair(std::move(bytes), std::string{});
 }
@@ -180,7 +182,7 @@ std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> decoded
     const DecryptionKeys& keys,
     std::stop_token stop_token
 ) {
-    if (is_direct_audio_format(document.format)) {
+    if (is_direct_audio_format(document_format_id(document))) {
         auto audio = build_audio_preview(document, keys);
         if (!audio) {
             return std::unexpected(audio.error());
@@ -222,10 +224,11 @@ void extract_document_into_report(
         const auto archive_label = document.display_name.empty() ? filename_of(document.path) : document.display_name;
         add_report_message(
             report,
-            "Extracting archive " + archive_label + " (" + std::to_string(document.entries.size()) + " entries)",
+            cristudio::i18n::translate_utf8("DocumentLoader", "Extracting archive ") + archive_label + " (" + std::to_string(document.entries.size()) + " entries)",
             options
         );
-        if (mode == ExtractionMode::Decoded && options.include_mux_outputs && is_mux_document_format(document.format)) {
+        if (mode == ExtractionMode::Decoded && options.include_mux_outputs &&
+            is_mux_document_format(document_format_id(document))) {
             if (extraction_canceled(report, options)) {
                 return;
             }
@@ -244,15 +247,15 @@ void extract_document_into_report(
                     if (extraction_canceled(report, options)) {
                         return;
                     }
-                    add_report_failure(report, label, "mux output unavailable: " + written.error(), options);
+                    add_report_failure(report, label, cristudio::i18n::translate_utf8("DocumentLoader", "mux output unavailable: ") + written.error(), options);
                 } else {
-                    add_report_success(report, output_path, label + " mux output", options);
+                    add_report_success(report, output_path, label + cristudio::i18n::translate_utf8("DocumentLoader", " mux output"), options);
                 }
             } else {
                 if (extraction_canceled(report, options)) {
                     return;
                 }
-                add_report_failure(report, label, "mux output unavailable: " + mux.error(), options);
+                add_report_failure(report, label, cristudio::i18n::translate_utf8("DocumentLoader", "mux output unavailable: ") + mux.error(), options);
             }
         }
         for (const auto& entry : document.entries) {
@@ -266,7 +269,7 @@ void extract_document_into_report(
         }
         add_report_message(
             report,
-            "Finished archive " + archive_label + " (" + std::to_string(document.entries.size()) + " entries)",
+            cristudio::i18n::translate_utf8("DocumentLoader", "Finished archive ") + archive_label + " (" + std::to_string(document.entries.size()) + " entries)",
             options
         );
         return;
@@ -275,7 +278,7 @@ void extract_document_into_report(
     ++report.total;
     const auto label = document.display_name.empty() ? filename_of(document.path) : document.display_name;
     std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> payload =
-        std::unexpected("extraction was not started");
+        std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "extraction was not started"));
     if (mode == ExtractionMode::Raw) {
         auto bytes = read_binary_file(document.path, options.stop_token);
         if (!bytes) {
@@ -350,7 +353,7 @@ void extract_entry_into_report(
             const auto nested_label = label.empty() ? nested_doc->format : std::string(label);
             add_report_message(
                 report,
-                "Extracting nested archive " + nested_label + " (" + std::to_string(nested_doc->entries.size()) + " entries)",
+                cristudio::i18n::translate_utf8("DocumentLoader", "Extracting nested archive ") + nested_label + " (" + std::to_string(nested_doc->entries.size()) + " entries)",
                 options
             );
             for (const auto& nested_entry : nested_doc->entries) {
@@ -372,7 +375,7 @@ void extract_entry_into_report(
             }
             add_report_message(
                 report,
-                "Finished nested archive " + nested_label + " (" + std::to_string(nested_doc->entries.size()) + " entries)",
+                cristudio::i18n::translate_utf8("DocumentLoader", "Finished nested archive ") + nested_label + " (" + std::to_string(nested_doc->entries.size()) + " entries)",
                 options
             );
             return;
@@ -381,7 +384,7 @@ void extract_entry_into_report(
 
     ++report.total;
     std::expected<std::pair<std::vector<uint8_t>, std::string>, std::string> payload =
-        std::unexpected("extraction was not started");
+        std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "extraction was not started"));
     if (mode == ExtractionMode::Raw) {
         if (auto raw = raw_extract_transform(std::move(*bytes), keys); raw) {
             payload = std::make_pair(std::move(*raw), std::string{});
@@ -452,7 +455,7 @@ std::optional<LoadedDocument> load_document_summary_with_order(
     const DecryptionKeys& keys
 ) {
     if (order.empty()) {
-        rejection_reason = "no supported header signature detected";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
         return std::nullopt;
     }
 
@@ -507,7 +510,7 @@ std::optional<LoadedDocument> load_document_summary_with_order(
                 }
                 return modules::usm::summarize(path, reader, usm_video_format_probe);
             } else {
-                rejection_reason = "USM: " + result.error();
+                rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "USM: ") + result.error();
             }
         } else if (type == "sfd") {
             if (auto doc = call_with_reason([&](std::string& reason) {
@@ -519,7 +522,7 @@ std::optional<LoadedDocument> load_document_summary_with_order(
                     );
                 }, rejection_reason, "SFD")) return doc;
         } else if (type == "sbt") {
-            auto bytes = cricodecs::io::read_file_bytes(path, "SBT load failed");
+            auto bytes = cricodecs::io::read_file_bytes(path, cristudio::i18n::translate_utf8("DocumentLoader", "SBT load failed"));
             if (!bytes) {
                 rejection_reason = bytes.error();
                 continue;
@@ -552,7 +555,7 @@ std::optional<LoadedDocument> load_document_summary_with_order(
             if (auto result = aix.load(path); result) {
                 return modules::aix::summarize(path, aix);
             } else {
-                rejection_reason = "AIX: " + result.error();
+                rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "AIX: ") + result.error();
             }
         } else if (type == "acx") {
             if (auto doc = call_with_reason([&](std::string& reason) {
@@ -605,12 +608,20 @@ std::optional<LoadedDocument> load_document_summary_with_order(
     }
 
     if (rejection_reason.empty()) {
-        rejection_reason = "no supported CRI loader accepted the file";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported CRI loader accepted the file");
     }
     return std::nullopt;
 }
 
 } // namespace
+
+std::string localized_document_format(const LoadedDocument& document) {
+    if (document.loader_tag.empty()) {
+        return document.format;
+    }
+    auto localized = display_format_for_loader_tag(document.loader_tag);
+    return localized == document.loader_tag ? document.format : localized;
+}
 
 std::expected<std::vector<uint8_t>, std::string> raw_extract_bytes(
     std::span<const uint8_t> bytes,
@@ -626,7 +637,7 @@ std::optional<LoadedDocument> load_document_summary(
 ) {
     rejection_reason.clear();
     if (!std::filesystem::is_regular_file(path)) {
-        rejection_reason = "not a regular file";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "not a regular file");
         return std::nullopt;
     }
 
@@ -643,7 +654,7 @@ std::optional<LoadedDocument> probe_document_summary(
 ) {
     rejection_reason.clear();
     if (!std::filesystem::is_regular_file(path)) {
-        rejection_reason = "not a regular file";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "not a regular file");
         return std::nullopt;
     }
 
@@ -670,7 +681,7 @@ std::optional<LoadedDocument> probe_document_summary(
     auto doc = base_document(path, display_format_for_loader_tag(order.front()));
     doc.loader_tag = order.front();
     doc.summary_loaded = false;
-    doc.info.push_back({"Status", "Load on selection"});
+    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Status"), cristudio::i18n::translate_utf8("DocumentLoader", "Load on selection")});
     return doc;
 }
 
@@ -715,7 +726,7 @@ std::optional<LoadedDocument> load_embedded_entry_summary(
     }
 
     if (bytes->empty()) {
-        rejection_reason = "entry is empty";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "entry is empty");
         return std::nullopt;
     }
 
@@ -724,7 +735,7 @@ std::optional<LoadedDocument> load_embedded_entry_summary(
         attach_nested_sources(*doc, entry);
     }
     if (!doc && rejection_reason.empty()) {
-        rejection_reason = "embedded entry is not a supported preview format";
+        rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "embedded entry is not a supported preview format");
     }
     return doc;
 }
@@ -755,8 +766,8 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     const DecryptionKeys& keys,
     std::stop_token stop_token
 ) {
-    if (!is_mux_document_format(document.format)) {
-        return std::unexpected("mux preview is only available for USM/SFD documents");
+    if (!is_mux_document_format(document_format_id(document))) {
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "mux preview is only available for USM/SFD documents"));
     }
 
     std::optional<VideoPreview> video;
@@ -764,7 +775,7 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     std::vector<MuxSubtitleChoice> subtitle_choices;
     for (const auto& entry : document.entries) {
         if (stop_token.stop_requested()) {
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "extraction canceled"));
         }
         if (!entry.has_source) {
             continue;
@@ -799,9 +810,9 @@ std::expected<MuxPreview, std::string> build_mux_preview(
                 for (const auto& [language_id, srt] : *tracks) {
                     subtitle_choices.push_back({
                         .name = entry.name.empty()
-                            ? "SBT subtitles language " + number(language_id)
-                            : entry.name + " language " + number(language_id),
-                        .detail = "language " + number(language_id),
+                            ? cristudio::i18n::translate_utf8("DocumentLoader", "SBT subtitles language ") + number(language_id)
+                            : entry.name + cristudio::i18n::translate_utf8("DocumentLoader", " language ") + number(language_id),
+                        .detail = cristudio::i18n::translate_utf8("DocumentLoader", "language ") + number(language_id),
                         .source_index = entry.source_index,
                         .language_id = language_id,
                         .srt_text = srt,
@@ -812,7 +823,7 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     }
 
     if (!video) {
-        return std::unexpected("mux preview could not find a video stream");
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "mux preview could not find a video stream"));
     }
 
     MuxPreview preview;
@@ -850,14 +861,14 @@ std::expected<MuxPreview, std::string> build_mux_preview(
     const auto& audio_entry = *audio_entries[selected];
     auto audio_bytes = extract_embedded_entry_payload(audio_entry, keys, EmbeddedPayloadPurpose::Playback);
     if (stop_token.stop_requested()) {
-        return std::unexpected("extraction canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "extraction canceled"));
     }
     if (!audio_bytes) {
-        return std::unexpected("audio stream extract failed: " + audio_bytes.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "audio stream extract failed: ") + audio_bytes.error());
     }
     auto audio = audio_preview_from_entry_bytes(audio_entry, *audio_bytes, keys, stop_token);
     if (!audio) {
-        return std::unexpected("audio stream preview failed: " + audio.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "audio stream preview failed: ") + audio.error());
     }
     preview.audio_wav_bytes = std::move(audio->wav_bytes);
     if (preview.audio_wav_bytes.empty() && !audio->playable_path.empty()) {
@@ -870,7 +881,7 @@ std::expected<MuxPreview, std::string> build_mux_preview(
         }
     }
     if (preview.audio_wav_bytes.empty()) {
-        return std::unexpected("audio stream did not produce WAV data");
+        return std::unexpected(cristudio::i18n::translate_utf8("DocumentLoader", "audio stream did not produce WAV data"));
     }
     preview.audio_label = audio_entry.name;
     return preview;
@@ -884,7 +895,7 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
         return preview;
     }
     if (bytes->empty()) {
-        preview.message = "entry is empty";
+        preview.message = cristudio::i18n::translate_utf8("DocumentLoader", "entry is empty");
         return preview;
     }
 
@@ -947,7 +958,7 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
             video.video_bytes = std::move(*bytes);
             video.file_suffix = ".bin";
             video.format = std::move(media->format);
-            video.note = entry.name + " - validated with ffmpeg";
+            video.note = entry.name + cristudio::i18n::translate_utf8("DocumentLoader", " - validated with ffmpeg");
             preview.video = std::move(video);
         } else if (media->has_audio) {
             if (auto audio = ffmpeg_audio_preview_from_bytes(*bytes)) {
@@ -972,13 +983,13 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
                 id.stream_id == cricodecs::usm::UsmChunkType::SFA ||
                 id.stream_id == cricodecs::usm::UsmChunkType::AHX
             ) {
-                preview.message = "stream payload is not directly decodable; USM masking state is unknown until key-recovery or codec validation provides evidence";
+                preview.message = cristudio::i18n::translate_utf8("DocumentLoader", "stream payload is not directly decodable; USM masking state is unknown until key-recovery or codec validation provides evidence");
             }
         }
     }
 
     if (preview.message.empty()) {
-        preview.message = reason.empty() ? "unknown preview format; showing hex" : reason;
+        preview.message = reason.empty() ? cristudio::i18n::translate_utf8("DocumentLoader", "unknown preview format; showing hex") : reason;
     }
     retain_bounded_raw_preview();
     return preview;
@@ -993,7 +1004,7 @@ ExtractionReport extract_targets(
 ) {
     ExtractionReport report;
     if (extraction_canceled(report, options)) {
-        add_report_message(report, "Extraction canceled before it started", options);
+        add_report_message(report, cristudio::i18n::translate_utf8("DocumentLoader", "Extraction canceled before it started"), options);
         return report;
     }
     std::error_code filesystem_error;
@@ -1001,7 +1012,7 @@ ExtractionReport extract_targets(
     if (filesystem_error) {
         report.total = targets.size();
         report.failed = targets.size();
-        auto message = "Failed to create extraction directory: " + filesystem_error.message();
+        auto message = cristudio::i18n::translate_utf8("DocumentLoader", "Failed to create extraction directory: ") + filesystem_error.message();
         report.messages.push_back(message);
         if (options.event_callback) {
             options.event_callback(ExtractionEvent{
@@ -1037,7 +1048,7 @@ ExtractionReport extract_targets(
     if (report.canceled) {
         add_report_message(
             report,
-            "Extraction canceled after " + std::to_string(report.extracted) + " output(s)",
+            cristudio::i18n::translate_utf8("DocumentLoader", "Extraction canceled after ") + std::to_string(report.extracted) + " output(s)",
             options
         );
     }

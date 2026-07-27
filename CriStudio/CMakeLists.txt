@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent LinguistTools)
 include(GNUInstallDirs)
 
 set(CRISTUDIO_VERSION "1.0.4" CACHE STRING "CriStudio release version")
@@ -130,6 +130,7 @@ qt_add_executable(CriStudio
     src/shared/aac_key_recovery.cpp
     src/shared/mux_export_helpers.cpp
     src/shared/raw_extract_helpers.cpp
+    src/shared/translation_manager.cpp
     src/shared/video_probe.cpp
 )
 
@@ -186,6 +187,24 @@ qt_add_resources(CriStudio cristudio_branding
     PREFIX "/branding"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
     FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/cristudio.png"
+)
+
+set(cristudio_translation_sources
+    "${CMAKE_CURRENT_SOURCE_DIR}/i18n/cristudio_en.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/i18n/cristudio_es.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/i18n/cristudio_ja.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/i18n/cristudio_zh_CN.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/i18n/cristudio_zh_TW.ts"
+)
+qt_add_translations(
+    TARGETS CriStudio
+    SOURCE_TARGETS CriStudio
+    TS_FILES ${cristudio_translation_sources}
+    MERGE_QT_TRANSLATIONS
+    QT_TRANSLATION_CATALOGS qtbase qtmultimedia
+    LUPDATE_TARGET cristudio_update_translations
+    LRELEASE_TARGET cristudio_release_translations
+    RESOURCE_PREFIX "/i18n"
 )
 
 target_link_libraries(CriStudio PRIVATE CriCodecs Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets Qt6::Concurrent)

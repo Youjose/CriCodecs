@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/hca_key_recovery.hpp"
 
 #include "shared/embedded_entry_extractor.hpp"
@@ -34,6 +35,7 @@ struct CollectedHca {
 
 [[nodiscard]] bool text_supports_hca(std::string text) {
     const auto lowered = lower_ascii(std::move(text));
+    // Format-identification tokens used for matching; never translate.
     return lowered == "hca" ||
         lowered.find("hca audio") != std::string::npos ||
         lowered.find(".hca") != std::string::npos;
@@ -91,15 +93,15 @@ struct CollectedHca {
         auto bytes = awb.file_data(index);
         if (!bytes) {
             return std::unexpected(
-                std::string(context) + ": AWB entry " + std::to_string(index)
-                + " could not be read: " + bytes.error());
+                std::string(context) + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", ": AWB entry ") + std::to_string(index)
+                + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", " could not be read: ") + bytes.error());
         }
         if (!is_hca(*bytes)) {
             continue;
         }
         if (auto appended = append_hca(
                 *bytes,
-                std::string(context) + ": AWB entry " + std::to_string(index),
+                std::string(context) + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", ": AWB entry ") + std::to_string(index),
                 awb.subkey(),
                 group,
                 sources);
@@ -136,15 +138,15 @@ struct CollectedHca {
         auto bytes = usm.extract_stream(static_cast<uint32_t>(index));
         if (!bytes) {
             return std::unexpected(
-                std::string(context) + ": USM audio stream " + std::to_string(index)
-                + " could not be extracted: " + bytes.error());
+                std::string(context) + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", ": USM audio stream ") + std::to_string(index)
+                + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", " could not be extracted: ") + bytes.error());
         }
         if (!is_hca(*bytes)) {
             continue;
         }
         if (auto appended = append_hca(
                 *bytes,
-                std::string(context) + ": USM audio stream " + std::to_string(index),
+                std::string(context) + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", ": USM audio stream ") + std::to_string(index),
                 0,
                 group,
                 sources);
@@ -198,8 +200,8 @@ struct CollectedHca {
         auto bytes = cpk.file_bytes(index);
         if (!bytes) {
             return std::unexpected(
-                std::string(context) + ": CPK entry " + std::to_string(index)
-                + " could not be read: " + bytes.error());
+                std::string(context) + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", ": CPK entry ") + std::to_string(index)
+                + cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", " could not be read: ") + bytes.error());
         }
         const auto& entry = cpk.files()[index];
         const auto entry_context = std::string(context) + ": " + entry.full_path().generic_string();
@@ -221,6 +223,7 @@ struct CollectedHca {
         ? source.path.filename().generic_string()
         : source.name;
 
+    // Loader tags are machine-readable routing identifiers; never translate.
     if (tag == "cpk" || tag.find("cpk archive") != std::string::npos) {
         auto cpk = cricodecs::cpk::Cpk::load(source.path);
         if (!cpk) {
@@ -280,14 +283,14 @@ struct CollectedHca {
     if (!bytes) {
         return std::unexpected(entry.name + ": " + bytes.error());
     }
-    const auto context = entry.name.empty() ? std::string("selected entry") : entry.name;
+    const auto context = entry.name.empty() ? std::string(cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", "selected entry")) : entry.name;
     return append_payload(*bytes, context, entry.hca_subkey, group, sources);
 }
 
 } // namespace
 
 bool supports_hca_key_recovery(const LoadedDocument& document) {
-    if (text_supports_hca(document.loader_tag + " " + document.format)) {
+    if (text_supports_hca(std::string(document_format_id(document)))) {
         return true;
     }
     return std::ranges::any_of(document.entries, entry_tree_supports_hca);
@@ -302,7 +305,7 @@ HcaRecoverySource make_hca_recovery_source(const LoadedDocument& document) {
         .kind = HcaRecoverySource::Kind::Document,
         .path = document.path,
         .name = document.display_name,
-        .format = document.format,
+        .format = std::string(document_format_id(document)),
         .loader_tag = document.loader_tag,
     };
 }
@@ -353,14 +356,14 @@ std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
     }
     for (size_t index = 0; index < inputs.size(); ++index) {
         if (options.stop_token.stop_requested()) {
-            return std::unexpected("HCA key recovery canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", "HCA key recovery canceled"));
         }
         const auto& input = inputs[index];
         const auto appended = input.kind == HcaRecoverySource::Kind::Document
             ? append_document(input, next_group, collected)
             : append_entry(input.entry, extractor, keys, next_group++, collected);
         if (!appended) {
-            return std::unexpected("HCA key recovery failed: " + appended.error());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", "HCA key recovery failed: ") + appended.error());
         }
         if (options.progress) {
             options.progress(cricodecs::hca::KeyRecoveryProgress{
@@ -373,7 +376,7 @@ std::expected<HcaKeyRecoveryResult, std::string> recover_hca_key(
     }
 
     if (collected.empty()) {
-        return std::unexpected("No cipher type-56 HCA streams were found in the selected files.");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.HcaKeyRecovery", "No cipher type-56 HCA streams were found in the selected files."));
     }
     std::vector<cricodecs::hca::RecoverySource> sources;
     sources.reserve(collected.size());

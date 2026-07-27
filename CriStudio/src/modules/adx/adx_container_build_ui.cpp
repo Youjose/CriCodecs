@@ -2,6 +2,7 @@
 
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -62,14 +63,14 @@ QWidget* save_picker_row(QDialog& dialog, QLineEdit& edit) {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
     layout->addWidget(&edit, 1);
-    auto* browse = new QPushButton(QStringLiteral("Browse"), row);
+    auto* browse = new QPushButton(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Browse"), row);
     layout->addWidget(browse, 0);
     QObject::connect(browse, &QPushButton::clicked, &dialog, [&dialog, &edit] {
         const auto selected = QFileDialog::getSaveFileName(
             &dialog,
-            QStringLiteral("Choose build output"),
+            QCoreApplication::translate("Adx.AdxContainerBuildUi", "Choose build output"),
             edit.text(),
-            QStringLiteral("CRI ADX containers (*.aax *.aix);;All files (*)")
+            QCoreApplication::translate("Adx.AdxContainerBuildUi", "CRI ADX containers (*.aax *.aix);;All files (*)")
         );
         if (!selected.isEmpty()) {
             edit.setText(selected);
@@ -103,19 +104,19 @@ std::expected<std::vector<std::vector<std::filesystem::path>>, QString> parse_so
         }
     }
     if (segments.empty()) {
-        return std::unexpected(QStringLiteral("Choose at least one ADX source."));
+        return std::unexpected(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Choose at least one ADX source."));
     }
     if (!aix_target) {
         for (const auto& segment : segments) {
             if (segment.size() != 1) {
-                return std::unexpected(QStringLiteral("AAX expects one ADX file per line."));
+                return std::unexpected(QCoreApplication::translate("Adx.AdxContainerBuildUi", "AAX expects one ADX file per line."));
             }
         }
     }
     for (const auto& segment : segments) {
         for (const auto& path : segment) {
             if (!std::filesystem::exists(path)) {
-                return std::unexpected(QStringLiteral("ADX source does not exist: %1").arg(path_to_qstring(path)));
+                return std::unexpected(QCoreApplication::translate("Adx.AdxContainerBuildUi", "ADX source does not exist: %1").arg(path_to_qstring(path)));
             }
         }
     }
@@ -130,7 +131,7 @@ std::expected<std::optional<AdxContainerBuildConfig>, QString> choose_container_
     bool aix_target
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(aix_target ? QStringLiteral("AIX ADX Builder") : QStringLiteral("AAX ADX Builder"));
+    dialog.setWindowTitle(aix_target ? QCoreApplication::translate("Adx.AdxContainerBuildUi", "AIX ADX Builder") : QCoreApplication::translate("Adx.AdxContainerBuildUi", "AAX ADX Builder"));
     dialog.setMinimumWidth(520);
 
     auto* layout = new QVBoxLayout(&dialog);
@@ -138,24 +139,24 @@ std::expected<std::optional<AdxContainerBuildConfig>, QString> choose_container_
     form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     layout->addLayout(form);
 
-    auto* target_label = value_label(aix_target ? QStringLiteral("AIX layered ADX") : QStringLiteral("AAX segmented ADX"), &dialog);
+    auto* target_label = value_label(aix_target ? QCoreApplication::translate("Adx.AdxContainerBuildUi", "AIX layered ADX") : QCoreApplication::translate("Adx.AdxContainerBuildUi", "AAX segmented ADX"), &dialog);
     target_label->setMinimumWidth(180);
-    form->addRow(QStringLiteral("Target"), target_label);
+    form->addRow(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Target"), target_label);
 
     auto* sources_edit = new QPlainTextEdit(&dialog);
     sources_edit->setMinimumWidth(390);
     sources_edit->setMinimumHeight(110);
     sources_edit->setPlaceholderText(aix_target
-        ? QStringLiteral("segment0_layer0.adx; segment0_layer1.adx")
+        ? QCoreApplication::translate("Adx.AdxContainerBuildUi", "segment0_layer0.adx; segment0_layer1.adx")
         : QStringLiteral("segment0.adx\nsegment1.adx"));
-    form->addRow(QStringLiteral("Segments"), sources_edit);
+    form->addRow(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Segments"), sources_edit);
 
     auto* source_buttons = new QWidget(&dialog);
     auto* source_button_layout = new QHBoxLayout(source_buttons);
     source_button_layout->setContentsMargins(0, 0, 0, 0);
     source_button_layout->setSpacing(6);
-    auto* add_sources_button = new QPushButton(aix_target ? QStringLiteral("Add Segment") : QStringLiteral("Add ADX Files"), source_buttons);
-    auto* clear_sources_button = new QPushButton(QStringLiteral("Clear"), source_buttons);
+    auto* add_sources_button = new QPushButton(aix_target ? QCoreApplication::translate("Adx.AdxContainerBuildUi", "Add Segment") : QCoreApplication::translate("Adx.AdxContainerBuildUi", "Add ADX Files"), source_buttons);
+    auto* clear_sources_button = new QPushButton(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Clear"), source_buttons);
     source_button_layout->addWidget(add_sources_button, 0);
     source_button_layout->addWidget(clear_sources_button, 0);
     source_button_layout->addStretch(1);
@@ -164,9 +165,9 @@ std::expected<std::optional<AdxContainerBuildConfig>, QString> choose_container_
     QObject::connect(add_sources_button, &QPushButton::clicked, &dialog, [&dialog, sources_edit, aix_target] {
         const auto selected = QFileDialog::getOpenFileNames(
             &dialog,
-            aix_target ? QStringLiteral("Choose ADX layer files for one AIX segment") : QStringLiteral("Choose AAX ADX segment files"),
+            aix_target ? QCoreApplication::translate("Adx.AdxContainerBuildUi", "Choose ADX layer files for one AIX segment") : QCoreApplication::translate("Adx.AdxContainerBuildUi", "Choose AAX ADX segment files"),
             QString{},
-            QStringLiteral("ADX audio (*.adx *.ahx);;All files (*)")
+            QCoreApplication::translate("Adx.AdxContainerBuildUi", "ADX audio (*.adx *.ahx);;All files (*)")
         );
         if (selected.isEmpty()) {
             return;
@@ -180,16 +181,16 @@ std::expected<std::optional<AdxContainerBuildConfig>, QString> choose_container_
     });
     QObject::connect(clear_sources_button, &QPushButton::clicked, sources_edit, &QPlainTextEdit::clear);
 
-    auto* loop_last_check = new QCheckBox(QStringLiteral("Mark last AAX segment as loop"), &dialog);
+    auto* loop_last_check = new QCheckBox(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Mark last AAX segment as loop"), &dialog);
     loop_last_check->setVisible(!aix_target);
     form->addRow(QString{}, loop_last_check);
 
     auto* output_edit = new QLineEdit(&dialog);
     output_edit->setText(safe_output_name(build_output_base_name(std::move(title)), aix_target ? QStringLiteral(".aix") : QStringLiteral(".aax")));
-    form->addRow(QStringLiteral("Output"), save_picker_row(dialog, *output_edit));
+    form->addRow(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Output"), save_picker_row(dialog, *output_edit));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Build"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Build"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -205,7 +206,7 @@ std::expected<std::optional<AdxContainerBuildConfig>, QString> choose_container_
 
     auto output_path = path_from_qstring(output_edit->text().trimmed());
     if (output_path.empty()) {
-        return std::unexpected(QStringLiteral("Choose an output path."));
+        return std::unexpected(QCoreApplication::translate("Adx.AdxContainerBuildUi", "Choose an output path."));
     }
 
     if (aix_target) {

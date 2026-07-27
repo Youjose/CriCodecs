@@ -3,6 +3,7 @@
 #include "modules/utf/utf_edit.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QHeaderView>
 #include <QStringList>
@@ -164,9 +165,9 @@ QString utf_value_text(const cricodecs::utf::Value& value) {
         } else if constexpr (std::is_same_v<T, std::string>) {
             return utf8_to_qstring(item);
         } else if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
-            return QStringLiteral("%1 bytes").arg(static_cast<qulonglong>(item.size()));
+            return QCoreApplication::translate("Utf.UtfEditUi", "%1 bytes").arg(static_cast<qulonglong>(item.size()));
         } else if constexpr (std::is_same_v<T, DataRef>) {
-            return QStringLiteral("offset 0x%1, %2 bytes")
+            return QCoreApplication::translate("Utf.UtfEditUi", "offset 0x%1, %2 bytes")
                 .arg(item.offset, 0, 16)
                 .arg(item.size);
         } else if constexpr (std::is_same_v<T, GUID>) {
@@ -207,7 +208,7 @@ void populate_utf_tables(const cricodecs::utf::UtfTable& utf, UtfTableWidgets wi
             widgets.grid->setRowCount(static_cast<int>(utf.column_count()));
             widgets.grid->setColumnCount(3);
             widgets.grid->setHorizontalHeaderLabels({
-                QStringLiteral("Field"), QStringLiteral("Type"), QStringLiteral("Value")
+                QCoreApplication::translate("Utf.UtfEditUi", "Field"), QCoreApplication::translate("Utf.UtfEditUi", "Type"), QCoreApplication::translate("Utf.UtfEditUi", "Value")
             });
             for (uint32_t col = 0; col < utf.column_count(); ++col) {
                 const auto& column = utf.column(col);
@@ -278,17 +279,17 @@ void populate_utf_tables(const cricodecs::utf::UtfTable& utf, UtfTableWidgets wi
 
 QString utf_table_preview(const cricodecs::utf::UtfTable& table, size_t max_rows, int max_value_chars) {
     QStringList lines;
-    lines.push_back(QStringLiteral("Table: %1").arg(utf8_to_qstring(std::string(table.table_name()))));
-    lines.push_back(QStringLiteral("Rows: %1, columns: %2, row width: %3, data alignment: %4")
+    lines.push_back(QCoreApplication::translate("Utf.UtfEditUi", "Table: %1").arg(utf8_to_qstring(std::string(table.table_name()))));
+    lines.push_back(QCoreApplication::translate("Utf.UtfEditUi", "Rows: %1, columns: %2, row width: %3, data alignment: %4")
         .arg(static_cast<qulonglong>(table.row_count()))
         .arg(static_cast<qulonglong>(table.column_count()))
         .arg(table.row_width())
         .arg(table.data_alignment()));
-    lines.push_back(QStringLiteral("Version: %1, table size: %2")
+    lines.push_back(QCoreApplication::translate("Utf.UtfEditUi", "Version: %1, table size: %2")
         .arg(table.version())
         .arg(static_cast<qulonglong>(table.table_size())));
     if (table.text_encoding()) {
-        lines.push_back(QStringLiteral("Text encoding: %1").arg(utf8_to_qstring(*table.text_encoding())));
+        lines.push_back(QCoreApplication::translate("Utf.UtfEditUi", "Text encoding: %1").arg(utf8_to_qstring(*table.text_encoding())));
     }
 
     QStringList columns;
@@ -300,7 +301,7 @@ QString utf_table_preview(const cricodecs::utf::UtfTable& table, size_t max_rows
             .arg(utf_type_name(column.type))
             .arg(utf_flag_name(column.flag)));
     }
-    lines.push_back(QStringLiteral("Columns: %1").arg(columns.join(QStringLiteral(" | "))));
+    lines.push_back(QCoreApplication::translate("Utf.UtfEditUi", "Columns: %1").arg(columns.join(QStringLiteral(" | "))));
 
     const auto rows_to_show = std::min<uint32_t>(table.row_count(), static_cast<uint32_t>(max_rows));
     for (uint32_t row = 0; row < rows_to_show; ++row) {
@@ -318,8 +319,11 @@ QString utf_table_preview(const cricodecs::utf::UtfTable& table, size_t max_rows
         lines.push_back(QStringLiteral("[%1] %2").arg(static_cast<qulonglong>(row)).arg(cells.join(QStringLiteral("; "))));
     }
     if (table.row_count() > rows_to_show) {
-        lines.push_back(QStringLiteral("... %1 more row(s)")
-            .arg(static_cast<qulonglong>(table.row_count() - rows_to_show)));
+        lines.push_back(QCoreApplication::translate(
+            "Utf.UtfEditUi",
+            "... %n more row(s)",
+            nullptr,
+            static_cast<int>(table.row_count() - rows_to_show)));
     }
     return lines.join(QLatin1Char('\n'));
 }
@@ -333,10 +337,10 @@ std::expected<std::vector<uint8_t>, QString> parse_hex_bytes(QString text, size_
         text = text.mid(2);
     }
     if (text.size() % 2 != 0) {
-        return std::unexpected(QStringLiteral("hex byte text must contain an even number of digits"));
+        return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "hex byte text must contain an even number of digits"));
     }
     if (fixed_size != 0 && static_cast<size_t>(text.size() / 2) != fixed_size) {
-        return std::unexpected(QStringLiteral("hex value must be exactly %1 bytes").arg(fixed_size));
+        return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "hex value must be exactly %1 bytes").arg(fixed_size));
     }
     std::vector<uint8_t> bytes;
     bytes.reserve(static_cast<size_t>(text.size() / 2));
@@ -344,7 +348,7 @@ std::expected<std::vector<uint8_t>, QString> parse_hex_bytes(QString text, size_
         bool ok = false;
         const auto byte = text.mid(i, 2).toUInt(&ok, 16);
         if (!ok || byte > 0xFF) {
-            return std::unexpected(QStringLiteral("hex byte text contains invalid digits"));
+            return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "hex byte text contains invalid digits"));
         }
         bytes.push_back(static_cast<uint8_t>(byte));
     }
@@ -360,52 +364,52 @@ std::expected<cricodecs::utf::Value, QString> parse_utf_value(
     switch (type) {
     case ColumnType::UInt8: {
         const auto value = text.toUInt(&ok, 0);
-        if (!ok || value > std::numeric_limits<uint8_t>::max()) return std::unexpected(QStringLiteral("value must fit in u8"));
+        if (!ok || value > std::numeric_limits<uint8_t>::max()) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in u8"));
         return static_cast<uint8_t>(value);
     }
     case ColumnType::SInt8: {
         const auto value = text.toInt(&ok, 0);
-        if (!ok || value < std::numeric_limits<int8_t>::min() || value > std::numeric_limits<int8_t>::max()) return std::unexpected(QStringLiteral("value must fit in s8"));
+        if (!ok || value < std::numeric_limits<int8_t>::min() || value > std::numeric_limits<int8_t>::max()) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in s8"));
         return static_cast<int8_t>(value);
     }
     case ColumnType::UInt16: {
         const auto value = text.toUInt(&ok, 0);
-        if (!ok || value > std::numeric_limits<uint16_t>::max()) return std::unexpected(QStringLiteral("value must fit in u16"));
+        if (!ok || value > std::numeric_limits<uint16_t>::max()) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in u16"));
         return static_cast<uint16_t>(value);
     }
     case ColumnType::SInt16: {
         const auto value = text.toInt(&ok, 0);
-        if (!ok || value < std::numeric_limits<int16_t>::min() || value > std::numeric_limits<int16_t>::max()) return std::unexpected(QStringLiteral("value must fit in s16"));
+        if (!ok || value < std::numeric_limits<int16_t>::min() || value > std::numeric_limits<int16_t>::max()) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in s16"));
         return static_cast<int16_t>(value);
     }
     case ColumnType::UInt32: {
         const auto value = text.toUInt(&ok, 0);
-        if (!ok) return std::unexpected(QStringLiteral("value must fit in u32"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in u32"));
         return static_cast<uint32_t>(value);
     }
     case ColumnType::SInt32: {
         const auto value = text.toInt(&ok, 0);
-        if (!ok) return std::unexpected(QStringLiteral("value must fit in s32"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in s32"));
         return static_cast<int32_t>(value);
     }
     case ColumnType::UInt64: {
         const auto value = text.toULongLong(&ok, 0);
-        if (!ok) return std::unexpected(QStringLiteral("value must fit in u64"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in u64"));
         return static_cast<uint64_t>(value);
     }
     case ColumnType::SInt64: {
         const auto value = text.toLongLong(&ok, 0);
-        if (!ok) return std::unexpected(QStringLiteral("value must fit in s64"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must fit in s64"));
         return static_cast<int64_t>(value);
     }
     case ColumnType::Float: {
         const auto value = text.toFloat(&ok);
-        if (!ok) return std::unexpected(QStringLiteral("value must be a float"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must be a float"));
         return value;
     }
     case ColumnType::Double: {
         const auto value = text.toDouble(&ok);
-        if (!ok) return std::unexpected(QStringLiteral("value must be a double"));
+        if (!ok) return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "value must be a double"));
         return value;
     }
     case ColumnType::String:
@@ -423,7 +427,7 @@ std::expected<cricodecs::utf::Value, QString> parse_utf_value(
         return guid;
     }
     }
-    return std::unexpected(QStringLiteral("unsupported UTF column type"));
+    return std::unexpected(QCoreApplication::translate("Utf.UtfEditUi", "unsupported UTF column type"));
 }
 
 UtfEditResult rename_table(cricodecs::utf::UtfTable& utf, QString name) {
@@ -431,8 +435,8 @@ UtfEditResult rename_table(cricodecs::utf::UtfTable& utf, QString name) {
     if (name.isEmpty()) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Rename failed"),
-            .error = QStringLiteral("UTF table name cannot be empty.")
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Rename failed"),
+            .error = QCoreApplication::translate("Utf.UtfEditUi", "UTF table name cannot be empty.")
         };
     }
 
@@ -440,14 +444,14 @@ UtfEditResult rename_table(cricodecs::utf::UtfTable& utf, QString name) {
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Rename failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Rename failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Renamed UTF table to %1.").arg(name),
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Renamed UTF table to %1.").arg(name),
         .title = name
     };
 }
@@ -464,7 +468,7 @@ UtfEditResult set_cell_value(cricodecs::utf::UtfTable& utf, int row, int column,
     if (!value) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Value edit failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Value edit failed"),
             .error = value.error()
         };
     }
@@ -472,14 +476,14 @@ UtfEditResult set_cell_value(cricodecs::utf::UtfTable& utf, int row, int column,
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Value edit failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Value edit failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Changed UTF value at row %1, column %2.").arg(row).arg(column)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Changed UTF value at row %1, column %2.").arg(row).arg(column)
     };
 }
 
@@ -499,7 +503,7 @@ UtfEditResult edit_grid_item(cricodecs::utf::UtfTable& utf, int row, int column,
     }
     auto result = set_cell_value(utf, row, column, std::move(text));
     if (result.changed) {
-        result.change_message = QStringLiteral("Changed UTF grid value at row %1, column %2.").arg(row).arg(column);
+        result.change_message = QCoreApplication::translate("Utf.UtfEditUi", "Changed UTF grid value at row %1, column %2.").arg(row).arg(column);
     }
     result.refresh = !result.error.isEmpty();
     return result;
@@ -517,14 +521,14 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
                 .error = utf8_to_qstring(result.error())
             };
         }
         return {
             .handled = true,
             .changed = true,
-            .change_message = QStringLiteral("Renamed UTF column %1.").arg(col)
+            .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Renamed UTF column %1.").arg(col)
         };
     }
 
@@ -534,8 +538,8 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
-                .error = QStringLiteral("Unsupported UTF column type.")
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
+                .error = QCoreApplication::translate("Utf.UtfEditUi", "Unsupported UTF column type.")
             };
         }
         auto result = modules::utf::set_column_type(utf, col, *type);
@@ -543,14 +547,14 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
                 .error = utf8_to_qstring(result.error())
             };
         }
         return {
             .handled = true,
             .changed = true,
-            .change_message = QStringLiteral("Changed UTF column %1 type. Existing values were cleared for that column.").arg(col)
+            .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Changed UTF column %1 type. Existing values were cleared for that column.").arg(col)
         };
     }
 
@@ -560,8 +564,8 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
-                .error = QStringLiteral("Flags must be name, name|row, name|default, or name|default|row.")
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
+                .error = QCoreApplication::translate("Utf.UtfEditUi", "Flags must be name, name|row, name|default, or name|default|row.")
             };
         }
         auto result = modules::utf::set_column_flag(utf, col, *flag);
@@ -569,14 +573,14 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
                 .error = utf8_to_qstring(result.error())
             };
         }
         return {
             .handled = true,
             .changed = true,
-            .change_message = QStringLiteral("Changed UTF column %1 flags.").arg(col)
+            .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Changed UTF column %1 flags.").arg(col)
         };
     }
 
@@ -587,7 +591,7 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema default edit failed"),
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema default edit failed"),
                 .error = value.error()
             };
         }
@@ -596,14 +600,14 @@ UtfEditResult edit_schema_item(cricodecs::utf::UtfTable& utf, int row, int colum
             return {
                 .handled = true,
                 .refresh = true,
-                .warning_title = QStringLiteral("Schema edit failed"),
+                .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Schema edit failed"),
                 .error = utf8_to_qstring(result.error())
             };
         }
         return {
             .handled = true,
             .changed = true,
-            .change_message = QStringLiteral("Changed UTF default value for column %1.").arg(col)
+            .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Changed UTF default value for column %1.").arg(col)
         };
     }
 
@@ -615,7 +619,7 @@ UtfEditResult add_row_action(cricodecs::utf::UtfTable& utf) {
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Added UTF row %1.").arg(row)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Added UTF row %1.").arg(row)
     };
 }
 
@@ -627,14 +631,14 @@ UtfEditResult remove_row(cricodecs::utf::UtfTable& utf, int row) {
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Remove row failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Remove row failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Removed UTF row %1.").arg(row)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Removed UTF row %1.").arg(row)
     };
 }
 
@@ -648,7 +652,7 @@ UtfEditResult add_column(cricodecs::utf::UtfTable& utf, QString name, QString ty
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Added UTF column %1.").arg(name)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Added UTF column %1.").arg(name)
     };
 }
 
@@ -661,14 +665,14 @@ UtfEditResult remove_column(cricodecs::utf::UtfTable& utf, int column) {
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Remove column failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Remove column failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Removed UTF column %1.").arg(name)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Removed UTF column %1.").arg(name)
     };
 }
 
@@ -680,14 +684,14 @@ UtfEditResult rename_column(cricodecs::utf::UtfTable& utf, int column, QString n
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Rename column failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Rename column failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Renamed UTF column %1 to %2.").arg(column).arg(name)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Renamed UTF column %1 to %2.").arg(column).arg(name)
     };
 }
 
@@ -703,22 +707,22 @@ UtfEditResult replace_binary_cell(
         utf.column(static_cast<uint32_t>(column)).type != cricodecs::utf::ColumnType::VLData) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("No binary cell selected"),
-            .error = QStringLiteral("Select a UTF binary/VLData cell first.")
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "No binary cell selected"),
+            .error = QCoreApplication::translate("Utf.UtfEditUi", "Select a UTF binary/VLData cell first.")
         };
     }
     auto result = modules::utf::set_value(utf, static_cast<uint32_t>(row), static_cast<uint32_t>(column), std::move(bytes));
     if (!result) {
         return {
             .handled = true,
-            .warning_title = QStringLiteral("Replacement failed"),
+            .warning_title = QCoreApplication::translate("Utf.UtfEditUi", "Replacement failed"),
             .error = utf8_to_qstring(result.error())
         };
     }
     return {
         .handled = true,
         .changed = true,
-        .change_message = QStringLiteral("Replaced UTF binary cell row %1 column %2.").arg(row).arg(column)
+        .change_message = QCoreApplication::translate("Utf.UtfEditUi", "Replaced UTF binary cell row %1 column %2.").arg(row).arg(column)
     };
 }
 

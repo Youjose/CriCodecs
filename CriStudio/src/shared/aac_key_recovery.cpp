@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/aac_key_recovery.hpp"
 
 #include "acb_container.hpp"
@@ -27,6 +28,7 @@ namespace {
 [[nodiscard]] std::expected<cricodecs::awb::KeyRecoveryResult, std::string> recover_document(
     const AacRecoverySource& source) {
     const auto tag = lower_ascii(source.loader_tag.empty() ? source.format : source.loader_tag);
+    // Loader tags are machine-readable routing identifiers; never translate.
     if (tag == "acb" || tag.find("acb cue") != std::string::npos) {
         auto acb = cricodecs::acb::AcbContainer::load(source.path);
         if (!acb) {
@@ -41,7 +43,7 @@ namespace {
         }
         return awb->recover_aac_key();
     }
-    return std::unexpected("selected document is not an ACB or AWB");
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "selected document is not an ACB or AWB"));
 }
 
 [[nodiscard]] std::expected<cricodecs::awb::KeyRecoveryResult, std::string> recover_entry_group(
@@ -58,7 +60,7 @@ namespace {
         payloads.reserve(indices.size());
         for (const uint32_t index : indices) {
             if (index >= acb->waveform_count() || acb->waveform(index).encode_type != 19) {
-                return std::unexpected("selected ACB waveform is not AAC/M4A");
+                return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "selected ACB waveform is not AAC/M4A"));
             }
             auto bytes = acb->extract_waveform_data(index);
             if (!bytes) {
@@ -80,13 +82,14 @@ namespace {
         }
         return awb->recover_aac_key(indices);
     }
-    return std::unexpected("selected entry is not an ACB/AWB AAC source");
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "selected entry is not an ACB/AWB AAC source"));
 }
 
 } // namespace
 
 bool supports_aac_key_recovery(const LoadedDocument& document) {
-    const auto tag = lower_ascii(document.loader_tag.empty() ? document.format : document.loader_tag);
+    const auto tag = lower_ascii(std::string(document_format_id(document)));
+    // Loader tags are machine-readable routing identifiers; never translate.
     if (tag == "acb" || tag.find("acb cue") != std::string::npos) {
         return std::ranges::any_of(document.entries, [](const EntrySummary& entry) {
             return mentions_aac(entry.type) || mentions_aac(entry.name);
@@ -119,7 +122,7 @@ AacRecoverySource make_aac_recovery_source(const LoadedDocument& document) {
         .kind = AacRecoverySource::Kind::Document,
         .path = document.path,
         .name = document.display_name,
-        .format = document.format,
+        .format = std::string(document_format_id(document)),
         .loader_tag = document.loader_tag,
     };
 }
@@ -144,10 +147,10 @@ std::expected<AacKeyRecoveryResult, std::string> recover_aac_key(
     const auto append = [&](const std::expected<cricodecs::awb::KeyRecoveryResult, std::string>& recovered)
         -> std::expected<void, std::string> {
         if (!recovered) {
-            return std::unexpected("AAC key recovery failed: " + recovered.error());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "AAC key recovery failed: ") + recovered.error());
         }
         if (recovered->candidates.empty()) {
-            return std::unexpected("AAC key recovery failed: no candidates were returned");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "AAC key recovery failed: no candidates were returned"));
         }
         for (const auto& candidate : recovered->candidates) {
             auto& aggregate = aggregated[candidate.key];
@@ -210,9 +213,9 @@ std::expected<AacKeyRecoveryResult, std::string> recover_aac_key(
     }
     if (candidates.empty()) {
         if (!aggregated.empty()) {
-            return std::unexpected("AAC key recovery failed: selected sources do not share one effective key candidate");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "AAC key recovery failed: selected sources do not share one effective key candidate"));
         }
-        return std::unexpected("No encrypted AAC/M4A sources were selected.");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.AacKeyRecovery", "No encrypted AAC/M4A sources were selected."));
     }
     std::ranges::sort(candidates, [](const auto& left, const auto& right) {
         if (left.validated_sources != right.validated_sources) {

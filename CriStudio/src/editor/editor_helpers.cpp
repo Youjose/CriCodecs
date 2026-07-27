@@ -18,6 +18,7 @@
 #include "sfd_container.hpp"
 #include "usm_container.hpp"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -53,17 +54,71 @@ QString editor_label(std::string_view text, QString fallback) {
     return label.isEmpty() ? std::move(fallback) : label;
 }
 
-QString editor_format_label(const EditorOpenRequest& request) {
+QString editor_format_id(const EditorOpenRequest& request) {
     if (!request.detected_format.empty()) {
-        return editor_label(request.detected_format, QStringLiteral("Unknown format"));
+        return editor_label(request.detected_format, {});
     }
     if (request.document) {
-        return editor_label(request.document->format, QStringLiteral("Unknown format"));
+        return editor_label(
+            request.document->loader_tag.empty()
+                ? request.document->format
+                : request.document->loader_tag,
+            {}
+        );
     }
     if (request.entry) {
-        return editor_label(request.entry->type.empty() ? request.entry->source_format : request.entry->type, QStringLiteral("Archive entry"));
+        return editor_label(
+            request.entry->source_format.empty()
+                ? request.entry->type
+                : request.entry->source_format,
+            {}
+        );
     }
-    return QStringLiteral("Scratch document");
+    return {};
+}
+
+QString editor_format_label(const EditorOpenRequest& request) {
+    switch (request.scratch_kind) {
+    case EditorOpenRequest::ScratchKind::Utf:
+        return QCoreApplication::translate("Editor.EditorHelpers", "UTF table");
+    case EditorOpenRequest::ScratchKind::Afs:
+        return QCoreApplication::translate("Editor.EditorHelpers", "AFS archive");
+    case EditorOpenRequest::ScratchKind::Awb:
+        return QCoreApplication::translate("Editor.EditorHelpers", "AWB/AFS2 archive");
+    case EditorOpenRequest::ScratchKind::Acx:
+        return QCoreApplication::translate("Editor.EditorHelpers", "ACX archive");
+    case EditorOpenRequest::ScratchKind::Cpk:
+        return QCoreApplication::translate("Editor.EditorHelpers", "CPK archive");
+    case EditorOpenRequest::ScratchKind::AudioEncode:
+        return QCoreApplication::translate("Editor.EditorHelpers", "Audio encode job");
+    case EditorOpenRequest::ScratchKind::MediaBuild:
+        return QCoreApplication::translate("Editor.EditorHelpers", "USM/SFD build job");
+    case EditorOpenRequest::ScratchKind::AaxBuild:
+        return QCoreApplication::translate("Editor.EditorHelpers", "AAX ADX build job");
+    case EditorOpenRequest::ScratchKind::AixBuild:
+        return QCoreApplication::translate("Editor.EditorHelpers", "AIX ADX build job");
+    case EditorOpenRequest::ScratchKind::CsbBuild:
+        return QCoreApplication::translate("Editor.EditorHelpers", "CSB folder build job");
+    case EditorOpenRequest::ScratchKind::CvmScript:
+        return QCoreApplication::translate("Editor.EditorHelpers", "CVM build script");
+    case EditorOpenRequest::ScratchKind::CvmDirectory:
+        return QCoreApplication::translate("Editor.EditorHelpers", "CVM directory");
+    case EditorOpenRequest::ScratchKind::None:
+        break;
+    }
+    if (request.document) {
+        return editor_label(
+            localized_document_format(*request.document),
+            QCoreApplication::translate("Editor.EditorHelpers", "Unknown format")
+        );
+    }
+    if (!request.detected_format.empty()) {
+        return editor_label(request.detected_format, QCoreApplication::translate("Editor.EditorHelpers", "Unknown format"));
+    }
+    if (request.entry) {
+        return editor_label(request.entry->type.empty() ? request.entry->source_format : request.entry->type, QCoreApplication::translate("Editor.EditorHelpers", "Archive entry"));
+    }
+    return QCoreApplication::translate("Editor.EditorHelpers", "Scratch document");
 }
 
 QString safe_output_name(QString name, QString fallback_suffix) {
@@ -110,7 +165,7 @@ QString build_output_base_name(const QString& title) {
 
 QString hex_preview(std::span<const uint8_t> bytes, size_t max_bytes) {
     if (bytes.empty()) {
-        return QStringLiteral("(no bytes)");
+        return QCoreApplication::translate("Editor.EditorHelpers", "(no bytes)");
     }
 
     const auto shown = std::min(bytes.size(), max_bytes);
@@ -132,7 +187,7 @@ QString hex_preview(std::span<const uint8_t> bytes, size_t max_bytes) {
         out += QLatin1Char('\n');
     }
     if (bytes.size() > shown) {
-        out += QStringLiteral("... truncated, %1 total bytes ...\n").arg(static_cast<qulonglong>(bytes.size()));
+        out += QCoreApplication::translate("Editor.EditorHelpers", "... truncated, %1 total bytes ...\n").arg(static_cast<qulonglong>(bytes.size()));
     }
     return out;
 }
@@ -145,18 +200,18 @@ std::string qstring_to_utf8(const QString& text) {
 std::expected<std::vector<uint8_t>, QString> read_file_bytes(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
-        return std::unexpected(QStringLiteral("could not open file"));
+        return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not open file"));
     }
     const auto size = file.tellg();
     if (size < 0) {
-        return std::unexpected(QStringLiteral("could not determine file size"));
+        return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not determine file size"));
     }
     file.seekg(0, std::ios::beg);
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
     if (!bytes.empty()) {
         file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!file) {
-            return std::unexpected(QStringLiteral("could not read file bytes"));
+            return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not read file bytes"));
         }
     }
     return bytes;
@@ -167,13 +222,13 @@ std::expected<void, QString> write_file_bytes(const std::filesystem::path& path,
     if (!path.parent_path().empty()) {
         std::filesystem::create_directories(path.parent_path(), ec);
         if (ec) {
-            return std::unexpected(QStringLiteral("could not create output folder: %1").arg(QString::fromStdString(ec.message())));
+            return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not create output folder: %1").arg(QString::fromStdString(ec.message())));
         }
     }
 
     QSaveFile file(path_to_qstring(path));
     if (!file.open(QIODevice::WriteOnly)) {
-        return std::unexpected(QStringLiteral("could not open output transaction: %1").arg(file.errorString()));
+        return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not open output transaction: %1").arg(file.errorString()));
     }
 
     size_t written = 0;
@@ -189,24 +244,24 @@ std::expected<void, QString> write_file_bytes(const std::filesystem::path& path,
         );
         if (count <= 0) {
             file.cancelWriting();
-            return std::unexpected(QStringLiteral("could not write output transaction: %1").arg(file.errorString()));
+            return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not write output transaction: %1").arg(file.errorString()));
         }
         written += static_cast<size_t>(count);
     }
 
     if (!file.commit()) {
-        return std::unexpected(QStringLiteral("could not commit output transaction: %1").arg(file.errorString()));
+        return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not commit output transaction: %1").arg(file.errorString()));
     }
     return {};
 }
 
 QString archive_kind_name(ArchiveKind kind) {
     switch (kind) {
-    case ArchiveKind::Afs: return QStringLiteral("AFS archive");
-    case ArchiveKind::Awb: return QStringLiteral("AWB/AFS2 archive");
-    case ArchiveKind::Acx: return QStringLiteral("ACX archive");
-    case ArchiveKind::Cpk: return QStringLiteral("CPK archive");
-    case ArchiveKind::Cvm: return QStringLiteral("CVM/ROFS image");
+    case ArchiveKind::Afs: return QCoreApplication::translate("Editor.EditorHelpers", "AFS archive");
+    case ArchiveKind::Awb: return QCoreApplication::translate("Editor.EditorHelpers", "AWB/AFS2 archive");
+    case ArchiveKind::Acx: return QCoreApplication::translate("Editor.EditorHelpers", "ACX archive");
+    case ArchiveKind::Cpk: return QCoreApplication::translate("Editor.EditorHelpers", "CPK archive");
+    case ArchiveKind::Cvm: return QCoreApplication::translate("Editor.EditorHelpers", "CVM/ROFS image");
     case ArchiveKind::None: break;
     }
     return QStringLiteral("Archive");
@@ -214,16 +269,16 @@ QString archive_kind_name(ArchiveKind kind) {
 
 QString transform_kind_name(TransformKind kind) {
     switch (kind) {
-    case TransformKind::AudioEncode: return QStringLiteral("Audio encode job");
-    case TransformKind::MediaBuild: return QStringLiteral("USM/SFD build job");
-    case TransformKind::Adx: return QStringLiteral("ADX/AHX stream");
-    case TransformKind::Hca: return QStringLiteral("HCA stream");
-    case TransformKind::Aax: return QStringLiteral("AAX segmented ADX");
-    case TransformKind::Aix: return QStringLiteral("AIX layered ADX");
-    case TransformKind::Usm: return QStringLiteral("USM/SofDec 2 inspector");
-    case TransformKind::Sfd: return QStringLiteral("SFD/SofDec 1 inspector");
-    case TransformKind::Csb: return QStringLiteral("CSB cue/archive inspector");
-    case TransformKind::Acb: return QStringLiteral("ACB cue sheet inspector");
+    case TransformKind::AudioEncode: return QCoreApplication::translate("Editor.EditorHelpers", "Audio encode job");
+    case TransformKind::MediaBuild: return QCoreApplication::translate("Editor.EditorHelpers", "USM/SFD build job");
+    case TransformKind::Adx: return QCoreApplication::translate("Editor.EditorHelpers", "ADX/AHX stream");
+    case TransformKind::Hca: return QCoreApplication::translate("Editor.EditorHelpers", "HCA stream");
+    case TransformKind::Aax: return QCoreApplication::translate("Editor.EditorHelpers", "AAX segmented ADX");
+    case TransformKind::Aix: return QCoreApplication::translate("Editor.EditorHelpers", "AIX layered ADX");
+    case TransformKind::Usm: return QCoreApplication::translate("Editor.EditorHelpers", "USM/SofDec 2 inspector");
+    case TransformKind::Sfd: return QCoreApplication::translate("Editor.EditorHelpers", "SFD/SofDec 1 inspector");
+    case TransformKind::Csb: return QCoreApplication::translate("Editor.EditorHelpers", "CSB cue/archive inspector");
+    case TransformKind::Acb: return QCoreApplication::translate("Editor.EditorHelpers", "ACB cue sheet inspector");
     case TransformKind::None: break;
     }
     return QStringLiteral("Transform");
@@ -234,10 +289,10 @@ QString cpk_preset_name(cricodecs::cpk::CpkPreset preset) {
     case cricodecs::cpk::CpkPreset::Custom: return QStringLiteral("Custom");
     case cricodecs::cpk::CpkPreset::Id: return QStringLiteral("ID");
     case cricodecs::cpk::CpkPreset::Filename: return QStringLiteral("Filename");
-    case cricodecs::cpk::CpkPreset::FilenameId: return QStringLiteral("Filename + ID");
-    case cricodecs::cpk::CpkPreset::FilenameGroup: return QStringLiteral("Filename + Group");
-    case cricodecs::cpk::CpkPreset::IdGroup: return QStringLiteral("ID + Group");
-    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QStringLiteral("Filename + ID + Group");
+    case cricodecs::cpk::CpkPreset::FilenameId: return QCoreApplication::translate("Editor.EditorHelpers", "Filename + ID");
+    case cricodecs::cpk::CpkPreset::FilenameGroup: return QCoreApplication::translate("Editor.EditorHelpers", "Filename + Group");
+    case cricodecs::cpk::CpkPreset::IdGroup: return QCoreApplication::translate("Editor.EditorHelpers", "ID + Group");
+    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QCoreApplication::translate("Editor.EditorHelpers", "Filename + ID + Group");
     }
     return QStringLiteral("Unknown");
 }
@@ -297,7 +352,7 @@ std::expected<void, QString> extract_archive_bytes(
     case ArchiveKind::None:
         break;
     }
-    return std::unexpected(QStringLiteral("No archive object is available for extraction"));
+    return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "No archive object is available for extraction"));
 }
 
 std::expected<void, QString> transform_decode_to_wav(
@@ -322,7 +377,7 @@ std::expected<void, QString> transform_decode_to_wav(
         return write_file_bytes(output_path, *wav);
     }
 
-    return std::unexpected(QStringLiteral("Decode to WAV is not available for this transform type"));
+    return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "Decode to WAV is not available for this transform type"));
 }
 
 std::expected<void, QString> transform_write_bytes(
@@ -416,7 +471,7 @@ std::expected<void, QString> transform_extract_all(
         std::error_code ec;
         std::filesystem::create_directories(output_dir, ec);
         if (ec) {
-            return std::unexpected(QStringLiteral("could not create output folder: %1").arg(QString::fromStdString(ec.message())));
+            return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "could not create output folder: %1").arg(QString::fromStdString(ec.message())));
         }
         for (uint32_t index = 0; index < aax->segment_count(); ++index) {
             const auto output = output_dir / ("segment_" + std::to_string(index) + ".adx");
@@ -476,7 +531,7 @@ std::expected<void, QString> transform_extract_all(
         }
         return {};
     }
-    return std::unexpected(QStringLiteral("Extract all is not available for this transform type"));
+    return std::unexpected(QCoreApplication::translate("Editor.EditorHelpers", "Extract all is not available for this transform type"));
 }
 
 } // namespace cristudio

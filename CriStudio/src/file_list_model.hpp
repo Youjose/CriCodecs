@@ -18,7 +18,8 @@ public:
         SearchRole,
         NameSortRole,
         SizeSortRole,
-        FilterFormatRole
+        FilterFormatRole,
+        FilterFormatLabelRole
     };
 
     explicit FileListModel(QObject* parent = nullptr);
@@ -35,6 +36,7 @@ public:
     void replace_document(int row, LoadedDocument document);
     void remove_rows(std::vector<int> rows);
     void clear();
+    void retranslate();
 
 private:
     struct Item {

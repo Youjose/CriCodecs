@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/utf/utf_browse.hpp"
 
 #include "modules/utf/utf_common.hpp"
@@ -113,13 +114,13 @@ std::vector<uint32_t> choose_visible_columns(const cricodecs::utf::UtfTable& utf
 } // namespace
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::utf::UtfTable& utf) {
-    auto doc = base_document(path, "UTF table");
-    doc.info.push_back({"Table", std::string(utf.table_name())});
-    doc.info.push_back({"Version", number(utf.version())});
-    doc.info.push_back({"Rows", number(utf.row_count())});
-    doc.info.push_back({"Columns", number(utf.columns().size())});
-    doc.info.push_back({"Row width", byte_count(utf.row_width())});
-    doc.info.push_back({"Table size", byte_count(utf.table_size())});
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Utf.UtfBrowse", "UTF table"));
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Table"), std::string(utf.table_name())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Version"), number(utf.version())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Rows"), number(utf.row_count())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Columns"), number(utf.columns().size())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Row width"), byte_count(utf.row_width())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Table size"), byte_count(utf.table_size())});
 
     const auto column_count = utf.column_count();
     if (utf.row_count() == 0) {
@@ -129,7 +130,7 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::utf
         for (const auto& column : utf.columns()) {
             EntrySummary entry;
             entry.name = column.name;
-            entry.type = "column";
+            entry.type = cristudio::i18n::translate_utf8("Utf.UtfBrowse", "column");
             entry.detail = column_flag_text(column.flag);
             entry.cells = {column.name, column_type_name(column.type), entry.detail};
             doc.entries.push_back(std::move(entry));
@@ -141,7 +142,7 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::utf
     doc.entry_columns.reserve(visible_columns.size() + 1);
     doc.entry_column_types.reserve(visible_columns.size() + 1);
     doc.entry_columns.push_back("Row");
-    doc.entry_column_types.push_back("row");
+    doc.entry_column_types.push_back(cristudio::i18n::translate_utf8("Utf.UtfBrowse", "row"));
     for (const auto col : visible_columns) {
         const auto& column = utf.column(col);
         doc.entry_columns.push_back(column.name);
@@ -153,8 +154,8 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::utf
         const auto label = row_label(utf, row);
         EntrySummary entry;
         entry.name = label;
-        entry.type = "row";
-        entry.detail = number(column_count) + (column_count == 1 ? " field" : " fields");
+        entry.type = cristudio::i18n::translate_utf8("Utf.UtfBrowse", "row");
+        entry.detail = number(column_count) + (column_count == 1 ? cristudio::i18n::translate_utf8("Utf.UtfBrowse", " field") : cristudio::i18n::translate_utf8("Utf.UtfBrowse", " fields"));
         entry.source_path = path;
         entry.source_format = "UTF";
         entry.cells.reserve(visible_columns.size() + 1);

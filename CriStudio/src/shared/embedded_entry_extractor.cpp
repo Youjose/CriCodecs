@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/embedded_entry_extractor.hpp"
 
 #include "modules/utf/utf_common.hpp"
@@ -140,7 +141,7 @@ std::expected<std::vector<uint8_t>, std::string> extract_from_materialized_sourc
         }
         return modules::utf::extract_cell_data(*utf, source_index);
     }
-    return std::unexpected("unsupported nested source: " + std::string(source_format));
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.EmbeddedEntryExtractor", "unsupported nested source: ") + std::string(source_format));
 }
 
 } // namespace
@@ -153,7 +154,7 @@ public:
         EmbeddedPayloadPurpose purpose
     ) {
         if (!entry.has_source) {
-            return std::unexpected("entry has no extractable source");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.EmbeddedEntryExtractor", "entry has no extractable source"));
         }
 
         if (entry.has_nested_source) {
@@ -281,7 +282,7 @@ public:
             }
             return modules::utf::extract_cell_data(**utf, entry.source_index);
         }
-        return std::unexpected("unsupported source archive: " + entry.source_format);
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.EmbeddedEntryExtractor", "unsupported source archive: ") + entry.source_format);
     }
 
 private:

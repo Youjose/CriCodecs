@@ -23,6 +23,7 @@
 #include <vector>
 
 class QAction;
+class QActionGroup;
 class QAudioOutput;
 class QCheckBox;
 class QCloseEvent;
@@ -90,6 +91,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
 private:
     enum class Theme {
@@ -105,6 +107,15 @@ private:
 
     void build_ui();
     void build_menus();
+    void bind_ui_text(
+        QObject* object,
+        const char* property,
+        const char* source,
+        const char* context = "MainWindow.Chrome"
+    );
+    void retranslate_ui();
+    void apply_pending_language();
+    void sync_language_actions();
     void open_files();
     void open_folder();
     void new_utf_editor_document();
@@ -181,6 +192,7 @@ private:
     void show_nested_entry_context_menu(const QPoint& position);
     void show_decryption_keys_panel();
     void build_decryption_keys_window();
+    void retranslate_decryption_keys_window();
     void sync_decryption_key_panel_from_state();
     void update_decryption_key_derived_fields();
     bool read_decryption_key_panel(DecryptionKeys& next);
@@ -351,6 +363,13 @@ private:
         uint64_t request_id = 0;
     };
 
+    struct UiTextBinding {
+        QObject* object = nullptr;
+        const char* property = nullptr;
+        const char* source = nullptr;
+        const char* context = nullptr;
+    };
+
     FileListModel* m_file_model = nullptr;
     QSortFilterProxyModel* m_file_proxy = nullptr;
     EntryTableModel* m_entry_model = nullptr;
@@ -450,6 +469,10 @@ private:
     QAction* m_dark_theme_action = nullptr;
     QAction* m_always_show_access_keys_action = nullptr;
     QAction* m_compact_lists_action = nullptr;
+    QActionGroup* m_language_group = nullptr;
+    QString m_pending_language_code;
+    std::vector<UiTextBinding> m_ui_text_bindings;
+    bool m_retranslate_pending = false;
     Theme m_theme = Theme::Light;
     QDialog* m_decryption_keys_window = nullptr;
     QComboBox* m_key_profile_combo = nullptr;

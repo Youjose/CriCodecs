@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/video_probe.hpp"
 
 #include "h264.hpp"
@@ -66,15 +67,15 @@ std::optional<VideoProbe> probe_ivf_video(std::span<const uint8_t> bytes) {
 
     const std::string fourcc(reinterpret_cast<const char*>(bytes.data() + 8), 4);
     if (fourcc == "VP90") {
-        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = "VP9/IVF video", .frame_count = frame_count};
+        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = cristudio::i18n::translate_utf8("Shared.VideoProbe", "VP9/IVF video"), .frame_count = frame_count};
     }
     if (fourcc == "VP80") {
-        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = "VP8/IVF video", .frame_count = frame_count};
+        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = cristudio::i18n::translate_utf8("Shared.VideoProbe", "VP8/IVF video"), .frame_count = frame_count};
     }
     if (fourcc == "AV01") {
-        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = "AV1/IVF video", .frame_count = frame_count};
+        return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = cristudio::i18n::translate_utf8("Shared.VideoProbe", "AV1/IVF video"), .frame_count = frame_count};
     }
-    return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = "IVF video", .frame_count = frame_count};
+    return VideoProbe{.suffix = ".ivf", .ffmpeg_input_format = "ivf", .format = cristudio::i18n::translate_utf8("Shared.VideoProbe", "IVF video"), .frame_count = frame_count};
 }
 
 std::optional<VideoProbe> probe_h264_video(std::span<const uint8_t> bytes) {
@@ -90,7 +91,7 @@ std::optional<VideoProbe> probe_h264_video(std::span<const uint8_t> bytes) {
     return VideoProbe{
         .suffix = ".h264",
         .ffmpeg_input_format = "h264",
-        .format = "H.264 video",
+        .format = cristudio::i18n::translate_utf8("Shared.VideoProbe", "H.264 video"),
         .frame_rate_n = fps_n,
         .frame_rate_d = fps_d,
         .frame_count = reader.frame_count(),
@@ -105,9 +106,9 @@ std::optional<VideoProbe> probe_mpeg_video(std::span<const uint8_t> bytes) {
     }
 
     const auto suffix = reader.video_type() == cricodecs::video::MpegVideoType::mpeg1 ? ".m1v" : ".m2v";
-    const auto format = reader.video_type() == cricodecs::video::MpegVideoType::mpeg1 ? "MPEG-1 video"
-                      : reader.video_type() == cricodecs::video::MpegVideoType::mpeg2 ? "MPEG-2 video"
-                      : "MPEG video";
+    const auto format = reader.video_type() == cricodecs::video::MpegVideoType::mpeg1 ? cristudio::i18n::translate_utf8("Shared.VideoProbe", "MPEG-1 video")
+                      : reader.video_type() == cricodecs::video::MpegVideoType::mpeg2 ? cristudio::i18n::translate_utf8("Shared.VideoProbe", "MPEG-2 video")
+                      : cristudio::i18n::translate_utf8("Shared.VideoProbe", "MPEG video");
     const auto [fps_n, fps_d] = reader.frame_rate();
     return VideoProbe{
         .suffix = suffix,

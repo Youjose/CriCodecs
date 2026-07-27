@@ -8,6 +8,7 @@
 #include "adx_crypto.hpp"
 #include "cvm_crypto.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractAnimation>
 #include <QAbstractItemView>
 #include <QActionGroup>
@@ -158,7 +159,7 @@ MainWindow::MainWindow(QWidget* parent)
     }
     m_log_file.setFileName(path);
     if (m_log_file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        append_log(QStringLiteral("CriStudio started"));
+        append_log(QCoreApplication::translate("MainWindow.MainWindow", "CriStudio started"));
     }
 }
 
@@ -322,8 +323,8 @@ bool MainWindow::reload_current_document_with_keys() {
     std::string reason;
     auto document = load_document_summary(path_from_qstring(canonical), reason, m_decryption_keys);
     if (!document) {
-        statusBar()->showMessage(QStringLiteral("Reload with key failed: ") + utf8_to_qstring(reason), 6000);
-        append_log(QStringLiteral("Reload with key failed: ") + canonical + QStringLiteral(" (") + utf8_to_qstring(reason) + QStringLiteral(")"));
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.MainWindow", "Reload with key failed: ") + utf8_to_qstring(reason), 6000);
+        append_log(QCoreApplication::translate("MainWindow.MainWindow", "Reload with key failed: ") + canonical + QStringLiteral(" (") + utf8_to_qstring(reason) + QStringLiteral(")"));
         return false;
     }
 
@@ -333,7 +334,7 @@ bool MainWindow::reload_current_document_with_keys() {
         m_file_view->setCurrentIndex(current);
     }
     show_document(m_file_model->document_at(source_row));
-    statusBar()->showMessage(QStringLiteral("Reloaded selected file with current keys"), 3000);
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.MainWindow", "Reloaded selected file with current keys"), 3000);
     return true;
 }
 
@@ -413,11 +414,11 @@ bool MainWindow::ensure_media_backend() {
     connect(m_audio_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
         const auto playing = state == QMediaPlayer::PlayingState;
         m_audio_play_button->setIcon(style()->standardIcon(playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
-        m_audio_play_button->setText(playing ? QStringLiteral("Pause") : QStringLiteral("Play"));
+        m_audio_play_button->setText(playing ? QCoreApplication::translate("MainWindow.MainWindow", "Pause") : QCoreApplication::translate("MainWindow.MainWindow", "Play"));
     });
     connect(m_audio_player, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error, const QString& error) {
         if (m_audio_status_label != nullptr && !error.isEmpty()) {
-            m_audio_status_label->setText(QStringLiteral("Playback error: ") + error);
+            m_audio_status_label->setText(QCoreApplication::translate("MainWindow.MainWindow", "Playback error: ") + error);
         }
     });
     return true;
@@ -436,7 +437,7 @@ bool MainWindow::has_ffmpeg() {
 }
 
 QString MainWindow::ffmpeg_missing_message() const {
-    return QStringLiteral("Preview unavailable: ffmpeg executable not found. Put ffmpeg next to CriStudio or on PATH.");
+    return QCoreApplication::translate("MainWindow.MainWindow", "Preview unavailable: ffmpeg executable not found. Put ffmpeg next to CriStudio or on PATH.");
 }
 
 void MainWindow::append_log(const QString& message) {

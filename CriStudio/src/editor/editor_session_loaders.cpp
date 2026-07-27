@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "editor/editor_session_loaders.hpp"
 
 #include "editor_workspace.hpp"
@@ -57,7 +58,7 @@ TransformEditorLoad try_load_transform_editor_session(
         return load;
     }
 
-    const auto format = editor_format_label(request).toLower();
+    const auto format = editor_format_id(request).toLower();
     const bool has_adx_magic = has_magic(bytes, {0x80, 0x00});
     const bool has_aix_magic = has_ascii_magic(bytes, "AIXF");
     const bool has_usm_magic = has_ascii_magic(bytes, "CRID") || has_ascii_magic(bytes, "SFSH");
@@ -69,9 +70,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.aax = std::move(*loaded);
             load.kind = TransformKind::Aax;
-            push_log(load, QStringLiteral("AAX object loaded for segmented ADX inspection and export."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AAX object loaded for segmented ADX inspection and export."));
         } else {
-            push_log(load, QStringLiteral("AAX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AAX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -86,9 +87,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (result) {
             load.usm = std::move(loaded);
             load.kind = TransformKind::Usm;
-            push_log(load, QStringLiteral("USM object loaded for chunk/stream inspection and extraction."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "USM object loaded for chunk/stream inspection and extraction."));
         } else {
-            push_log(load, QStringLiteral("USM editor load failed: %1").arg(utf8_to_qstring(result.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "USM editor load failed: %1").arg(utf8_to_qstring(result.error())));
         }
         return load;
     }
@@ -98,9 +99,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.sfd = std::move(*loaded);
             load.kind = TransformKind::Sfd;
-            push_log(load, QStringLiteral("SFD object loaded for stream inspection, extraction, and rebuild."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "SFD object loaded for stream inspection, extraction, and rebuild."));
         } else {
-            push_log(load, QStringLiteral("SFD editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "SFD editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -110,9 +111,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.csb = std::move(*loaded);
             load.kind = TransformKind::Csb;
-            push_log(load, QStringLiteral("CSB object loaded for section/stream inspection, extraction, and rebuild."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CSB object loaded for section/stream inspection, extraction, and rebuild."));
         } else {
-            push_log(load, QStringLiteral("CSB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CSB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -124,9 +125,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.acb = std::move(*loaded);
             load.kind = TransformKind::Acb;
-            push_log(load, QStringLiteral("ACB object loaded for cue/waveform inspection and extraction."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ACB object loaded for cue/waveform inspection and extraction."));
         } else {
-            push_log(load, QStringLiteral("ACB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ACB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -136,9 +137,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (auto result = loaded.load(bytes); result) {
             load.aix = std::move(loaded);
             load.kind = TransformKind::Aix;
-            push_log(load, QStringLiteral("AIX object loaded for layered ADX inspection and extraction."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AIX object loaded for layered ADX inspection and extraction."));
         } else {
-            push_log(load, QStringLiteral("AIX editor load failed: %1").arg(utf8_to_qstring(result.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AIX editor load failed: %1").arg(utf8_to_qstring(result.error())));
         }
         return load;
     }
@@ -148,9 +149,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.hca = std::move(*loaded);
             load.kind = TransformKind::Hca;
-            push_log(load, QStringLiteral("HCA object loaded for native transform actions."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "HCA object loaded for native transform actions."));
         } else {
-            push_log(load, QStringLiteral("HCA editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "HCA editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -160,9 +161,9 @@ TransformEditorLoad try_load_transform_editor_session(
         if (loaded) {
             load.adx = std::move(*loaded);
             load.kind = TransformKind::Adx;
-            push_log(load, QStringLiteral("ADX/AHX object loaded for native transform actions."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ADX/AHX object loaded for native transform actions."));
         } else {
-            push_log(load, QStringLiteral("ADX/AHX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ADX/AHX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
     }
     return load;
@@ -174,7 +175,7 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         return load;
     }
 
-    const auto format = editor_format_label(request).toLower();
+    const auto format = editor_format_id(request).toLower();
     const bool has_afs_magic = has_ascii_magic(bytes, std::string_view("AFS\0", 4));
     const bool has_awb_magic = has_ascii_magic(bytes, "AFS2");
     const bool has_cpk_magic = has_ascii_magic(bytes, "CPK ");
@@ -185,9 +186,9 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         if (loaded) {
             load.cpk = std::move(*loaded);
             load.kind = ArchiveKind::Cpk;
-            push_log(load, QStringLiteral("CPK object loaded for native-backed archive editing."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CPK object loaded for native-backed archive editing."));
         } else {
-            push_log(load, QStringLiteral("CPK editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CPK editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -197,9 +198,9 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         if (loaded) {
             load.cvm = std::move(*loaded);
             load.kind = ArchiveKind::Cvm;
-            push_log(load, QStringLiteral("CVM object loaded for native-backed ROFS editing."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CVM object loaded for native-backed ROFS editing."));
         } else {
-            push_log(load, QStringLiteral("CVM editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "CVM editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -209,9 +210,9 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         if (loaded) {
             load.awb = std::move(*loaded);
             load.kind = ArchiveKind::Awb;
-            push_log(load, QStringLiteral("AWB object loaded for native-backed archive editing."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AWB object loaded for native-backed archive editing."));
         } else {
-            push_log(load, QStringLiteral("AWB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AWB editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -221,9 +222,9 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         if (loaded) {
             load.afs = std::move(*loaded);
             load.kind = ArchiveKind::Afs;
-            push_log(load, QStringLiteral("AFS object loaded for native-backed archive editing."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AFS object loaded for native-backed archive editing."));
         } else {
-            push_log(load, QStringLiteral("AFS editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "AFS editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
         return load;
     }
@@ -233,9 +234,9 @@ ArchiveEditorLoad try_load_archive_editor_session(std::span<const uint8_t> bytes
         if (loaded) {
             load.acx = std::move(*loaded);
             load.kind = ArchiveKind::Acx;
-            push_log(load, QStringLiteral("ACX object loaded for native-backed archive editing."));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ACX object loaded for native-backed archive editing."));
         } else {
-            push_log(load, QStringLiteral("ACX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(load, QCoreApplication::translate("Editor.EditorSessionLoaders", "ACX editor load failed: %1").arg(utf8_to_qstring(loaded.error())));
         }
     }
     return load;

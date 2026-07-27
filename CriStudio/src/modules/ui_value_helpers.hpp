@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QString>
 #include <QValidator>
@@ -52,7 +53,7 @@ inline QLineEdit* make_unsigned_integer_edit(
     if (!accessible_name.isEmpty()) {
         edit->setAccessibleName(accessible_name);
     }
-    edit->setToolTip(QStringLiteral("Range: %1 to %2")
+    edit->setToolTip(QCoreApplication::translate("UiValueHelpers", "Range: %1 to %2")
         .arg(static_cast<qulonglong>(minimum))
         .arg(static_cast<qulonglong>(maximum)));
     return edit;
@@ -67,7 +68,7 @@ inline std::expected<uint64_t, QString> unsigned_integer_value(
     bool ok = false;
     const auto value = edit->text().trimmed().toULongLong(&ok, 10);
     if (!ok || value < minimum || value > maximum) {
-        return std::unexpected(QStringLiteral("%1 must be between %2 and %3.")
+        return std::unexpected(QCoreApplication::translate("UiValueHelpers", "%1 must be between %2 and %3.")
             .arg(std::move(field_name))
             .arg(static_cast<qulonglong>(minimum))
             .arg(static_cast<qulonglong>(maximum)));

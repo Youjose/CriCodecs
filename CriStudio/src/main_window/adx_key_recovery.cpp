@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "../main_window.hpp"
 
 #include "../path_text.hpp"
@@ -41,7 +42,7 @@ namespace {
     if (!source.path.empty()) {
         return to_qstring(source.path.filename());
     }
-    return QStringLiteral("Selected entry");
+    return QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Selected entry");
 }
 
 [[nodiscard]] QString frames_text(const std::vector<uint64_t>& frames) {
@@ -62,19 +63,19 @@ void MainWindow::start_adx_key_recovery(
 ) {
     const auto name = recovery_name(kind);
     if (sources.empty()) {
-        statusBar()->showMessage(QStringLiteral("No files selected for %1 key recovery").arg(name), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "No files selected for %1 key recovery").arg(name), 3000);
         return;
     }
     if (m_adx_key_recovery_running || m_hca_key_recovery_running ||
         m_usm_key_recovery_running || m_aac_key_recovery_running) {
-        statusBar()->showMessage(QStringLiteral("Key recovery is already running"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Key recovery is already running"), 3000);
         return;
     }
     const auto mode = choose_key_recovery_mode(
-        this, QStringLiteral("%1 key recovery").arg(name), sources.size());
+        this, QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery").arg(name), sources.size());
     if (!mode) return;
     if (sources.size() > 1u) {
-        begin_key_recovery_progress(this, QStringLiteral("%1 key recovery").arg(name), sources.size());
+        begin_key_recovery_progress(this, QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery").arg(name), sources.size());
     }
 
     if (m_preview_recover_key_button != nullptr) {
@@ -90,7 +91,7 @@ void MainWindow::start_adx_key_recovery(
         m_preview_recover_aac_key_button->setEnabled(false);
     }
 
-    statusBar()->showMessage(QStringLiteral("Recovering %1 keys...").arg(name));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Recovering %1 keys...").arg(name));
     m_adx_key_recovery_running = true;
     const auto request_id = ++m_adx_key_recovery_request_id;
     auto keys = m_decryption_keys;
@@ -144,7 +145,7 @@ void MainWindow::start_adx_key_recovery(
                 } else {
                     task.errors.push_back(utf8_to_qstring(recovered.error()));
                 }
-                publish(QStringLiteral("Shared-base recovery completed."));
+                publish(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Shared-base recovery completed."));
             } else {
                 task.recovered.reserve(sources.size());
                 for (const auto& source : sources) {
@@ -156,7 +157,7 @@ void MainWindow::start_adx_key_recovery(
                     } else {
                         task.errors.push_back(label + QStringLiteral(": ") + utf8_to_qstring(recovered.error()));
                     }
-                    publish(QStringLiteral("Processed %1 of %2 selected files.")
+                    publish(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Processed %1 of %2 selected files.")
                         .arg(task.recovered.size() + task.errors.size()).arg(task.requested_sources));
                 }
             }
@@ -187,22 +188,22 @@ void MainWindow::consume_adx_key_recovery_result() {
     const auto name = recovery_name(task.kind);
     if (task.recovered.empty()) {
         const auto error = task.errors.empty()
-            ? QStringLiteral("No encrypted %1 streams were found.").arg(name)
+            ? QCoreApplication::translate("MainWindow.AdxKeyRecovery", "No encrypted %1 streams were found.").arg(name)
             : task.errors.front();
         if (task.requested_sources > 1u) {
             update_key_recovery_progress(
                 this, {}, task.requested_sources, task.requested_sources, error, true);
         } else {
-            show_key_recovery_error(this, QStringLiteral("%1 key recovery").arg(name), error);
+            show_key_recovery_error(this, QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery").arg(name), error);
         }
-        append_log(QStringLiteral("%1 key recovery failed: %2").arg(name, error));
-        statusBar()->showMessage(QStringLiteral("%1 key recovery unavailable").arg(name), 5000);
+        append_log(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery failed: %2").arg(name, error));
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery unavailable").arg(name), 5000);
         return;
     }
 
     std::vector<KeyRecoveryCandidate> candidates;
     candidates.reserve(task.recovered.size() * cricodecs::MaxKeyRecoveryCandidates);
-    QString details = QStringLiteral("Target: %1\n\n").arg(task.target_label);
+    QString details = QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Target: %1\n\n").arg(task.target_label);
     size_t stream_count = 0;
     for (const auto& target : task.recovered) {
         const auto& recovered = target.recovered;
@@ -219,7 +220,8 @@ void MainWindow::consume_adx_key_recovery_result() {
             });
         }
         stream_count += recovered.source_count;
-        details += QStringLiteral(
+        details += QCoreApplication::translate(
+            "MainWindow.AdxKeyRecovery",
             "%1\nTriplet: %2\nEncryption type: %3\nScore: %4\n"
             "Streams: %5\nFrames per stream: %6\nTotal frames: %7\nEvidence frames: %8\n")
             .arg(target.source)
@@ -231,9 +233,9 @@ void MainWindow::consume_adx_key_recovery_result() {
             .arg(recovered.total_frames)
             .arg(recovered.evidence_frames);
         if (task.kind == AdxRecoveryKind::Adx) {
-            details += QStringLiteral("Examined frames: %1\n").arg(recovered.examined_frames);
+            details += QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Examined frames: %1\n").arg(recovered.examined_frames);
         } else {
-            details += QStringLiteral("Component frames: %1,%2,%3\nCandidate counts: %4,%5,%6\n")
+            details += QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Component frames: %1,%2,%3\nCandidate counts: %4,%5,%6\n")
                 .arg(recovered.component_frames[0])
                 .arg(recovered.component_frames[1])
                 .arg(recovered.component_frames[2])
@@ -242,24 +244,29 @@ void MainWindow::consume_adx_key_recovery_result() {
                 .arg(recovered.candidate_counts[2]);
         }
         if (recovered.encryption_type == 9u) {
-            details += QStringLiteral("Canonical type-9 keycode: 0x%1\n")
+            details += QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Canonical type-9 keycode: 0x%1\n")
                 .arg(QString::number(static_cast<qulonglong>(recovered.canonical_type9_code), 16).toUpper());
         }
         details += QLatin1Char('\n');
-        append_log(QStringLiteral("%1 key recovery completed for %2: %3, score %4, %5 stream(s)")
-            .arg(name, target.source, triplet, score)
-            .arg(recovered.source_count));
+        append_log(QCoreApplication::translate(
+            "MainWindow.AdxKeyRecovery",
+            "%1 key recovery completed for %2: %3, score %4, %n stream(s)",
+            nullptr,
+            static_cast<int>(recovered.source_count))
+            .arg(name, target.source, triplet, score));
     }
     if (!task.errors.empty()) {
-        details += QStringLiteral("Unavailable targets\n");
+        details += QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Unavailable targets\n");
         for (const auto& error : task.errors) {
             details += QStringLiteral("- %1\n").arg(error);
         }
         details += QLatin1Char('\n');
     }
-    details += QStringLiteral(
+    details += QCoreApplication::translate(
+        "MainWindow.AdxKeyRecovery",
         "Candidates were not applied. Any effective triplet that decrypts its streams is valid; scores are "
-        "normalized structural agreement, not probability. Exact triplets are grouped and ranked by score, file support, filename, and key.");
+        "normalized structural agreement, not probability. Exact triplets are grouped and ranked by score, "
+        "file support, filename, and key.");
 
     auto groups = group_key_recovery_candidates(candidates);
     QStringList triplets;
@@ -268,12 +275,12 @@ void MainWindow::consume_adx_key_recovery_result() {
         triplets.push_back(group.key);
     }
     const auto summary = groups.empty()
-        ? QStringLiteral("No positive triplet candidate was recovered.")
+        ? QCoreApplication::translate("MainWindow.AdxKeyRecovery", "No positive triplet candidate was recovered.")
         : groups.size() == 1
-        ? QStringLiteral("Recovered triplet: %1\nScore: %2")
+        ? QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Recovered triplet: %1\nScore: %2")
               .arg(groups.front().key)
               .arg(QString::number(groups.front().mean_score, 'f', 6))
-        : QStringLiteral("Recovered %1 files in %2 exact-triplet groups.")
+        : QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Recovered %1 files in %2 exact-triplet groups.")
               .arg(task.recovered.size())
               .arg(groups.size());
     if (task.requested_sources > 1u) {
@@ -282,16 +289,16 @@ void MainWindow::consume_adx_key_recovery_result() {
     } else {
         show_key_recovery_result(
             this,
-            QStringLiteral("%1 key recovery").arg(name),
+            QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery").arg(name),
             summary,
             details,
             triplets.join(QLatin1Char('\n')),
-            groups.size() == 1 ? QStringLiteral("Copy Triplet") : QStringLiteral("Copy Triplets"),
+            groups.size() == 1 ? QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Copy Triplet") : QCoreApplication::translate("MainWindow.AdxKeyRecovery", "Copy Triplets"),
             std::move(groups)
         );
     }
     statusBar()->showMessage(
-        QStringLiteral("%1 key recovery completed for %2 file(s), %3 stream(s)")
+        QCoreApplication::translate("MainWindow.AdxKeyRecovery", "%1 key recovery completed. Files: %2. Streams: %3.")
             .arg(name)
             .arg(task.recovered.size())
             .arg(stream_count),

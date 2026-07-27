@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/hca/hca_preview.hpp"
 
 #include "modules/hca/hca_common.hpp"
@@ -35,12 +36,12 @@ std::expected<AudioPreview, std::string> audio_preview(
 ) {
     const auto& header = hca.header();
     if (header.cipher.type != 0 && header.cipher.type != 1 && !keys.has_cri_key) {
-        return std::unexpected("HCA preview needs a decryption key");
+        return std::unexpected(cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA preview needs a decryption key"));
     }
 
     auto pcm = hca.decode(keys.has_cri_key ? keys.cri_key : 0, keys.hca_subkey);
     if (!pcm) {
-        return std::unexpected("HCA decode failed: " + pcm.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA decode failed: ") + pcm.error());
     }
 
     const auto loops = wav_loops_from_hca(header);
@@ -51,7 +52,7 @@ std::expected<AudioPreview, std::string> audio_preview(
         loops
     );
     if (!wav_bytes) {
-        return std::unexpected("HCA WAV preview build failed: " + wav_bytes.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA WAV preview build failed: ") + wav_bytes.error());
     }
 
     const auto channels = static_cast<uint16_t>(header.fmt.channel_count);
@@ -61,7 +62,7 @@ std::expected<AudioPreview, std::string> audio_preview(
         header.fmt.sample_rate,
         channels,
         sample_count,
-        "HCA audio",
+        cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA audio"),
         {},
         audio_loops_from_wav_loops(loops, sample_count)
     );
@@ -73,7 +74,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
 ) {
     auto hca = cricodecs::hca::Hca::load(bytes);
     if (!hca) {
-        return std::unexpected("HCA preview failed: " + hca.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA preview failed: ") + hca.error());
     }
     return audio_preview(*hca, keys);
 }
@@ -84,7 +85,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_file(
 ) {
     auto hca = cricodecs::hca::Hca::load(path);
     if (!hca) {
-        return std::unexpected("HCA preview failed: " + hca.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Hca.HcaPreview", "HCA preview failed: ") + hca.error());
     }
     return audio_preview(*hca, keys);
 }

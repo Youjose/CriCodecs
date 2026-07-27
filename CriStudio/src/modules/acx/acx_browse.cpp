@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/acx/acx_browse.hpp"
 
 #include "path_text.hpp"
@@ -34,7 +35,7 @@ std::string entry_type(const cricodecs::acx::AcxEntry& entry) {
     case cricodecs::acx::AcxEntryType::adx:
         return "ADX";
     case cricodecs::acx::AcxEntryType::ogg:
-        return "Ogg Vorbis";
+        return cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Ogg Vorbis");
     case cricodecs::acx::AcxEntryType::unknown:
         break;
     }
@@ -44,14 +45,14 @@ std::string entry_type(const cricodecs::acx::AcxEntry& entry) {
 } // namespace
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::acx::AcxContainer& acx) {
-    auto doc = base_document(path, "ACX audio archive");
-    doc.info.push_back({"Entries", number(acx.entry_count())});
-    doc.info.push_back({"Table size", number(acx.table_size())});
-    doc.info.push_back({"First payload offset", acx.first_payload_offset() ? hex_u64(*acx.first_payload_offset()) : "-"});
-    doc.info.push_back({"Payload end offset", acx.payload_end_offset() ? hex_u64(*acx.payload_end_offset()) : "-"});
-    doc.info.push_back({"ADX entries", number(acx.type_count(cricodecs::acx::AcxEntryType::adx))});
-    doc.info.push_back({"Ogg entries", number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))});
-    doc.info.push_back({"Unknown entries", number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))});
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Acx.AcxBrowse", "ACX audio archive"));
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Entries"), number(acx.entry_count())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Table size"), number(acx.table_size())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "First payload offset"), acx.first_payload_offset() ? hex_u64(*acx.first_payload_offset()) : "-"});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Payload end offset"), acx.payload_end_offset() ? hex_u64(*acx.payload_end_offset()) : "-"});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "ADX entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::adx))});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Ogg entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Unknown entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))});
 
     doc.entries.reserve(acx.entries().size());
     for (const auto& entry : acx.entries()) {
@@ -60,7 +61,7 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::acx
             entry_type(entry),
             byte_count(entry.size),
             number(entry.offset),
-            "index " + number(entry.index) + ", table row " + hex_u64(0x08ull + static_cast<uint64_t>(entry.index) * 0x08ull)
+            "index " + number(entry.index) + cristudio::i18n::translate_utf8("Acx.AcxBrowse", ", table row ") + hex_u64(0x08ull + static_cast<uint64_t>(entry.index) * 0x08ull)
         }, path, "ACX", entry.index));
     }
     return doc;

@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "file_list_model.hpp"
 
 #include "format_icon.hpp"
@@ -14,7 +15,7 @@ QString build_search_text(const LoadedDocument& document, const QString& canonic
     text.reserve(static_cast<qsizetype>(document.entries.size() * 48 + 256));
     text += utf8_to_qstring(document.display_name);
     text += QLatin1Char('\n');
-    text += utf8_to_qstring(document.format);
+    text += utf8_to_qstring(localized_document_format(document));
     text += QLatin1Char('\n');
     text += path_to_qstring(document.path);
     text += QLatin1Char('\n');
@@ -32,13 +33,22 @@ QString build_search_text(const LoadedDocument& document, const QString& canonic
     return text;
 }
 
-QString filter_format(const LoadedDocument& document) {
-    const auto format = utf8_to_qstring(document.format);
+QString filter_format_id(const LoadedDocument& document) {
+    if (document.loader_tag == "adx") {
+        return QStringLiteral("adx/ahx");
+    }
+    const auto format = utf8_to_qstring(document_format_id(document));
     if (format.contains(QStringLiteral("ADX"), Qt::CaseInsensitive) ||
         format.contains(QStringLiteral("AHX"), Qt::CaseInsensitive)) {
-        return QStringLiteral("ADX / AHX audio");
+        return QStringLiteral("adx/ahx");
     }
     return format;
+}
+
+QString filter_format_label(const LoadedDocument& document) {
+    return filter_format_id(document) == QStringLiteral("adx/ahx")
+        ? QCoreApplication::translate("FileListModel", "ADX / AHX audio")
+        : utf8_to_qstring(localized_document_format(document));
 }
 
 } // namespace
@@ -61,14 +71,14 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const {
     case Qt::DisplayRole:
         return utf8_to_qstring(doc.display_name);
     case Qt::ToolTipRole:
-        return utf8_to_qstring(doc.format) + QLatin1Char('\n') + path_to_qstring(doc.path);
+        return utf8_to_qstring(localized_document_format(doc)) + QLatin1Char('\n') + path_to_qstring(doc.path);
     case Qt::DecorationRole:
         return make_document_icon(
-            utf8_to_qstring(doc.format),
+            utf8_to_qstring(document_format_id(doc)),
             utf8_to_qstring(doc.display_name)
         );
     case FormatRole:
-        return utf8_to_qstring(doc.format);
+        return utf8_to_qstring(localized_document_format(doc));
     case PathRole:
         return path_to_qstring(doc.path);
     case SearchRole:
@@ -78,7 +88,9 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const {
     case SizeSortRole:
         return QVariant::fromValue<qulonglong>(doc.file_size);
     case FilterFormatRole:
-        return filter_format(doc);
+        return filter_format_id(doc);
+    case FilterFormatLabelRole:
+        return filter_format_label(doc);
     default:
         return {};
     }
@@ -177,6 +189,20 @@ void FileListModel::clear() {
     m_items.clear();
     m_items.shrink_to_fit();
     endResetModel();
+}
+
+void FileListModel::retranslate() {
+    if (m_items.empty()) {
+        return;
+    }
+    for (auto& item : m_items) {
+        item.search_text = build_search_text(item.document, item.canonical_path);
+    }
+    emit dataChanged(
+        index(0, 0),
+        index(static_cast<int>(m_items.size()) - 1, 0),
+        {Qt::DisplayRole, Qt::ToolTipRole, SearchRole, FilterFormatRole, FilterFormatLabelRole}
+    );
 }
 
 void FileListModel::rebuild_path_index() {

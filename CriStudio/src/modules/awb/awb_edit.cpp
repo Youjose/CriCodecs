@@ -1,3 +1,5 @@
+#include "shared/i18n.hpp"
+#include <QCoreApplication>
 #include "modules/awb/awb_edit.hpp"
 
 #include "path_text.hpp"
@@ -37,15 +39,15 @@ ScratchArchive create_scratch_archive() {
         .container = cricodecs::awb::AwbContainer::create(),
         .document = LoadedDocument{
             .display_name = "NewWaveBank.awb",
-            .format = "AWB/AFS2 archive (scratch)",
+            .format = cristudio::i18n::translate_utf8("Awb.AwbEdit", "AWB/AFS2 archive (scratch)"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch AWB/AFS2 archive"},
+                {"Source", cristudio::i18n::translate_utf8("Awb.AwbEdit", "Scratch AWB/AFS2 archive")},
                 {"Files", "0"},
                 {"Version", std::to_string(cricodecs::awb::AwbContainer::DEFAULT_VERSION)},
                 {"Alignment", std::to_string(cricodecs::awb::AwbContainer::DEFAULT_ALIGNMENT)}
             },
-            .entry_columns = {"Index", "Wave ID", "Offset", "Size"},
+            .entry_columns = {"Index", cristudio::i18n::translate_utf8("Awb.AwbEdit", "Wave ID"), "Offset", "Size"},
             .entry_column_types = {"integer", "integer", "offset", "size"},
             .entries = {}
         }
@@ -59,14 +61,14 @@ std::vector<TransformDetailRow> detail_rows(
     return {
         {QStringLiteral("Files"), QString::number(awb.file_count())},
         {QStringLiteral("Version"), QString::number(awb.version())},
-        {QStringLiteral("Offset size"), QString::number(awb.offset_size())},
-        {QStringLiteral("ID size"), QString::number(awb.id_size())},
+        {QCoreApplication::translate("Awb.AwbEdit", "Offset size"), QString::number(awb.offset_size())},
+        {QCoreApplication::translate("Awb.AwbEdit", "ID size"), QString::number(awb.id_size())},
         {QStringLiteral("Alignment"), QString::number(awb.alignment())},
         {QStringLiteral("Subkey"), QString::number(awb.subkey())},
-        {QStringLiteral("Materialized payloads"), awb.is_materialized() ? QStringLiteral("yes") : QStringLiteral("no")},
-        {QStringLiteral("AAC probe key"), !has_aac_entry(awb, keys)
+        {QCoreApplication::translate("Awb.AwbEdit", "Materialized payloads"), awb.is_materialized() ? QStringLiteral("yes") : QStringLiteral("no")},
+        {QCoreApplication::translate("Awb.AwbEdit", "AAC probe key"), !has_aac_entry(awb, keys)
             ? QStringLiteral("N/A")
-            : keys.has_cri_key ? QStringLiteral("configured") : QStringLiteral("not configured")}
+            : keys.has_cri_key ? QStringLiteral("configured") : QCoreApplication::translate("Awb.AwbEdit", "not configured")}
     };
 }
 
@@ -83,8 +85,8 @@ QString aac_probe_text(
     const bool recoverable = awb.has_aac_key_recovery_candidate(index);
     if (!keys.has_cri_key) {
         return clear
-            ? QStringLiteral("not encrypted")
-            : recoverable ? QStringLiteral("key not configured") : QStringLiteral("N/A");
+            ? QCoreApplication::translate("Awb.AwbEdit", "not encrypted")
+            : recoverable ? QCoreApplication::translate("Awb.AwbEdit", "key not configured") : QStringLiteral("N/A");
     }
     auto state = awb.probe_aac_encryption(index, keys.cri_key);
     if (!state) {

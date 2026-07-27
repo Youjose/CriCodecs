@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "modules/adx/adx_common.hpp"
 
 #include "path_text.hpp"
@@ -11,7 +12,7 @@ namespace {
 
 QString hex_preview(std::span<const uint8_t> bytes, size_t max_bytes = 4096) {
     if (bytes.empty()) {
-        return QStringLiteral("(no bytes)");
+        return QCoreApplication::translate("Adx.AdxCommon", "(no bytes)");
     }
 
     const auto shown = std::min(bytes.size(), max_bytes);
@@ -26,7 +27,7 @@ QString hex_preview(std::span<const uint8_t> bytes, size_t max_bytes = 4096) {
         out += QLatin1Char('\n');
     }
     if (bytes.size() > shown) {
-        out += QStringLiteral("... truncated, %1 total bytes ...\n").arg(static_cast<qulonglong>(bytes.size()));
+        out += QCoreApplication::translate("Adx.AdxCommon", "... truncated, %1 total bytes ...\n").arg(static_cast<qulonglong>(bytes.size()));
     }
     return out;
 }
@@ -76,11 +77,11 @@ bool has_applicable_raw_key(const cricodecs::adx::Adx& adx, const DecryptionKeys
 QString payload_preview(QString label, std::span<const uint8_t> bytes) {
     QString out;
     out += QStringLiteral("%1\n").arg(std::move(label));
-    out += QStringLiteral("Payload bytes: %1\n").arg(static_cast<qulonglong>(bytes.size()));
+    out += QCoreApplication::translate("Adx.AdxCommon", "Payload bytes: %1\n").arg(static_cast<qulonglong>(bytes.size()));
 
     auto adx = cricodecs::adx::Adx::load(bytes);
     if (!adx) {
-        out += QStringLiteral("ADX parse: %1\n\n").arg(utf8_to_qstring(adx.error()));
+        out += QCoreApplication::translate("Adx.AdxCommon", "ADX parse: %1\n\n").arg(utf8_to_qstring(adx.error()));
         out += hex_preview(bytes);
         return out;
     }
@@ -88,22 +89,22 @@ QString payload_preview(QString label, std::span<const uint8_t> bytes) {
     const auto& header = adx->header();
     const auto signature_text = QStringLiteral("%1").arg(header.signature, 4, 16, QLatin1Char('0')).toUpper();
     const auto flags_text = QStringLiteral("%1").arg(header.flags, 2, 16, QLatin1Char('0')).toUpper();
-    out += QStringLiteral("Signature: 0x%1\n").arg(signature_text);
-    out += QStringLiteral("Data offset: %1\n").arg(header.data_offset);
-    out += QStringLiteral("Encoding mode: %1%2\n")
+    out += QCoreApplication::translate("Adx.AdxCommon", "Signature: 0x%1\n").arg(signature_text);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Data offset: %1\n").arg(header.data_offset);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Encoding mode: %1%2\n")
         .arg(header.encoding_mode)
         .arg(adx->is_ahx() ? QStringLiteral(" (AHX)") : QString{});
-    out += QStringLiteral("Block size / bit depth: %1 / %2\n").arg(header.block_size).arg(header.bit_depth);
-    out += QStringLiteral("Channels: %1\n").arg(header.channels);
-    out += QStringLiteral("Sample rate: %1\n").arg(header.sample_rate);
-    out += QStringLiteral("Sample count: %1\n").arg(header.sample_count);
-    out += QStringLiteral("Highpass frequency: %1\n").arg(header.highpass_freq);
-    out += QStringLiteral("Version: %1\n").arg(header.version);
-    out += QStringLiteral("Flags: 0x%1\n").arg(flags_text);
-    out += QStringLiteral("Encrypted: %1\n").arg(adx->is_encrypted() ? QStringLiteral("yes") : QStringLiteral("no"));
-    out += QStringLiteral("Loop count: %1\n").arg(static_cast<qsizetype>(adx->loops().size()));
+    out += QCoreApplication::translate("Adx.AdxCommon", "Block size / bit depth: %1 / %2\n").arg(header.block_size).arg(header.bit_depth);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Channels: %1\n").arg(header.channels);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Sample rate: %1\n").arg(header.sample_rate);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Sample count: %1\n").arg(header.sample_count);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Highpass frequency: %1\n").arg(header.highpass_freq);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Version: %1\n").arg(header.version);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Flags: 0x%1\n").arg(flags_text);
+    out += QCoreApplication::translate("Adx.AdxCommon", "Encrypted: %1\n").arg(adx->is_encrypted() ? QStringLiteral("yes") : QStringLiteral("no"));
+    out += QCoreApplication::translate("Adx.AdxCommon", "Loop count: %1\n").arg(static_cast<qsizetype>(adx->loops().size()));
     for (const auto& loop : adx->loops()) {
-        out += QStringLiteral("  Loop %1: type %2, samples %3-%4, bytes %5-%6\n")
+        out += QCoreApplication::translate("Adx.AdxCommon", "  Loop %1: type %2, samples %3-%4, bytes %5-%6\n")
             .arg(loop.index)
             .arg(loop.type)
             .arg(loop.start_sample)
@@ -111,7 +112,7 @@ QString payload_preview(QString label, std::span<const uint8_t> bytes) {
             .arg(loop.start_byte)
             .arg(loop.end_byte);
     }
-    out += QStringLiteral("\nHex preview\n");
+    out += QCoreApplication::translate("Adx.AdxCommon", "\nHex preview\n");
     out += hex_preview(bytes);
     return out;
 }

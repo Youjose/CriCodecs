@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "../main_window.hpp"
 
 #include "key_panel.hpp"
@@ -5,6 +6,7 @@
 #include "../path_text.hpp"
 #include "adx_crypto.hpp"
 
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QDialog>
 #include <QFormLayout>
@@ -94,19 +96,19 @@ QString lower_text(std::string_view text) {
 
 const InfoRow* find_info_row(const std::vector<InfoRow>& rows, std::string_view name) {
     const auto found = std::ranges::find_if(rows, [name](const InfoRow& row) {
-        return row.name == name;
+        return info_row_id(row) == name;
     });
     return found == rows.end() ? nullptr : std::addressof(*found);
 }
 
 bool info_is_yes(const std::vector<InfoRow>& rows, std::string_view name) {
     const auto* row = find_info_row(rows, name);
-    return row != nullptr && lower_text(row->value).trimmed() == QStringLiteral("yes");
+    return row != nullptr && lower_text(info_row_value_id(*row)).trimmed() == QStringLiteral("yes");
 }
 
 bool info_contains(const std::vector<InfoRow>& rows, std::string_view name, QStringView needle) {
     const auto* row = find_info_row(rows, name);
-    return row != nullptr && lower_text(row->value).contains(needle);
+    return row != nullptr && lower_text(info_row_value_id(*row)).contains(needle);
 }
 
 int info_int_value(const std::vector<InfoRow>& rows, std::string_view name, int fallback = 0) {
@@ -124,10 +126,10 @@ bool text_suggests_key_required(const QString& text) {
     return text.contains(QStringLiteral("encrypted")) ||
            text.contains(QStringLiteral("scrambled")) ||
            text.contains(QStringLiteral("inaccessible")) ||
-           text.contains(QStringLiteral("key required")) ||
-           text.contains(QStringLiteral("needs key")) ||
-           text.contains(QStringLiteral("needs a decryption key")) ||
-           text.contains(QStringLiteral("required for toc"));
+           text.contains(QCoreApplication::translate("MainWindow.KeyPanel", "key required")) ||
+           text.contains(QCoreApplication::translate("MainWindow.KeyPanel", "needs key")) ||
+           text.contains(QCoreApplication::translate("MainWindow.KeyPanel", "needs a decryption key")) ||
+           text.contains(QCoreApplication::translate("MainWindow.KeyPanel", "required for toc"));
 }
 
 QString compact_key_text(QString text) {
@@ -184,11 +186,11 @@ void set_key_base_selector_enabled(QComboBox* base, bool enabled);
 QComboBox* make_key_base_combo(QWidget* parent) {
     auto* combo = new QComboBox(parent);
     combo->setObjectName(QStringLiteral("KeyBaseCombo"));
-    combo->addItem(QStringLiteral("hex"), 16);
-    combo->addItem(QStringLiteral("dec"), 10);
+    combo->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "hex"), 16);
+    combo->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "dec"), 10);
     combo->setCurrentIndex(0);
-    combo->setToolTip(QStringLiteral("Choose how the numeric key text is parsed."));
-    combo->setAccessibleName(QStringLiteral("Numeric key base"));
+    combo->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Choose how the numeric key text is parsed."));
+    combo->setAccessibleName(QCoreApplication::translate("MainWindow.KeyPanel", "Numeric key base"));
     combo->hide();
     return combo;
 }
@@ -266,15 +268,15 @@ QWidget* make_key_base_selector(QComboBox*& base, QLineEdit* input, QWidget* par
     layout->setSpacing(0);
     base = make_key_base_combo(selector);
     layout->addWidget(base, 0);
-    for (const auto& item : {std::pair{QStringLiteral("hex"), 16}, std::pair{QStringLiteral("dec"), 10}}) {
+    for (const auto& item : {std::pair{QCoreApplication::translate("MainWindow.KeyPanel", "hex"), 16}, std::pair{QCoreApplication::translate("MainWindow.KeyPanel", "dec"), 10}}) {
         auto* button = new QToolButton(selector);
         button->setObjectName(QStringLiteral("KeyBaseSegment"));
         button->setText(item.first);
         button->setProperty("baseValue", item.second);
         button->setCheckable(true);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setToolTip(QStringLiteral("Parse this key as %1.").arg(item.first));
-        button->setAccessibleName(QStringLiteral("Use %1 key input").arg(item.first));
+        button->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Parse this key as %1.").arg(item.first));
+        button->setAccessibleName(QCoreApplication::translate("MainWindow.KeyPanel", "Use %1 key input").arg(item.first));
         layout->addWidget(button, 0);
         QObject::connect(button, &QToolButton::clicked, base, [base, input, value = item.second] {
             const auto previous = key_base_value(base);
@@ -315,7 +317,7 @@ bool parse_u64_key(QString text, int base, uint64_t& out, QString& error, const 
     auto body = text;
     if (body.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
         if (base != 16) {
-            error = label + QStringLiteral(" uses 0x, so choose hex.");
+            error = label + QCoreApplication::translate("MainWindow.KeyPanel", " uses 0x, so choose hex.");
             return false;
         }
         body = body.mid(2);
@@ -325,17 +327,17 @@ bool parse_u64_key(QString text, int base, uint64_t& out, QString& error, const 
         body.remove(QLatin1Char(' '));
     } else {
         if (body.contains(QLatin1Char(' '))) {
-            error = label + QStringLiteral(" has grouped digits; choose hex or remove spaces.");
+            error = label + QCoreApplication::translate("MainWindow.KeyPanel", " has grouped digits; choose hex or remove spaces.");
             return false;
         }
     }
 
     if (body.isEmpty()) {
-        error = label + QStringLiteral(" is missing key digits.");
+        error = label + QCoreApplication::translate("MainWindow.KeyPanel", " is missing key digits.");
         return false;
     }
     if (base == 16 && body.size() > 16) {
-        error = label + QStringLiteral(" must fit in 64 bits.");
+        error = label + QCoreApplication::translate("MainWindow.KeyPanel", " must fit in 64 bits.");
         return false;
     }
 
@@ -343,8 +345,8 @@ bool parse_u64_key(QString text, int base, uint64_t& out, QString& error, const 
     const auto value = body.toULongLong(&ok, base);
     if (!ok) {
         error = label + (base == 16
-            ? QStringLiteral(" must contain hex digits.")
-            : QStringLiteral(" must contain decimal digits."));
+            ? QCoreApplication::translate("MainWindow.KeyPanel", " must contain hex digits.")
+            : QCoreApplication::translate("MainWindow.KeyPanel", " must contain decimal digits."));
         return false;
     }
     out = static_cast<uint64_t>(value);
@@ -357,7 +359,7 @@ bool parse_u16_key(QString text, int base, uint16_t& out, QString& error, const 
         return false;
     }
     if (value > std::numeric_limits<uint16_t>::max()) {
-        error = label + QStringLiteral(" must fit in 16 bits.");
+        error = label + QCoreApplication::translate("MainWindow.KeyPanel", " must fit in 16 bits.");
         return false;
     }
     out = static_cast<uint16_t>(value);
@@ -380,13 +382,13 @@ QWidget* make_key_panel(
     auto* layout = new QHBoxLayout(panel);
     layout->setContentsMargins(0, 4, 0, 4);
     layout->setSpacing(8);
-    label = new QLabel(QStringLiteral("Key"), panel);
+    label = new QLabel(QCoreApplication::translate("MainWindow.KeyPanel", "Key"), panel);
     label->setObjectName(QStringLiteral("DimLabel"));
     input = new QLineEdit(panel);
     input->setClearButtonEnabled(true);
     auto* base_selector = make_key_base_selector(base, input, panel);
     apply = new QToolButton(panel);
-    apply->setText(QStringLiteral("Apply"));
+    apply->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Apply"));
     apply->setToolButtonStyle(Qt::ToolButtonTextOnly);
     layout->addWidget(label, 0);
     layout->addWidget(input, 1);
@@ -423,7 +425,7 @@ void MainWindow::build_decryption_keys_window() {
         this,
         Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint |
             Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-    m_decryption_keys_window->setWindowTitle(QStringLiteral("Cryptography Keys"));
+    m_decryption_keys_window->setWindowTitle(QCoreApplication::translate("MainWindow.KeyPanel", "Cryptography Keys"));
     m_decryption_keys_window->setObjectName(QStringLiteral("DecryptionKeysWindow"));
     m_decryption_keys_window->setModal(false);
     m_decryption_keys_window->setSizeGripEnabled(true);
@@ -442,39 +444,39 @@ void MainWindow::build_decryption_keys_window() {
     root->setContentsMargins(12, 12, 12, 12);
     root->setSpacing(10);
 
-    auto* profile_group = new QGroupBox(QStringLiteral("Profiles"), panel);
+    auto* profile_group = new QGroupBox(QCoreApplication::translate("MainWindow.KeyPanel", "Profiles"), panel);
     auto* profile_layout = new QHBoxLayout(profile_group);
     profile_layout->setContentsMargins(10, 8, 10, 8);
     profile_layout->setSpacing(6);
     m_key_profile_combo = new QComboBox(profile_group);
     m_key_profile_combo->setEditable(false);
-    m_key_profile_combo->setToolTip(QStringLiteral("Saved cryptography key profiles for this user."));
-    m_key_profile_combo->setAccessibleName(QStringLiteral("Key profile"));
+    m_key_profile_combo->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Saved cryptography key profiles for this user."));
+    m_key_profile_combo->setAccessibleName(QCoreApplication::translate("MainWindow.KeyPanel", "Key profile"));
     auto* load_profile_button = new QToolButton(profile_group);
-    load_profile_button->setText(QStringLiteral("Load"));
+    load_profile_button->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Load"));
     load_profile_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     auto* save_profile_button = new QToolButton(profile_group);
-    save_profile_button->setText(QStringLiteral("Save"));
+    save_profile_button->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Save"));
     save_profile_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     auto* delete_profile_button = new QToolButton(profile_group);
-    delete_profile_button->setText(QStringLiteral("Delete"));
+    delete_profile_button->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Delete"));
     delete_profile_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     profile_layout->addWidget(m_key_profile_combo, 1);
     profile_layout->addWidget(load_profile_button, 0);
     profile_layout->addWidget(save_profile_button, 0);
     profile_layout->addWidget(delete_profile_button, 0);
 
-    auto* cri_group = new QGroupBox(QStringLiteral("CRI 64-bit key"), panel);
+    auto* cri_group = new QGroupBox(QCoreApplication::translate("MainWindow.KeyPanel", "CRI 64-bit key"), panel);
     auto* cri_form = new QFormLayout(cri_group);
     auto* cri_key_row = make_numeric_key_row(m_cri_key_input, m_cri_key_base_input, cri_group);
-    m_cri_key_input->setPlaceholderText(QStringLiteral("64-bit key"));
-    m_cri_key_input->setToolTip(QStringLiteral("Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only."));
+    m_cri_key_input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "64-bit key"));
+    m_cri_key_input->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only."));
     auto* hca_subkey_row = make_numeric_key_row(m_hca_subkey_input, m_hca_subkey_base_input, cri_group);
-    m_hca_subkey_input->setPlaceholderText(QStringLiteral("optional 16-bit subkey"));
-    cri_form->addRow(QStringLiteral("HCA / USM / AWB key"), cri_key_row);
-    cri_form->addRow(QStringLiteral("HCA subkey"), hca_subkey_row);
+    m_hca_subkey_input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "optional 16-bit subkey"));
+    cri_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "HCA / USM / AWB key"), cri_key_row);
+    cri_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "HCA subkey"), hca_subkey_row);
 
-    auto* adx_group = new QGroupBox(QStringLiteral("ADX / AHX key"), panel);
+    auto* adx_group = new QGroupBox(QCoreApplication::translate("MainWindow.KeyPanel", "ADX / AHX key"), panel);
     auto* adx_form = new QFormLayout(adx_group);
     auto* mode_row = new QWidget(adx_group);
     auto* mode_layout = new QHBoxLayout(mode_row);
@@ -482,25 +484,25 @@ void MainWindow::build_decryption_keys_window() {
     mode_layout->setSpacing(6);
     m_adx_mode_input = new QComboBox(mode_row);
     m_adx_mode_input->setObjectName(QStringLiteral("KeyModeCombo"));
-    m_adx_mode_input->setToolTip(QStringLiteral("Choose how the ADX/AHX key should be interpreted."));
-    m_adx_mode_input->setAccessibleName(QStringLiteral("ADX and AHX key mode"));
-    m_adx_mode_input->addItem(QStringLiteral("None"), static_cast<int>(DecryptionKeys::AdxMode::None));
-    m_adx_mode_input->addItem(QStringLiteral("Type 8 string"), static_cast<int>(DecryptionKeys::AdxMode::Type8String));
-    m_adx_mode_input->addItem(QStringLiteral("Type 9 64-bit key"), static_cast<int>(DecryptionKeys::AdxMode::Type9Number));
-    m_adx_mode_input->addItem(QStringLiteral("Explicit key triplet"), static_cast<int>(DecryptionKeys::AdxMode::AhxTriplet));
+    m_adx_mode_input->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Choose how the ADX/AHX key should be interpreted."));
+    m_adx_mode_input->setAccessibleName(QCoreApplication::translate("MainWindow.KeyPanel", "ADX and AHX key mode"));
+    m_adx_mode_input->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "None"), static_cast<int>(DecryptionKeys::AdxMode::None));
+    m_adx_mode_input->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "Type 8 string"), static_cast<int>(DecryptionKeys::AdxMode::Type8String));
+    m_adx_mode_input->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "Type 9 64-bit key"), static_cast<int>(DecryptionKeys::AdxMode::Type9Number));
+    m_adx_mode_input->addItem(QCoreApplication::translate("MainWindow.KeyPanel", "Explicit key triplet"), static_cast<int>(DecryptionKeys::AdxMode::AhxTriplet));
     auto* mode_popup_button = new QToolButton(mode_row);
     mode_popup_button->setArrowType(Qt::DownArrow);
-    mode_popup_button->setToolTip(QStringLiteral("Show key mode choices"));
-    mode_popup_button->setAccessibleName(QStringLiteral("Show ADX and AHX key mode choices"));
+    mode_popup_button->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Show key mode choices"));
+    mode_popup_button->setAccessibleName(QCoreApplication::translate("MainWindow.KeyPanel", "Show ADX and AHX key mode choices"));
     mode_layout->addWidget(m_adx_mode_input, 1);
     mode_layout->addWidget(mode_popup_button, 0);
     m_adx_string_input = new QLineEdit(adx_group);
-    m_adx_string_input->setPlaceholderText(QStringLiteral("type-8 key string"));
+    m_adx_string_input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "type-8 key string"));
     auto* adx_number_row = make_numeric_key_row(m_adx_number_input, m_adx_number_base_input, adx_group);
-    m_adx_number_input->setPlaceholderText(QStringLiteral("64-bit key"));
-    m_adx_number_input->setToolTip(QStringLiteral("Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only."));
+    m_adx_number_input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "64-bit key"));
+    m_adx_number_input->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only."));
     auto* adx_subkey_row = make_numeric_key_row(m_adx_subkey_input, m_adx_subkey_base_input, adx_group);
-    m_adx_subkey_input->setPlaceholderText(QStringLiteral("optional 16-bit subkey"));
+    m_adx_subkey_input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "optional 16-bit subkey"));
     auto* triplet_row = new QWidget(adx_group);
     auto* triplet_layout = new QHBoxLayout(triplet_row);
     triplet_layout->setContentsMargins(0, 0, 0, 0);
@@ -516,15 +518,15 @@ void MainWindow::build_decryption_keys_window() {
         triplet_layout->addWidget(input, 1);
     }
     m_adx_triplet_status = make_dim_label(QString{}, adx_group);
-    adx_form->addRow(QStringLiteral("Key mode"), mode_row);
-    adx_form->addRow(QStringLiteral("String key"), m_adx_string_input);
-    adx_form->addRow(QStringLiteral("64-bit key"), adx_number_row);
-    adx_form->addRow(QStringLiteral("Subkey"), adx_subkey_row);
-    adx_form->addRow(QStringLiteral("Key triplet"), triplet_row);
+    adx_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "Key mode"), mode_row);
+    adx_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "String key"), m_adx_string_input);
+    adx_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "64-bit key"), adx_number_row);
+    adx_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "Subkey"), adx_subkey_row);
+    adx_form->addRow(QCoreApplication::translate("MainWindow.KeyPanel", "Key triplet"), triplet_row);
     adx_form->addRow(QString{}, m_adx_triplet_status);
 
     auto* hint = new QLabel(
-        QStringLiteral("Choose hex for copied byte-style keys; spaces are allowed only in hex mode."),
+        QCoreApplication::translate("MainWindow.KeyPanel", "Choose hex for copied byte-style keys; spaces are allowed only in hex mode."),
         panel
     );
     hint->setObjectName(QStringLiteral("DimLabel"));
@@ -534,10 +536,10 @@ void MainWindow::build_decryption_keys_window() {
     buttons->setContentsMargins(0, 0, 0, 0);
     buttons->setSpacing(8);
     auto* clear_button = new QToolButton(panel);
-    clear_button->setText(QStringLiteral("Clear"));
+    clear_button->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Clear"));
     clear_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     auto* apply_button = new QToolButton(panel);
-    apply_button->setText(QStringLiteral("Apply"));
+    apply_button->setText(QCoreApplication::translate("MainWindow.KeyPanel", "Apply"));
     apply_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     buttons->addWidget(clear_button, 0);
     buttons->addStretch(1);
@@ -549,6 +551,38 @@ void MainWindow::build_decryption_keys_window() {
     root->addWidget(hint);
     root->addLayout(buttons);
     root->addStretch(1);
+
+    constexpr auto key_context = "MainWindow.KeyPanel";
+    bind_ui_text(m_decryption_keys_window, "windowTitle", "Cryptography Keys", key_context);
+    bind_ui_text(profile_group, "title", "Profiles", key_context);
+    bind_ui_text(m_key_profile_combo, "toolTip", "Saved cryptography key profiles for this user.", key_context);
+    bind_ui_text(m_key_profile_combo, "accessibleName", "Key profile", key_context);
+    bind_ui_text(load_profile_button, "text", "Load", key_context);
+    bind_ui_text(save_profile_button, "text", "Save", key_context);
+    bind_ui_text(delete_profile_button, "text", "Delete", key_context);
+    bind_ui_text(cri_group, "title", "CRI 64-bit key", key_context);
+    bind_ui_text(m_cri_key_input, "placeholderText", "64-bit key", key_context);
+    bind_ui_text(m_cri_key_input, "toolTip", "Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only.", key_context);
+    bind_ui_text(m_hca_subkey_input, "placeholderText", "optional 16-bit subkey", key_context);
+    bind_ui_text(cri_form->labelForField(cri_key_row), "text", "HCA / USM / AWB key", key_context);
+    bind_ui_text(cri_form->labelForField(hca_subkey_row), "text", "HCA subkey", key_context);
+    bind_ui_text(adx_group, "title", "ADX / AHX key", key_context);
+    bind_ui_text(m_adx_mode_input, "toolTip", "Choose how the ADX/AHX key should be interpreted.", key_context);
+    bind_ui_text(m_adx_mode_input, "accessibleName", "ADX and AHX key mode", key_context);
+    bind_ui_text(mode_popup_button, "toolTip", "Show key mode choices", key_context);
+    bind_ui_text(mode_popup_button, "accessibleName", "Show ADX and AHX key mode choices", key_context);
+    bind_ui_text(m_adx_string_input, "placeholderText", "type-8 key string", key_context);
+    bind_ui_text(m_adx_number_input, "placeholderText", "64-bit key", key_context);
+    bind_ui_text(m_adx_number_input, "toolTip", "Hex mode accepts grouped bytes with spaces. Decimal mode accepts digits only.", key_context);
+    bind_ui_text(m_adx_subkey_input, "placeholderText", "optional 16-bit subkey", key_context);
+    bind_ui_text(adx_form->labelForField(mode_row), "text", "Key mode", key_context);
+    bind_ui_text(adx_form->labelForField(m_adx_string_input), "text", "String key", key_context);
+    bind_ui_text(adx_form->labelForField(adx_number_row), "text", "64-bit key", key_context);
+    bind_ui_text(adx_form->labelForField(adx_subkey_row), "text", "Subkey", key_context);
+    bind_ui_text(adx_form->labelForField(triplet_row), "text", "Key triplet", key_context);
+    bind_ui_text(hint, "text", "Choose hex for copied byte-style keys; spaces are allowed only in hex mode.", key_context);
+    bind_ui_text(clear_button, "text", "Clear", key_context);
+    bind_ui_text(apply_button, "text", "Apply", key_context);
 
     m_decryption_keys_window->resize(460, 560);
     if (const auto* target_screen = screen(); target_screen != nullptr) {
@@ -598,6 +632,35 @@ void MainWindow::build_decryption_keys_window() {
         delete_selected_key_profile();
     });
     refresh_key_profile_combo();
+}
+
+void MainWindow::retranslate_decryption_keys_window() {
+    if (m_decryption_keys_window == nullptr) {
+        return;
+    }
+    constexpr auto context = "MainWindow.KeyPanel";
+    for (auto* combo : m_decryption_keys_window->findChildren<QComboBox*>(QStringLiteral("KeyBaseCombo"))) {
+        if (combo->count() >= 2) {
+            combo->setItemText(0, QCoreApplication::translate(context, "hex"));
+            combo->setItemText(1, QCoreApplication::translate(context, "dec"));
+        }
+        combo->setToolTip(QCoreApplication::translate(context, "Choose how the numeric key text is parsed."));
+        combo->setAccessibleName(QCoreApplication::translate(context, "Numeric key base"));
+    }
+    for (auto* button : m_decryption_keys_window->findChildren<QToolButton*>(QStringLiteral("KeyBaseSegment"))) {
+        const bool decimal = button->property("baseValue").toInt() == 10;
+        const auto base = QCoreApplication::translate(context, decimal ? "dec" : "hex");
+        button->setText(base);
+        button->setToolTip(QCoreApplication::translate(context, "Parse this key as %1.").arg(base));
+        button->setAccessibleName(QCoreApplication::translate(context, "Use %1 key input").arg(base));
+    }
+    if (m_adx_mode_input != nullptr && m_adx_mode_input->count() >= 4) {
+        m_adx_mode_input->setItemText(0, QCoreApplication::translate(context, "None"));
+        m_adx_mode_input->setItemText(1, QCoreApplication::translate(context, "Type 8 string"));
+        m_adx_mode_input->setItemText(2, QCoreApplication::translate(context, "Type 9 64-bit key"));
+        m_adx_mode_input->setItemText(3, QCoreApplication::translate(context, "Explicit key triplet"));
+    }
+    update_decryption_key_derived_fields();
 }
 
 void MainWindow::sync_decryption_key_panel_from_state() {
@@ -658,7 +721,7 @@ void MainWindow::update_decryption_key_derived_fields() {
     set_key_base_selector_enabled(m_adx_subkey_base_input, mode == DecryptionKeys::AdxMode::Type9Number);
 
     if (explicit_triplet) {
-        m_adx_triplet_status->setText(QStringLiteral("explicit key triplet"));
+        m_adx_triplet_status->setText(QCoreApplication::translate("MainWindow.KeyPanel", "explicit key triplet"));
         return;
     }
 
@@ -666,27 +729,27 @@ void MainWindow::update_decryption_key_derived_fields() {
     cricodecs::adx::AdxKeyState triplet{};
     if (mode == DecryptionKeys::AdxMode::Type8String) {
         if (m_adx_string_input->text().isEmpty()) {
-            status = QStringLiteral("type-8 string is empty");
+            status = QCoreApplication::translate("MainWindow.KeyPanel", "type-8 string is empty");
         } else {
             triplet = cricodecs::adx::key8_derive(m_adx_string_input->text().toStdString());
-            status = QStringLiteral("derived from type-8 string");
+            status = QCoreApplication::translate("MainWindow.KeyPanel", "derived from type-8 string");
         }
     } else if (mode == DecryptionKeys::AdxMode::Type9Number) {
         QString error;
         uint64_t key = 0;
         uint16_t subkey = 0;
-        if (!parse_u64_key(m_adx_number_input->text(), key_base_value(m_adx_number_base_input), key, error, QStringLiteral("ADX type-9 key")) ||
+        if (!parse_u64_key(m_adx_number_input->text(), key_base_value(m_adx_number_base_input), key, error, QCoreApplication::translate("MainWindow.KeyPanel", "ADX type-9 key")) ||
             (!m_adx_subkey_input->text().trimmed().isEmpty() &&
-             !parse_u16_key(m_adx_subkey_input->text(), key_base_value(m_adx_subkey_base_input), subkey, error, QStringLiteral("ADX subkey")))) {
+             !parse_u16_key(m_adx_subkey_input->text(), key_base_value(m_adx_subkey_base_input), subkey, error, QCoreApplication::translate("MainWindow.KeyPanel", "ADX subkey")))) {
             status = error;
         } else if (m_adx_number_input->text().trimmed().isEmpty()) {
-            status = QStringLiteral("type-9 key is empty");
+            status = QCoreApplication::translate("MainWindow.KeyPanel", "type-9 key is empty");
         } else {
             triplet = cricodecs::adx::key9_derive(key, subkey);
-            status = QStringLiteral("derived from type-9 key");
+            status = QCoreApplication::translate("MainWindow.KeyPanel", "derived from type-9 key");
         }
     } else {
-        status = QStringLiteral("no ADX/AHX key selected");
+        status = QCoreApplication::translate("MainWindow.KeyPanel", "no ADX/AHX key selected");
     }
 
     const QSignalBlocker start_blocker(m_adx_triplet_start_input);
@@ -709,14 +772,14 @@ bool MainWindow::read_decryption_key_panel(DecryptionKeys& next) {
     const auto cri_text = m_cri_key_input->text();
     if (!cri_text.trimmed().isEmpty()) {
         next.has_cri_key = true;
-        if (!parse_u64_key(cri_text, key_base_value(m_cri_key_base_input), next.cri_key, error, QStringLiteral("CRI key"))) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), error);
+        if (!parse_u64_key(cri_text, key_base_value(m_cri_key_base_input), next.cri_key, error, QCoreApplication::translate("MainWindow.KeyPanel", "CRI key"))) {
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error);
             return false;
         }
     }
     if (!m_hca_subkey_input->text().trimmed().isEmpty() &&
-        !parse_u16_key(m_hca_subkey_input->text(), key_base_value(m_hca_subkey_base_input), next.hca_subkey, error, QStringLiteral("HCA subkey"))) {
-        QMessageBox::warning(this, QStringLiteral("Invalid key"), error);
+        !parse_u16_key(m_hca_subkey_input->text(), key_base_value(m_hca_subkey_base_input), next.hca_subkey, error, QCoreApplication::translate("MainWindow.KeyPanel", "HCA subkey"))) {
+        QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error);
         return false;
     }
 
@@ -724,27 +787,27 @@ bool MainWindow::read_decryption_key_panel(DecryptionKeys& next) {
     if (next.adx_mode == DecryptionKeys::AdxMode::Type8String) {
         next.adx_type8_key = m_adx_string_input->text().toStdString();
         if (next.adx_type8_key.empty()) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), QStringLiteral("ADX type-8 key string is empty."));
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), QCoreApplication::translate("MainWindow.KeyPanel", "ADX type-8 key string is empty."));
             return false;
         }
     } else if (next.adx_mode == DecryptionKeys::AdxMode::Type9Number) {
-        if (!parse_u64_key(m_adx_number_input->text(), key_base_value(m_adx_number_base_input), next.adx_type9_key, error, QStringLiteral("ADX type-9 key")) ||
+        if (!parse_u64_key(m_adx_number_input->text(), key_base_value(m_adx_number_base_input), next.adx_type9_key, error, QCoreApplication::translate("MainWindow.KeyPanel", "ADX type-9 key")) ||
             (!m_adx_subkey_input->text().trimmed().isEmpty() &&
-             !parse_u16_key(m_adx_subkey_input->text(), key_base_value(m_adx_subkey_base_input), next.adx_subkey, error, QStringLiteral("ADX subkey")))) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), error);
+             !parse_u16_key(m_adx_subkey_input->text(), key_base_value(m_adx_subkey_base_input), next.adx_subkey, error, QCoreApplication::translate("MainWindow.KeyPanel", "ADX subkey")))) {
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error);
             return false;
         }
     } else if (next.adx_mode == DecryptionKeys::AdxMode::AhxTriplet) {
         if (m_adx_triplet_start_input->text().trimmed().isEmpty() ||
             m_adx_triplet_mult_input->text().trimmed().isEmpty() ||
             m_adx_triplet_add_input->text().trimmed().isEmpty() ||
-            !parse_u16_key(m_adx_triplet_start_input->text(), 16, next.ahx_start, error, QStringLiteral("Key triplet start")) ||
-            !parse_u16_key(m_adx_triplet_mult_input->text(), 16, next.ahx_mult, error, QStringLiteral("Key triplet mult")) ||
-            !parse_u16_key(m_adx_triplet_add_input->text(), 16, next.ahx_add, error, QStringLiteral("Key triplet add"))) {
+            !parse_u16_key(m_adx_triplet_start_input->text(), 16, next.ahx_start, error, QCoreApplication::translate("MainWindow.KeyPanel", "Key triplet start")) ||
+            !parse_u16_key(m_adx_triplet_mult_input->text(), 16, next.ahx_mult, error, QCoreApplication::translate("MainWindow.KeyPanel", "Key triplet mult")) ||
+            !parse_u16_key(m_adx_triplet_add_input->text(), 16, next.ahx_add, error, QCoreApplication::translate("MainWindow.KeyPanel", "Key triplet add"))) {
             QMessageBox::warning(
                 this,
-                QStringLiteral("Invalid key"),
-                error.isEmpty() ? QStringLiteral("Key triplet must be three 16-bit values: start, mult, add.") : error
+                QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"),
+                error.isEmpty() ? QCoreApplication::translate("MainWindow.KeyPanel", "Key triplet must be three 16-bit values: start, mult, add.") : error
             );
             return false;
         }
@@ -760,8 +823,8 @@ bool MainWindow::apply_decryption_key_panel() {
     }
 
     m_decryption_keys = std::move(next);
-    append_log(QStringLiteral("Updated session cryptography keys"));
-    statusBar()->showMessage(QStringLiteral("Updated cryptography keys"), 3000);
+    append_log(QCoreApplication::translate("MainWindow.KeyPanel", "Updated session cryptography keys"));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "Updated cryptography keys"), 3000);
     update_document_key_panel(m_file_view == nullptr || !m_file_view->currentIndex().isValid()
         ? nullptr
         : m_file_model->document_at(m_file_proxy->mapToSource(m_file_view->currentIndex()).row()));
@@ -806,8 +869,8 @@ void MainWindow::save_current_key_profile() {
     bool ok = false;
     auto name = QInputDialog::getText(
         this,
-        QStringLiteral("Save Key Profile"),
-        QStringLiteral("Profile name"),
+        QCoreApplication::translate("MainWindow.KeyPanel", "Save Key Profile"),
+        QCoreApplication::translate("MainWindow.KeyPanel", "Profile name"),
         QLineEdit::Normal,
         m_key_profile_combo == nullptr ? QString{} : m_key_profile_combo->currentText(),
         &ok
@@ -816,7 +879,7 @@ void MainWindow::save_current_key_profile() {
         return;
     }
     if (name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
-        QMessageBox::warning(this, QStringLiteral("Invalid profile"), QStringLiteral("Profile names cannot contain slashes."));
+        QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid profile"), QCoreApplication::translate("MainWindow.KeyPanel", "Profile names cannot contain slashes."));
         return;
     }
 
@@ -830,30 +893,30 @@ void MainWindow::save_current_key_profile() {
             m_key_profile_combo->setCurrentIndex(index);
         }
     }
-    append_log(QStringLiteral("Saved key profile: ") + name);
-    statusBar()->showMessage(QStringLiteral("Saved key profile: ") + name, 3000);
+    append_log(QCoreApplication::translate("MainWindow.KeyPanel", "Saved key profile: ") + name);
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "Saved key profile: ") + name, 3000);
 }
 
 void MainWindow::load_selected_key_profile() {
     build_decryption_keys_window();
     const auto name = m_key_profile_combo == nullptr ? QString{} : m_key_profile_combo->currentText();
     if (name.isEmpty()) {
-        statusBar()->showMessage(QStringLiteral("No key profile selected"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "No key profile selected"), 3000);
         return;
     }
 
     auto settings = key_profile_settings();
     DecryptionKeys keys;
     if (!read_key_profile(settings, name, keys)) {
-        QMessageBox::warning(this, QStringLiteral("Missing profile"), QStringLiteral("The selected key profile no longer exists."));
+        QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Missing profile"), QCoreApplication::translate("MainWindow.KeyPanel", "The selected key profile no longer exists."));
         refresh_key_profile_combo();
         return;
     }
 
     m_decryption_keys = std::move(keys);
     sync_decryption_key_panel_from_state();
-    append_log(QStringLiteral("Loaded key profile: ") + name);
-    statusBar()->showMessage(QStringLiteral("Loaded key profile: ") + name, 3000);
+    append_log(QCoreApplication::translate("MainWindow.KeyPanel", "Loaded key profile: ") + name);
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "Loaded key profile: ") + name, 3000);
     update_document_key_panel(m_file_view == nullptr || !m_file_view->currentIndex().isValid()
         ? nullptr
         : m_file_model->document_at(m_file_proxy->mapToSource(m_file_view->currentIndex()).row()));
@@ -867,14 +930,14 @@ void MainWindow::delete_selected_key_profile() {
     build_decryption_keys_window();
     const auto name = m_key_profile_combo == nullptr ? QString{} : m_key_profile_combo->currentText();
     if (name.isEmpty()) {
-        statusBar()->showMessage(QStringLiteral("No key profile selected"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "No key profile selected"), 3000);
         return;
     }
 
     const auto answer = QMessageBox::question(
         this,
-        QStringLiteral("Delete Key Profile"),
-        QStringLiteral("Delete key profile \"%1\"?").arg(name),
+        QCoreApplication::translate("MainWindow.KeyPanel", "Delete Key Profile"),
+        QCoreApplication::translate("MainWindow.KeyPanel", "Delete key profile \"%1\"?").arg(name),
         QMessageBox::Yes | QMessageBox::Cancel,
         QMessageBox::Cancel
     );
@@ -888,8 +951,8 @@ void MainWindow::delete_selected_key_profile() {
     settings.endGroup();
     settings.sync();
     refresh_key_profile_combo();
-    append_log(QStringLiteral("Deleted key profile: ") + name);
-    statusBar()->showMessage(QStringLiteral("Deleted key profile: ") + name, 3000);
+    append_log(QCoreApplication::translate("MainWindow.KeyPanel", "Deleted key profile: ") + name);
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.KeyPanel", "Deleted key profile: ") + name, 3000);
 }
 
 
@@ -949,7 +1012,7 @@ void MainWindow::update_preview_key_panel(const EntrySummary& entry) {
 }
 
 MainWindow::KeyPanelKind MainWindow::key_kind_for_document(const LoadedDocument& document) const {
-    const auto format = lower_text(document.format);
+    const auto format = lower_text(document_format_id(document));
     if (format.contains(QStringLiteral("cvm"))) {
         return KeyPanelKind::None;
     }
@@ -1040,17 +1103,17 @@ void MainWindow::update_key_panel(
     QSignalBlocker blocker(input);
     QSignalBlocker base_blocker(base);
     if (kind == KeyPanelKind::Cri64) {
-        label->setText(QStringLiteral("CRI key"));
-        input->setPlaceholderText(QStringLiteral("64-bit key"));
-        input->setToolTip(QStringLiteral("Hex mode accepts spaces and underscores. Decimal mode accepts digits and underscores only."));
+        label->setText(QCoreApplication::translate("MainWindow.KeyPanel", "CRI key"));
+        input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "64-bit key"));
+        input->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Hex mode accepts spaces and underscores. Decimal mode accepts digits and underscores only."));
         input->setText(m_decryption_keys.has_cri_key ? key64_display(m_decryption_keys.cri_key) : QString{});
         base->setCurrentIndex(0);
         sync_key_base_selector(base);
         set_key_base_selector_visible(base, true);
     } else if (kind == KeyPanelKind::Adx) {
-        label->setText(QStringLiteral("ADX/AHX key"));
-        input->setPlaceholderText(QStringLiteral("type8:string, key, or start,mult,add"));
-        input->setToolTip(QStringLiteral("Numeric type-9 keys use the selected base. Key triplets are parsed as hex."));
+        label->setText(QCoreApplication::translate("MainWindow.KeyPanel", "ADX/AHX key"));
+        input->setPlaceholderText(QCoreApplication::translate("MainWindow.KeyPanel", "type8:string, key, or start,mult,add"));
+        input->setToolTip(QCoreApplication::translate("MainWindow.KeyPanel", "Numeric type-9 keys use the selected base. Key triplets are parsed as hex."));
         input->setText(adx_key_display(m_decryption_keys));
         base->setCurrentIndex(0);
         sync_key_base_selector(base);
@@ -1069,8 +1132,8 @@ void MainWindow::apply_key_panel_value(KeyPanelKind kind, const QString& value, 
         if (text.trimmed().isEmpty()) {
             m_decryption_keys.has_cri_key = false;
             m_decryption_keys.cri_key = 0;
-        } else if (!parse_u64_key(text, numeric_base, m_decryption_keys.cri_key, error, QStringLiteral("CRI key"))) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), error);
+        } else if (!parse_u64_key(text, numeric_base, m_decryption_keys.cri_key, error, QCoreApplication::translate("MainWindow.KeyPanel", "CRI key"))) {
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error);
             return;
         } else {
             m_decryption_keys.has_cri_key = true;
@@ -1095,11 +1158,11 @@ void MainWindow::apply_key_panel_value(KeyPanelKind kind, const QString& value, 
     } else if (text.contains(QLatin1Char(','))) {
         const auto parts = text.split(QLatin1Char(','), Qt::SkipEmptyParts);
         if (parts.size() != 3 ||
-            !parse_u16_key(parts[0], 16, m_decryption_keys.ahx_start, error, QStringLiteral("AHX start")) ||
-            !parse_u16_key(parts[1], 16, m_decryption_keys.ahx_mult, error, QStringLiteral("AHX mult")) ||
-            !parse_u16_key(parts[2], 16, m_decryption_keys.ahx_add, error, QStringLiteral("AHX add"))) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), error.isEmpty()
-                ? QStringLiteral("AHX triplet must be three 16-bit values: start,mult,add.")
+            !parse_u16_key(parts[0], 16, m_decryption_keys.ahx_start, error, QCoreApplication::translate("MainWindow.KeyPanel", "AHX start")) ||
+            !parse_u16_key(parts[1], 16, m_decryption_keys.ahx_mult, error, QCoreApplication::translate("MainWindow.KeyPanel", "AHX mult")) ||
+            !parse_u16_key(parts[2], 16, m_decryption_keys.ahx_add, error, QCoreApplication::translate("MainWindow.KeyPanel", "AHX add"))) {
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error.isEmpty()
+                ? QCoreApplication::translate("MainWindow.KeyPanel", "AHX triplet must be three 16-bit values: start,mult,add.")
                 : error);
             return;
         }
@@ -1108,8 +1171,8 @@ void MainWindow::apply_key_panel_value(KeyPanelKind kind, const QString& value, 
         m_decryption_keys.adx_mode = DecryptionKeys::AdxMode::Type8String;
         m_decryption_keys.adx_type8_key = text.mid(6).toStdString();
     } else if (is_adx_key_numeric_candidate(text)) {
-        if (!parse_u64_key(text, numeric_base, m_decryption_keys.adx_type9_key, error, QStringLiteral("ADX type-9 key"))) {
-            QMessageBox::warning(this, QStringLiteral("Invalid key"), error);
+        if (!parse_u64_key(text, numeric_base, m_decryption_keys.adx_type9_key, error, QCoreApplication::translate("MainWindow.KeyPanel", "ADX type-9 key"))) {
+            QMessageBox::warning(this, QCoreApplication::translate("MainWindow.KeyPanel", "Invalid key"), error);
             return;
         }
         m_decryption_keys.adx_mode = DecryptionKeys::AdxMode::Type9Number;

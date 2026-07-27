@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "modules/usm/usm_edit.hpp"
 
 #include "modules/utf/utf_edit_ui.hpp"
@@ -31,12 +32,12 @@ QString size_text(uint64_t bytes) {
     constexpr double mib = kib * 1024.0;
     const double value = static_cast<double>(bytes);
     if (value >= mib) {
-        return QStringLiteral("%1 MiB").arg(value / mib, 0, 'f', value >= 100.0 * mib ? 0 : 1);
+        return QCoreApplication::translate("Usm.UsmEdit", "%1 MiB").arg(value / mib, 0, 'f', value >= 100.0 * mib ? 0 : 1);
     }
     if (value >= kib) {
-        return QStringLiteral("%1 KiB").arg(value / kib, 0, 'f', value >= 100.0 * kib ? 0 : 1);
+        return QCoreApplication::translate("Usm.UsmEdit", "%1 KiB").arg(value / kib, 0, 'f', value >= 100.0 * kib ? 0 : 1);
     }
-    return QStringLiteral("%1 B").arg(bytes);
+    return QCoreApplication::translate("Usm.UsmEdit", "%1 B").arg(bytes);
 }
 
 QString payload_type_text(cricodecs::usm::UsmPayloadType type) {
@@ -55,7 +56,7 @@ QString payload_type_text(cricodecs::usm::UsmPayloadType type) {
 
 QString compact_stream_summary(const cricodecs::usm::UsmStreamInfo& stream) {
     const auto name = utf8_to_qstring(stream.filename.empty() ? stream.filename_raw : stream.filename);
-    return QStringLiteral("%1 ch %2, %3, %4, avbps %5")
+    return QCoreApplication::translate("Usm.UsmEdit", "%1 ch %2, %3, %4, avbps %5")
         .arg(fourcc_text(static_cast<uint32_t>(stream.stream_id)))
         .arg(stream.channel_no)
         .arg(name)
@@ -83,35 +84,35 @@ QString hex_preview(std::span<const uint8_t> bytes, size_t max_bytes = 4096) {
         out += QLatin1Char('\n');
     }
     if (bytes.size() > count) {
-        out += QStringLiteral("\n... %1 more bytes").arg(static_cast<qulonglong>(bytes.size() - count));
+        out += QCoreApplication::translate("Usm.UsmEdit", "\n... %1 more bytes").arg(static_cast<qulonglong>(bytes.size() - count));
     }
     return out;
 }
 
 QString compact_chunk_summary(const cricodecs::usm::UsmChunk& chunk, uint64_t file_offset) {
-    return QStringLiteral("offset 0x%1, %2, payload %3, chunk %4, padding %5%6")
+    return QCoreApplication::translate("Usm.UsmEdit", "offset 0x%1, %2, payload %3, chunk %4, padding %5%6")
         .arg(static_cast<qulonglong>(file_offset), 8, 16, QLatin1Char('0')).toUpper()
         .arg(payload_type_text(chunk.payload_type()))
         .arg(size_text(chunk.payload.size()))
         .arg(size_text(chunk.header.chunk_size))
         .arg(size_text(chunk.header.padding))
-        .arg(chunk.is_utf_payload() ? QStringLiteral(", UTF") : QString{});
+        .arg(chunk.is_utf_payload() ? QCoreApplication::translate("Usm.UsmEdit", ", UTF") : QString{});
 }
 
 } // namespace
 
 std::vector<TransformDetailRow> detail_rows(cricodecs::usm::UsmReader& usm) {
     std::vector<TransformDetailRow> rows;
-    rows.push_back({QStringLiteral("Container filename"), utf8_to_qstring(std::string(usm.container_filename()))});
-    rows.push_back({QStringLiteral("CRID table"), utf8_to_qstring(std::string(usm.crid_header().table_name())), 10, -1});
-    rows.push_back({QStringLiteral("Streams"), QString::number(static_cast<qsizetype>(usm.streams().size()))});
-    rows.push_back({QStringLiteral("Chunks"), QString::number(static_cast<qsizetype>(usm.chunks().size()))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Container filename"), utf8_to_qstring(std::string(usm.container_filename()))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "CRID table"), utf8_to_qstring(std::string(usm.crid_header().table_name())), 10, -1});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Streams"), QString::number(static_cast<qsizetype>(usm.streams().size()))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Chunks"), QString::number(static_cast<qsizetype>(usm.chunks().size()))});
     if (usm.sfsh_header()) {
         const auto& sfsh = *usm.sfsh_header();
-        rows.push_back({QStringLiteral("SFSH version"), QString::number(sfsh.version)});
-        rows.push_back({QStringLiteral("SFSH payload size"), QString::number(sfsh.payload_size)});
-        rows.push_back({QStringLiteral("SFSH codec marker"), QString::number(sfsh.codec_marker())});
-        rows.push_back({QStringLiteral("SFSH normalized codec"), QString::number(sfsh.normalized_codec_marker())});
+        rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "SFSH version"), QString::number(sfsh.version)});
+        rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "SFSH payload size"), QString::number(sfsh.payload_size)});
+        rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "SFSH codec marker"), QString::number(sfsh.codec_marker())});
+        rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "SFSH normalized codec"), QString::number(sfsh.normalized_codec_marker())});
     }
 
     struct ChunkGroupSummary {
@@ -148,18 +149,21 @@ std::vector<TransformDetailRow> detail_rows(cricodecs::usm::UsmReader& usm) {
         group.payload_bytes += chunk.payload.size();
     }
 
-    rows.push_back({QStringLiteral("Stream payload chunks"), QString::number(static_cast<qulonglong>(stream_chunk_count))});
-    rows.push_back({QStringLiteral("UTF payload chunks"), QString::number(static_cast<qulonglong>(utf_chunk_count))});
-    rows.push_back({QStringLiteral("Metadata chunks"), QString::number(static_cast<qulonglong>(metadata_chunk_count))});
-    rows.push_back({QStringLiteral("Header chunks"), QString::number(static_cast<qulonglong>(header_chunk_count))});
-    rows.push_back({QStringLiteral("Section-end chunks"), QString::number(static_cast<qulonglong>(section_end_chunk_count))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Stream payload chunks"), QString::number(static_cast<qulonglong>(stream_chunk_count))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "UTF payload chunks"), QString::number(static_cast<qulonglong>(utf_chunk_count))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Metadata chunks"), QString::number(static_cast<qulonglong>(metadata_chunk_count))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Header chunks"), QString::number(static_cast<qulonglong>(header_chunk_count))});
+    rows.push_back({QCoreApplication::translate("Usm.UsmEdit", "Section-end chunks"), QString::number(static_cast<qulonglong>(section_end_chunk_count))});
     for (const auto& [key, group] : chunk_groups) {
         rows.push_back({
-            QStringLiteral("Chunk group %1 ch %2")
+            QCoreApplication::translate("Usm.UsmEdit", "Chunk group %1 ch %2")
                 .arg(fourcc_text(key.first))
                 .arg(key.second),
-            QStringLiteral("%1 chunk(s), %2 payload")
-                .arg(static_cast<qulonglong>(group.chunk_count))
+            QCoreApplication::translate(
+                "Usm.UsmEdit",
+                "%n chunk(s), %1 payload",
+                nullptr,
+                static_cast<int>(group.chunk_count))
                 .arg(size_text(group.payload_bytes))
         });
     }
@@ -168,7 +172,7 @@ std::vector<TransformDetailRow> detail_rows(cricodecs::usm::UsmReader& usm) {
     for (size_t index = 0; index < shown_streams; ++index) {
         const auto& stream = usm.streams()[index];
         rows.push_back({
-            QStringLiteral("Stream %1").arg(static_cast<qulonglong>(index)),
+            QCoreApplication::translate("Usm.UsmEdit", "Stream %1").arg(static_cast<qulonglong>(index)),
             compact_stream_summary(stream),
             13,
             static_cast<int>(index)
@@ -176,9 +180,12 @@ std::vector<TransformDetailRow> detail_rows(cricodecs::usm::UsmReader& usm) {
     }
     if (usm.streams().size() > shown_streams) {
         rows.push_back({
-            QStringLiteral("Additional streams"),
-            QStringLiteral("%1 more stream row(s) omitted from editor table")
-                .arg(static_cast<qulonglong>(usm.streams().size() - shown_streams))
+            QCoreApplication::translate("Usm.UsmEdit", "Additional streams"),
+            QCoreApplication::translate(
+                "Usm.UsmEdit",
+                "%n more stream row(s) omitted from editor table",
+                nullptr,
+                static_cast<int>(usm.streams().size() - shown_streams))
         });
     }
     return rows;
@@ -191,7 +198,7 @@ TransformDetailRow chunk_detail_row(const cricodecs::usm::UsmReader& usm, size_t
     const auto& chunk = usm.chunks()[index];
     const auto magic = fourcc_text(chunk.header.magic);
     return {
-        QStringLiteral("Chunk %1 %2 ch %3")
+        QCoreApplication::translate("Usm.UsmEdit", "Chunk %1 %2 ch %3")
             .arg(static_cast<qulonglong>(index))
             .arg(magic)
             .arg(chunk.header.channel_no),
@@ -237,7 +244,7 @@ std::expected<std::vector<uint8_t>, QString> chunk_payload_sample(
     size_t max_bytes
 ) {
     if (index < 0 || index >= static_cast<int>(usm.chunks().size())) {
-        return std::unexpected(QStringLiteral("USM chunk preview failed: index out of range"));
+        return std::unexpected(QCoreApplication::translate("Usm.UsmEdit", "USM chunk preview failed: index out of range"));
     }
     const auto& chunk = usm.chunks()[static_cast<size_t>(index)];
     const auto count = std::min(chunk.payload.size(), max_bytes);
@@ -263,13 +270,13 @@ std::expected<cricodecs::utf::UtfTable, QString> utf_payload_table(
         return usm.crid_header();
     }
     if (index >= static_cast<int>(usm.chunks().size())) {
-        return std::unexpected(QStringLiteral("USM UTF chunk preview failed: index out of range"));
+        return std::unexpected(QCoreApplication::translate("Usm.UsmEdit", "USM UTF chunk preview failed: index out of range"));
     }
 
     const auto& chunk = usm.chunks()[static_cast<size_t>(index)];
     auto table = chunk.load_utf_payload();
     if (!table) {
-        return std::unexpected(QStringLiteral("USM UTF chunk preview failed: %1")
+        return std::unexpected(QCoreApplication::translate("Usm.UsmEdit", "USM UTF chunk preview failed: %1")
             .arg(utf8_to_qstring(table.error())));
     }
     return *table;
@@ -285,7 +292,7 @@ std::expected<QString, QString> stream_payload_preview(
     }
     const auto& stream = usm.streams()[static_cast<size_t>(index)];
 
-    return QStringLiteral("USM stream %1 payload sample\nDeclared bytes: %2\nShown bytes: %3\n\n%4")
+    return QCoreApplication::translate("Usm.UsmEdit", "USM stream %1 payload sample\nDeclared bytes: %2\nShown bytes: %3\n\n%4")
         .arg(index)
         .arg(static_cast<qulonglong>(stream.filesize))
         .arg(static_cast<qulonglong>(preview->size()))
@@ -298,12 +305,12 @@ std::expected<std::vector<uint8_t>, QString> stream_payload_sample(
     size_t max_bytes
 ) {
     if (index < 0 || index >= static_cast<int>(usm.streams().size())) {
-        return std::unexpected(QStringLiteral("USM stream preview failed: index out of range"));
+        return std::unexpected(QCoreApplication::translate("Usm.UsmEdit", "USM stream preview failed: index out of range"));
     }
 
     auto preview = usm.extract_stream_sample(static_cast<uint32_t>(index), max_bytes);
     if (!preview) {
-        return std::unexpected(QStringLiteral("USM stream preview failed: %1")
+        return std::unexpected(QCoreApplication::translate("Usm.UsmEdit", "USM stream preview failed: %1")
             .arg(utf8_to_qstring(preview.error())));
     }
     return *preview;

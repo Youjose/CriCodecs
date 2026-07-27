@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/mux_export_helpers.hpp"
 
 #include "path_text.hpp"
@@ -44,18 +45,57 @@ bool has_video_decode_error(std::string_view stderr_text) {
            lower.find("could not find codec parameters") != std::string::npos;
 }
 
+enum class StagedStream {
+    Video,
+    Audio,
+    Subtitle,
+};
+
+std::string staged_stream_error(StagedStream stream, bool flushing, const QString& detail) {
+    const char* source = nullptr;
+    if (flushing) {
+        switch (stream) {
+        case StagedStream::Video:
+            source = "Could not flush the temporary mux video stream: %1";
+            break;
+        case StagedStream::Audio:
+            source = "Could not flush the temporary mux audio stream: %1";
+            break;
+        case StagedStream::Subtitle:
+            source = "Could not flush the temporary mux subtitle stream: %1";
+            break;
+        }
+    } else {
+        switch (stream) {
+        case StagedStream::Video:
+            source = "Could not write the temporary mux video stream: %1";
+            break;
+        case StagedStream::Audio:
+            source = "Could not write the temporary mux audio stream: %1";
+            break;
+        case StagedStream::Subtitle:
+            source = "Could not write the temporary mux subtitle stream: %1";
+            break;
+        }
+    }
+    return QCoreApplication::translate("Shared.MuxExportHelpers", source)
+        .arg(detail)
+        .toUtf8()
+        .toStdString();
+}
+
 std::expected<void, std::string> write_staged_bytes(
     QFile& file,
     const char* bytes,
     size_t size,
-    std::string_view description,
+    StagedStream stream,
     std::stop_token stop_token
 ) {
     constexpr size_t write_chunk_size = 4u * 1024u * 1024u;
     size_t written = 0;
     while (written < size) {
         if (stop_token.stop_requested()) {
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "extraction canceled"));
         }
         const auto chunk_size = static_cast<qint64>(std::min<size_t>(
             size - written,
@@ -63,14 +103,12 @@ std::expected<void, std::string> write_staged_bytes(
         ));
         const auto count = file.write(bytes + written, chunk_size);
         if (count <= 0) {
-            return std::unexpected(
-                "could not write temporary " + std::string(description) + ": " + file.errorString().toStdString());
+            return std::unexpected(staged_stream_error(stream, false, file.errorString()));
         }
         written += static_cast<size_t>(count);
     }
     if (!file.flush()) {
-        return std::unexpected(
-            "could not flush temporary " + std::string(description) + ": " + file.errorString().toStdString());
+        return std::unexpected(staged_stream_error(stream, true, file.errorString()));
     }
     return {};
 }
@@ -86,13 +124,13 @@ std::expected<void, std::string> wait_for_process(
         if (stop_token.stop_requested()) {
             process.kill();
             process.waitForFinished(3000);
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "extraction canceled"));
         }
         const auto remaining = timeout_ms - static_cast<int>(elapsed.elapsed());
         if (remaining <= 0) {
             process.kill();
             process.waitForFinished(3000);
-            return std::unexpected("ffmpeg timed out");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "ffmpeg timed out"));
         }
         process.waitForFinished(std::min(remaining, 100));
     }
@@ -137,7 +175,7 @@ std::expected<void, std::string> validate_mux_output_file(
     ) {
         return {};
     }
-    return std::unexpected("video may be encrypted or unsupported");
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "video may be encrypted or unsupported"));
 }
 
 } // namespace
@@ -149,18 +187,18 @@ std::expected<void, std::string> write_mux_extract_file(
     std::stop_token stop_token
 ) {
     if (stop_token.stop_requested()) {
-        return std::unexpected("extraction canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "extraction canceled"));
     }
     if (ffmpeg_path.empty()) {
-        return std::unexpected("ffmpeg not configured for mux extraction");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "ffmpeg not configured for mux extraction"));
     }
     if (mux.video_bytes.empty()) {
-        return std::unexpected("mux extraction did not produce video bytes");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "mux extraction did not produce video bytes"));
     }
 
     QTemporaryDir temp_dir(QDir::tempPath() + QStringLiteral("/CriStudio-mux-extract-XXXXXX"));
     if (!temp_dir.isValid()) {
-        return std::unexpected("could not create temporary mux extraction directory");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "could not create temporary mux extraction directory"));
     }
 
     const auto video_suffix = mux.video_suffix.empty()
@@ -169,13 +207,13 @@ std::expected<void, std::string> write_mux_extract_file(
     const auto video_path = temp_dir.filePath(QStringLiteral("video") + video_suffix);
     QFile video_file(video_path);
     if (!video_file.open(QIODevice::WriteOnly)) {
-        return std::unexpected("could not write temporary mux video stream");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "could not write temporary mux video stream"));
     }
     if (auto written = write_staged_bytes(
             video_file,
             reinterpret_cast<const char*>(mux.video_bytes.data()),
             mux.video_bytes.size(),
-            "mux video stream",
+            StagedStream::Video,
             stop_token); !written) {
         return std::unexpected(written.error());
     }
@@ -186,13 +224,13 @@ std::expected<void, std::string> write_mux_extract_file(
         audio_path = temp_dir.filePath(QStringLiteral("audio.wav"));
         QFile audio_file(audio_path);
         if (!audio_file.open(QIODevice::WriteOnly)) {
-            return std::unexpected("could not write temporary mux audio stream");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "could not write temporary mux audio stream"));
         }
         if (auto written = write_staged_bytes(
                 audio_file,
                 reinterpret_cast<const char*>(mux.audio_wav_bytes.data()),
                 mux.audio_wav_bytes.size(),
-                "mux audio stream",
+                StagedStream::Audio,
                 stop_token); !written) {
             return std::unexpected(written.error());
         }
@@ -203,19 +241,19 @@ std::expected<void, std::string> write_mux_extract_file(
     subtitle_paths.reserve(static_cast<qsizetype>(mux.subtitle_choices.size()));
     for (size_t index = 0; index < mux.subtitle_choices.size(); ++index) {
         if (stop_token.stop_requested()) {
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "extraction canceled"));
         }
         const auto& subtitle = mux.subtitle_choices[index];
         const auto subtitle_path = temp_dir.filePath(QStringLiteral("subtitle-%1.srt").arg(index));
         QFile subtitle_file(subtitle_path);
         if (!subtitle_file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return std::unexpected("could not write temporary mux subtitle stream");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "could not write temporary mux subtitle stream"));
         }
         if (auto written = write_staged_bytes(
                 subtitle_file,
                 subtitle.srt_text.data(),
                 subtitle.srt_text.size(),
-                "mux subtitle stream",
+                StagedStream::Subtitle,
                 stop_token); !written) {
             return std::unexpected(written.error());
         }
@@ -283,7 +321,7 @@ std::expected<void, std::string> write_mux_extract_file(
         if (!waited) {
             return std::unexpected(waited.error());
         }
-        return std::unexpected("ffmpeg stream-copy mux failed: " + ffmpeg_error_text(ffmpeg_process));
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.MuxExportHelpers", "ffmpeg stream-copy mux failed: ") + ffmpeg_error_text(ffmpeg_process));
     }
 
     if (auto valid = validate_mux_output_file(ffmpeg_path, output_path, stop_token); !valid) {

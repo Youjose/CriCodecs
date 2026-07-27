@@ -3,6 +3,7 @@
 #include "modules/hca/hca_edit_ui.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -61,7 +62,7 @@ QWidget* path_picker_row(QDialog& dialog, QLineEdit& edit, const QString& title,
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
     layout->addWidget(&edit, 1);
-    auto* browse = new QPushButton(QStringLiteral("Browse"), row);
+    auto* browse = new QPushButton(QCoreApplication::translate("Audio.AudioEncodeUi", "Browse"), row);
     layout->addWidget(browse, 0);
     QObject::connect(browse, &QPushButton::clicked, &dialog, [&dialog, &edit, title, save_path, filter] {
         QString selected;
@@ -86,7 +87,7 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
     EncodeTarget preferred_target
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Encode from WAV"));
+    dialog.setWindowTitle(QCoreApplication::translate("Audio.AudioEncodeUi", "Encode from WAV"));
     dialog.resize(620, 420);
 
     auto* layout = new QVBoxLayout(&dialog);
@@ -95,50 +96,50 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
     layout->addLayout(form);
 
     auto* target_combo = new QComboBox(&dialog);
-    target_combo->addItem(QStringLiteral("ADX ADPCM"), static_cast<int>(EncodeTarget::Adx));
+    target_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "ADX ADPCM"), static_cast<int>(EncodeTarget::Adx));
     target_combo->addItem(QStringLiteral("AHX"), static_cast<int>(EncodeTarget::Adx));
     target_combo->addItem(QStringLiteral("HCA"), static_cast<int>(EncodeTarget::Hca));
     target_combo->setCurrentIndex(preferred_target == EncodeTarget::Hca ? 2 : 0);
-    form->addRow(QStringLiteral("Target"), target_combo);
+    form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Target"), target_combo);
 
     auto* input_edit = new QLineEdit(&dialog);
-    form->addRow(QStringLiteral("Input WAV"), path_picker_row(dialog, *input_edit, QStringLiteral("Choose WAV input"), false, QStringLiteral("WAV audio (*.wav);;All files (*)")));
+    form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Input WAV"), path_picker_row(dialog, *input_edit, QCoreApplication::translate("Audio.AudioEncodeUi", "Choose WAV input"), false, QCoreApplication::translate("Audio.AudioEncodeUi", "WAV audio (*.wav);;All files (*)")));
 
     auto* output_edit = new QLineEdit(&dialog);
     output_edit->setText(safe_output_name(std::move(title) + QStringLiteral("_encoded"), preferred_target == EncodeTarget::Hca ? QStringLiteral(".hca") : QStringLiteral(".adx")));
-    form->addRow(QStringLiteral("Output"), path_picker_row(dialog, *output_edit, QStringLiteral("Choose encoded output"), true, QStringLiteral("CRI audio (*.adx *.ahx *.hca);;All files (*)")));
+    form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Output"), path_picker_row(dialog, *output_edit, QCoreApplication::translate("Audio.AudioEncodeUi", "Choose encoded output"), true, QCoreApplication::translate("Audio.AudioEncodeUi", "CRI audio (*.adx *.ahx *.hca);;All files (*)")));
 
-    auto* adx_group = new QGroupBox(QStringLiteral("ADX/AHX Options"), &dialog);
+    auto* adx_group = new QGroupBox(QCoreApplication::translate("Audio.AudioEncodeUi", "ADX/AHX Options"), &dialog);
     auto* adx_form = new QFormLayout(adx_group);
     adx_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     layout->addWidget(adx_group);
 
     auto* adx_mode_combo = new QComboBox(&dialog);
-    adx_mode_combo->addItem(QStringLiteral("ADX mode 3"), 3);
-    adx_mode_combo->addItem(QStringLiteral("ADX mode 2"), 2);
-    adx_mode_combo->addItem(QStringLiteral("ADX mode 4"), 4);
-    adx_mode_combo->addItem(QStringLiteral("AHX mode 0x10"), 0x10);
-    adx_mode_combo->addItem(QStringLiteral("AHX mode 0x11"), 0x11);
-    adx_form->addRow(QStringLiteral("Mode"), adx_mode_combo);
+    adx_mode_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "ADX mode 3"), 3);
+    adx_mode_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "ADX mode 2"), 2);
+    adx_mode_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "ADX mode 4"), 4);
+    adx_mode_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "AHX mode 0x10"), 0x10);
+    adx_mode_combo->addItem(QCoreApplication::translate("Audio.AudioEncodeUi", "AHX mode 0x11"), 0x11);
+    adx_form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Mode"), adx_mode_combo);
 
     auto* adx_highpass = new QSpinBox(&dialog);
     adx_highpass->setRange(0, 24000);
     adx_highpass->setValue(500);
-    adx_highpass->setSuffix(QStringLiteral(" Hz"));
-    adx_form->addRow(QStringLiteral("Highpass"), adx_highpass);
+    adx_highpass->setSuffix(QCoreApplication::translate("Audio.AudioEncodeUi", " Hz"));
+    adx_form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Highpass"), adx_highpass);
 
-    auto* adx_encrypt = new QCheckBox(QStringLiteral("Use configured ADX type-8 key string"), &dialog);
+    auto* adx_encrypt = new QCheckBox(QCoreApplication::translate("Audio.AudioEncodeUi", "Use configured ADX type-8 key string"), &dialog);
     adx_encrypt->setEnabled(!keys.adx_type8_key.empty());
-    adx_form->addRow(QStringLiteral("Encryption"), adx_encrypt);
+    adx_form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Encryption"), adx_encrypt);
 
-    auto* adx_delete_after_loop = new QCheckBox(QStringLiteral("Trim samples after last loop end"), &dialog);
-    adx_form->addRow(QStringLiteral("Loop policy"), adx_delete_after_loop);
+    auto* adx_delete_after_loop = new QCheckBox(QCoreApplication::translate("Audio.AudioEncodeUi", "Trim samples after last loop end"), &dialog);
+    adx_form->addRow(QCoreApplication::translate("Audio.AudioEncodeUi", "Loop policy"), adx_delete_after_loop);
 
     auto hca_options = modules::hca::create_encode_options_controls(
         &dialog,
-        QStringLiteral("HCA Options"),
-        QStringLiteral("Use configured CRI key"),
-        QStringLiteral("WAV end")
+        QCoreApplication::translate("Audio.AudioEncodeUi", "HCA Options"),
+        QCoreApplication::translate("Audio.AudioEncodeUi", "Use configured CRI key"),
+        QCoreApplication::translate("Audio.AudioEncodeUi", "WAV end")
     );
     layout->addWidget(hca_options.group);
 
@@ -152,7 +153,7 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
         } else if (!ahx_target && adx_target && (current_mode == 0x10 || current_mode == 0x11)) {
             adx_mode_combo->setCurrentIndex(adx_mode_combo->findData(3));
         }
-        adx_group->setTitle(ahx_target ? QStringLiteral("AHX Options") : QStringLiteral("ADX Options"));
+        adx_group->setTitle(ahx_target ? QCoreApplication::translate("Audio.AudioEncodeUi", "AHX Options") : QCoreApplication::translate("Audio.AudioEncodeUi", "ADX Options"));
         adx_group->setVisible(adx_target);
         modules::hca::set_encode_options_enabled(hca_options, !adx_target, keys.has_cri_key);
         adx_mode_combo->setEnabled(adx_target);
@@ -171,7 +172,7 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
     update_fields();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Encode"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Audio.AudioEncodeUi", "Encode"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -180,10 +181,10 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
         return std::optional<EncodeConfig>{};
     }
     if (input_edit->text().trimmed().isEmpty()) {
-        return std::unexpected(QStringLiteral("Choose a WAV input path."));
+        return std::unexpected(QCoreApplication::translate("Audio.AudioEncodeUi", "Choose a WAV input path."));
     }
     if (output_edit->text().trimmed().isEmpty()) {
-        return std::unexpected(QStringLiteral("Choose an output path."));
+        return std::unexpected(QCoreApplication::translate("Audio.AudioEncodeUi", "Choose an output path."));
     }
 
     EncodeConfig config;
@@ -201,7 +202,7 @@ std::expected<std::optional<EncodeConfig>, QString> choose_encode_config(
     if (config.target == EncodeTarget::Adx &&
         (config.adx_encoding_mode == 0x10 || config.adx_encoding_mode == 0x11) &&
         config.adx_delete_after_loop) {
-        return std::unexpected(QStringLiteral("AHX encoding does not support loop metadata."));
+        return std::unexpected(QCoreApplication::translate("Audio.AudioEncodeUi", "AHX encoding does not support loop metadata."));
     }
     return std::optional<EncodeConfig>(std::move(config));
 }

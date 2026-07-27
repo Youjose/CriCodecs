@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "editor/scratch_editor_session.hpp"
 
 #include "editor/editor_helpers.hpp"
@@ -10,6 +11,7 @@
 
 #include "cvm_builder.hpp"
 
+#include <QCoreApplication>
 #include <QFileInfo>
 
 #include <span>
@@ -40,138 +42,138 @@ LoadedDocument failed_cvm_script_document(
 ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& request) {
     ScratchEditorSession session;
 
-    if (request.detected_format == "Audio encode job") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::AudioEncode) {
         session.transform_kind = TransformKind::AudioEncode;
         session.document = LoadedDocument{
             .display_name = "EncodeAudio",
-            .format = "Audio encode job",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Audio encode job"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch audio encode job"},
-                {"Targets", "ADX, AHX, HCA"},
+                {"Source", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Scratch audio encode job")},
+                {"Targets", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "ADX, AHX, HCA")},
                 {"Input", "WAV"}
             }
         };
-        push_log(session, QStringLiteral("Created scratch audio encode job."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch audio encode job."));
         return session;
     }
 
-    if (request.detected_format == "USM/SFD build job") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::MediaBuild) {
         session.transform_kind = TransformKind::MediaBuild;
         session.document = LoadedDocument{
             .display_name = "BuildMovie",
-            .format = "USM/SFD build job",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "USM/SFD build job"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch USM/SFD build job"},
-                {"Targets", "USM, SFD"},
-                {"Video prep", "prepared, FFmpeg VP9, H.264, or MPEG"},
-                {"Audio prep", "no tracks, or ADX/HCA from prepared or FFmpeg-supported audio"}
+                {"Source", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Scratch USM/SFD build job")},
+                {"Targets", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "USM, SFD")},
+                {cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Video prep"), cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "prepared, FFmpeg VP9, H.264, or MPEG")},
+                {cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Audio prep"), cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "no tracks, or ADX/HCA from prepared or FFmpeg-supported audio")}
             }
         };
-        push_log(session, QStringLiteral("Created scratch USM/SFD build job."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch USM/SFD build job."));
         return session;
     }
 
-    if (request.detected_format == "AAX ADX build job") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::AaxBuild) {
         session.transform_kind = TransformKind::Aax;
         session.document = LoadedDocument{
             .display_name = "BuildAax",
-            .format = "AAX ADX build job",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "AAX ADX build job"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch AAX build job"},
-                {"Input", "one ADX/AHX file per segment"},
-                {"Output", "AAX UTF wrapper"},
-                {"Loop", "optional last-segment loop marker"}
+                {"Source", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Scratch AAX build job")},
+                {"Input", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "one ADX/AHX file per segment")},
+                {"Output", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "AAX UTF wrapper")},
+                {"Loop", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "optional last-segment loop marker")}
             }
         };
-        push_log(session, QStringLiteral("Created scratch AAX ADX build job."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch AAX ADX build job."));
         return session;
     }
 
-    if (request.detected_format == "AIX ADX build job") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::AixBuild) {
         session.transform_kind = TransformKind::Aix;
         session.document = LoadedDocument{
             .display_name = "BuildAix",
-            .format = "AIX ADX build job",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "AIX ADX build job"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch AIX build job"},
-                {"Input", "one line per segment, semicolon-separated ADX/AHX layers"},
-                {"Output", "AIX layered ADX container"}
+                {"Source", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Scratch AIX build job")},
+                {"Input", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "one line per segment, semicolon-separated ADX/AHX layers")},
+                {"Output", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "AIX layered ADX container")}
             }
         };
-        push_log(session, QStringLiteral("Created scratch AIX ADX build job."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch AIX ADX build job."));
         return session;
     }
 
-    if (request.detected_format == "CSB folder build job") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::CsbBuild) {
         session.transform_kind = TransformKind::Csb;
         session.document = LoadedDocument{
             .display_name = "BuildCsb",
-            .format = "CSB folder build job",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CSB folder build job"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch CSB folder build job"},
-                {"Input", "folder tree of CSB payload files"},
-                {"Output", "CSB cue/archive"}
+                {"Source", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Scratch CSB folder build job")},
+                {"Input", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "folder tree of CSB payload files")},
+                {"Output", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CSB cue/archive")}
             }
         };
-        push_log(session, QStringLiteral("Created scratch CSB folder build job."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch CSB folder build job."));
         return session;
     }
 
-    if (request.detected_format == "AFS archive") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::Afs) {
         auto scratch = modules::afs::create_scratch_archive();
         session.afs = std::move(scratch.container);
         session.document = std::move(scratch.document);
         session.archive_kind = ArchiveKind::Afs;
-        push_log(session, QStringLiteral("Created scratch AFS archive."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch AFS archive."));
         return session;
     }
 
-    if (request.detected_format == "AWB/AFS2 archive") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::Awb) {
         auto scratch = modules::awb::create_scratch_archive();
         session.awb = std::move(scratch.container);
         session.document = std::move(scratch.document);
         session.archive_kind = ArchiveKind::Awb;
-        push_log(session, QStringLiteral("Created scratch AWB/AFS2 archive."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch AWB/AFS2 archive."));
         return session;
     }
 
-    if (request.detected_format == "ACX archive") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::Acx) {
         auto scratch = modules::acx::create_scratch_archive();
         session.acx = std::move(scratch.container);
         session.document = std::move(scratch.document);
         session.archive_kind = ArchiveKind::Acx;
-        push_log(session, QStringLiteral("Created scratch ACX archive."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch ACX archive."));
         return session;
     }
 
-    if (request.detected_format == "CPK archive") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::Cpk) {
         auto scratch = modules::cpk::create_scratch_archive(
             request.cpk_preset.value_or(cricodecs::cpk::CpkPreset::Filename));
         session.cpk = std::move(scratch.container);
         session.document = std::move(scratch.document);
         session.archive_kind = ArchiveKind::Cpk;
-        push_log(session, QStringLiteral("Created scratch CPK archive."));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch CPK archive."));
         return session;
     }
 
-    if (request.detected_format == "CVM build script") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::CvmScript) {
         const auto script_path_text = path_to_qstring(request.source_path);
         auto script = cricodecs::cvm::CvmBuildScript::load(request.source_path);
         if (!script) {
             session.document = failed_cvm_script_document(
                 script_path_text,
-                "CVM build script (failed)",
+                cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM build script (failed)"),
                 {
                     {"Source", qstring_to_utf8(script_path_text)},
                     {"Validation", script.error()}
                 }
             );
-            push_log(session, QStringLiteral("CVM CVS load failed: %1").arg(utf8_to_qstring(script.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM CVS load failed: %1").arg(utf8_to_qstring(script.error())));
             return session;
         }
 
@@ -179,7 +181,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         if (!built) {
             session.document = failed_cvm_script_document(
                 script_path_text,
-                "CVM build script (failed)",
+                cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM build script (failed)"),
                 {
                     {"Source", qstring_to_utf8(script_path_text)},
                     {"Disc", script->disc_name()},
@@ -187,7 +189,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                     {"Validation", built.error()}
                 }
             );
-            push_log(session, QStringLiteral("CVM CVS build failed: %1").arg(utf8_to_qstring(built.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM CVS build failed: %1").arg(utf8_to_qstring(built.error())));
             return session;
         }
 
@@ -197,7 +199,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         if (!loaded) {
             session.document = LoadedDocument{
                 .display_name = qstring_to_utf8(QFileInfo(script_path_text).completeBaseName() + QStringLiteral(".cvm")),
-                .format = "CVM build script (failed)",
+                .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM build script (failed)"),
                 .file_size = session.bytes.size(),
                 .info = {
                     {"Source", qstring_to_utf8(script_path_text)},
@@ -207,7 +209,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                     {"Validation", loaded.error()}
                 }
             };
-            push_log(session, QStringLiteral("CVM CVS reload failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM CVS reload failed: %1").arg(utf8_to_qstring(loaded.error())));
             return session;
         }
 
@@ -215,7 +217,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         session.archive_kind = ArchiveKind::Cvm;
         session.document = LoadedDocument{
             .display_name = qstring_to_utf8(QFileInfo(script_path_text).completeBaseName() + QStringLiteral(".cvm")),
-            .format = "CVM/ROFS image (from CVS)",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM/ROFS image (from CVS)"),
             .file_size = session.bytes.size(),
             .info = {
                 {"Source", qstring_to_utf8(script_path_text)},
@@ -224,23 +226,23 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                 {"Files", std::to_string(script->files().size())},
                 {"Bytes", std::to_string(session.bytes.size())}
             },
-            .entry_columns = {"Index", "Archive Path", "Extent Sector", "Size"},
+            .entry_columns = {"Index", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Archive Path"), cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Extent Sector"), "Size"},
             .entry_column_types = {"integer", "path", "integer", "size"},
             .entries = {}
         };
         session.title = session.document->display_name;
-        push_log(session, QStringLiteral("Built scratch CVM session from %1.").arg(script_path_text));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Built scratch CVM session from %1.").arg(script_path_text));
         return session;
     }
 
-    if (request.detected_format == "CVM directory") {
+    if (request.scratch_kind == EditorOpenRequest::ScratchKind::CvmDirectory) {
         const auto input_dir_text = path_to_qstring(request.source_path);
         const auto options = request.cvm_directory_options.value_or(cricodecs::cvm::CvmBuildDirectoryOptions{});
         auto input = cricodecs::cvm::CvmBuildInput::from_directory(request.source_path, options);
         if (!input) {
             session.document = LoadedDocument{
                 .display_name = qstring_to_utf8(QFileInfo(input_dir_text).fileName() + QStringLiteral(".cvm")),
-                .format = "CVM directory build (failed)",
+                .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM directory build (failed)"),
                 .file_size = 0,
                 .info = {
                     {"Source", qstring_to_utf8(input_dir_text)},
@@ -249,7 +251,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                     {"Validation", input.error()}
                 }
             };
-            push_log(session, QStringLiteral("CVM directory scan failed: %1").arg(utf8_to_qstring(input.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM directory scan failed: %1").arg(utf8_to_qstring(input.error())));
             return session;
         }
 
@@ -257,7 +259,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         if (!built) {
             session.document = LoadedDocument{
                 .display_name = qstring_to_utf8(QFileInfo(input_dir_text).fileName() + QStringLiteral(".cvm")),
-                .format = "CVM directory build (failed)",
+                .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM directory build (failed)"),
                 .file_size = 0,
                 .info = {
                     {"Source", qstring_to_utf8(input_dir_text)},
@@ -267,7 +269,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                     {"Validation", built.error()}
                 }
             };
-            push_log(session, QStringLiteral("CVM directory build failed: %1").arg(utf8_to_qstring(built.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM directory build failed: %1").arg(utf8_to_qstring(built.error())));
             return session;
         }
 
@@ -277,7 +279,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         if (!loaded) {
             session.document = LoadedDocument{
                 .display_name = input->disc_name,
-                .format = "CVM directory build (failed)",
+                .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM directory build (failed)"),
                 .file_size = session.bytes.size(),
                 .info = {
                     {"Source", qstring_to_utf8(input_dir_text)},
@@ -288,7 +290,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                     {"Validation", loaded.error()}
                 }
             };
-            push_log(session, QStringLiteral("CVM directory reload failed: %1").arg(utf8_to_qstring(loaded.error())));
+            push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "CVM directory reload failed: %1").arg(utf8_to_qstring(loaded.error())));
             return session;
         }
 
@@ -296,7 +298,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
         session.archive_kind = ArchiveKind::Cvm;
         session.document = LoadedDocument{
             .display_name = input->disc_name,
-            .format = "CVM/ROFS image (from directory)",
+            .format = cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "CVM/ROFS image (from directory)"),
             .file_size = session.bytes.size(),
             .info = {
                 {"Source", qstring_to_utf8(input_dir_text)},
@@ -305,12 +307,12 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
                 {"Files", std::to_string(input->files.size())},
                 {"Bytes", std::to_string(session.bytes.size())}
             },
-            .entry_columns = {"Index", "Archive Path", "Extent Sector", "Size"},
+            .entry_columns = {"Index", cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Archive Path"), cristudio::i18n::translate_utf8("Editor.ScratchEditorSession", "Extent Sector"), "Size"},
             .entry_column_types = {"integer", "path", "integer", "size"},
             .entries = {}
         };
         session.title = session.document->display_name;
-        push_log(session, QStringLiteral("Built scratch CVM session from directory %1.").arg(input_dir_text));
+        push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Built scratch CVM session from directory %1.").arg(input_dir_text));
         return session;
     }
 
@@ -319,7 +321,7 @@ ScratchEditorSession create_scratch_editor_session(const EditorOpenRequest& requ
     session.has_utf = true;
     session.bytes = std::move(scratch.bytes);
     session.document = std::move(scratch.document);
-    push_log(session, QStringLiteral("Created scratch UTF table."));
+    push_log(session, QCoreApplication::translate("Editor.ScratchEditorSession", "Created scratch UTF table."));
     return session;
 }
 

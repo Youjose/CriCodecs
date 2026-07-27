@@ -29,7 +29,7 @@ void remove_preview_directory(Preview& preview) {
 } // namespace
 
 bool is_audio_document(const LoadedDocument& document) {
-    const auto format = utf8_to_qstring(document.format).toLower();
+    const auto format = utf8_to_qstring(document_format_id(document)).toLower();
     return format.contains(QStringLiteral("audio")) ||
            format.contains(QStringLiteral("adx")) ||
            format.contains(QStringLiteral("ahx")) ||
@@ -42,7 +42,7 @@ bool is_direct_audio_document(const LoadedDocument& document) {
     if (document.loader_tag == "ffmpeg-audio") {
         return true;
     }
-    const auto format = utf8_to_qstring(document.format).toLower();
+    const auto format = utf8_to_qstring(document_format_id(document)).toLower();
     return format.contains(QStringLiteral("adx")) ||
            format.contains(QStringLiteral("ahx")) ||
            format.contains(QStringLiteral("aax")) ||
@@ -55,7 +55,7 @@ bool is_video_document(const LoadedDocument& document) {
 }
 
 bool is_mux_document(const LoadedDocument& document) {
-    const auto format = utf8_to_qstring(document.format).toLower();
+    const auto format = utf8_to_qstring(document_format_id(document)).toLower();
     return format.contains(QStringLiteral("usm")) ||
            format.contains(QStringLiteral("sfd")) ||
            format.contains(QStringLiteral("sofdec"));
@@ -73,7 +73,8 @@ bool is_low_signal_loader_message(const QString& message) {
 
 
 QString video_preview_unavailable_message() {
-    return QStringLiteral(
+    return QCoreApplication::translate(
+        "MainWindow.PreviewHelpers",
         "Preview unavailable: video validation failed; this does not distinguish a masked stream from an unsupported or corrupt one"
     );
 }
@@ -100,7 +101,7 @@ QString find_ffmpeg_executable() {
 }
 
 QString ffmpeg_missing_preview_message() {
-    return QStringLiteral("Preview unavailable: ffmpeg executable not found. Put ffmpeg next to CriStudio or on PATH.");
+    return QCoreApplication::translate("MainWindow.PreviewHelpers", "Preview unavailable: ffmpeg executable not found. Put ffmpeg next to CriStudio or on PATH.");
 }
 
 bool has_video_decode_error(const QString& stderr_text) {

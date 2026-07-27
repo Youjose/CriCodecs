@@ -1,5 +1,6 @@
 #include "editor/editor_widgets.hpp"
 
+#include <QCoreApplication>
 #include <QLabel>
 #include <QPainter>
 #include <QStyle>
@@ -16,7 +17,7 @@ ToggleSwitch::ToggleSwitch(QWidget* parent)
     setCheckable(true);
     setCursor(Qt::PointingHandCursor);
     setFocusPolicy(Qt::StrongFocus);
-    setAccessibleName(QStringLiteral("Toggle switch"));
+    setAccessibleName(QCoreApplication::translate("Editor.EditorWidgets", "Toggle switch"));
 }
 
 QSize ToggleSwitch::sizeHint() const {
@@ -73,11 +74,23 @@ QLabel* value_label(QString text, QWidget* parent) {
 }
 
 void add_editor_start_tab(QTabWidget* tabs) {
-    auto* empty = new QLabel(QStringLiteral("Open files or archive entries in the Editor from the browser context menus."), tabs);
+    auto* empty = new QLabel(QCoreApplication::translate("Editor.EditorWidgets", "Open files or archive entries in the Editor from the browser context menus."), tabs);
     empty->setObjectName(QStringLiteral("DocumentSubtitle"));
     empty->setAlignment(Qt::AlignCenter);
-    tabs->addTab(empty, QStringLiteral("Start"));
+    tabs->addTab(empty, QCoreApplication::translate("Editor.EditorWidgets", "Start"));
     tabs->tabBar()->setTabButton(0, QTabBar::RightSide, nullptr);
+}
+
+void retranslate_editor_start_tab(QTabWidget* tabs) {
+    if (tabs == nullptr || tabs->count() != 1) {
+        return;
+    }
+    auto* empty = qobject_cast<QLabel*>(tabs->widget(0));
+    if (empty == nullptr) {
+        return;
+    }
+    empty->setText(QCoreApplication::translate("Editor.EditorWidgets", "Open files or archive entries in the Editor from the browser context menus."));
+    tabs->setTabText(0, QCoreApplication::translate("Editor.EditorWidgets", "Start"));
 }
 
 void remove_editor_tab(QTabWidget* tabs, QWidget* widget) {

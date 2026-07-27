@@ -12,6 +12,8 @@
 
 namespace cristudio {
 
+[[nodiscard]] std::string localized_document_format(const LoadedDocument& document);
+
 [[nodiscard]] std::optional<LoadedDocument> load_document_summary(
     const std::filesystem::path& path,
     std::string& rejection_reason,

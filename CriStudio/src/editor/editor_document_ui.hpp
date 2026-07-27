@@ -60,6 +60,7 @@ struct EditorDocumentUi {
     QToolButton* build_button = nullptr;
     QToolButton* extract_button = nullptr;
     QWidget* utf_toolbar = nullptr;
+    QLabel* table_label = nullptr;
     QLineEdit* table_name_edit = nullptr;
     QPushButton* apply_table_name_button = nullptr;
     QPushButton* add_row_button = nullptr;
@@ -117,13 +118,18 @@ struct EditorDocumentUi {
     QLineEdit* cri_key_edit = nullptr;
     QComboBox* cri_key_base = nullptr;
     QWidget* adx_subkey_panel = nullptr;
+    QLabel* adx_subkey_label = nullptr;
     QSpinBox* adx_subkey_spin = nullptr;
     QWidget* adx_triplet_panel = nullptr;
+    QLabel* adx_triplet_start_label = nullptr;
+    QLabel* adx_triplet_mult_label = nullptr;
+    QLabel* adx_triplet_add_label = nullptr;
     QLineEdit* adx_triplet_start = nullptr;
     QLineEdit* adx_triplet_mult = nullptr;
     QLineEdit* adx_triplet_add = nullptr;
     QWidget* cvm_scramble_panel = nullptr;
     ToggleSwitch* cvm_scramble_check = nullptr;
+    QLabel* cvm_scramble_label = nullptr;
     QPushButton* apply_cri_key_button = nullptr;
     QLineEdit* transform_filter_edit = nullptr;
     QGridLayout* info_grid = nullptr;
@@ -140,6 +146,7 @@ struct EditorDocumentUi {
     HexPreviewWidget* hex_preview = nullptr;
     QWidget* utf_edit_panel = nullptr;
     QWidget* binary_actions_panel = nullptr;
+    QLabel* value_label = nullptr;
     QLabel* value_type_label = nullptr;
     QLineEdit* value_edit = nullptr;
     QValidator* unsigned_value_validator = nullptr;
@@ -155,14 +162,17 @@ struct EditorDocumentUi {
     QWidget* media_controls_panel = nullptr;
     QVideoWidget* mux_video_widget = nullptr;
     QWidget* mux_audio_row = nullptr;
+    QLabel* mux_audio_label = nullptr;
     QComboBox* mux_audio_combo = nullptr;
     QWidget* mux_subtitle_row = nullptr;
+    QLabel* mux_subtitle_label = nullptr;
     QComboBox* mux_subtitle_combo = nullptr;
     QToolButton* mux_play_button = nullptr;
     QLabel* mux_status_label = nullptr;
     QSlider* media_seek_slider = nullptr;
     QLabel* media_time_label = nullptr;
     QSlider* media_volume_slider = nullptr;
+    QLabel* media_volume_label = nullptr;
     QWidget* media_loop_row = nullptr;
     QCheckBox* media_loop_toggle = nullptr;
     QListWidget* media_loop_list = nullptr;
@@ -172,6 +182,7 @@ struct EditorDocumentUi {
 };
 
 [[nodiscard]] EditorDocumentUi build_editor_document_ui(QWidget* parent);
+void retranslate_editor_document_ui(EditorDocumentUi& ui);
 void refresh_archive_document_ui(
     EditorDocumentUi& ui,
     const ArchiveSessionView& view,

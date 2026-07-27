@@ -1,7 +1,9 @@
+#include "shared/i18n.hpp"
 #include "ui_helpers.hpp"
 
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractAnimation>
 #include <QApplication>
 #include <QClipboard>
@@ -103,6 +105,7 @@ QString archive_basename(QString text) {
 }
 
 QString strip_mux_prefix(QString text) {
+    // Internal synthetic-entry prefix; it is parsed and must never be translated.
     constexpr auto prefix = "Mux preview/";
     return text.startsWith(QLatin1String(prefix))
         ? text.mid(static_cast<int>(std::char_traits<char>::length(prefix)))
@@ -916,7 +919,7 @@ QToolButton* make_rail_action_button(const QIcon& icon, const QString& tooltip, 
 
 
 QString app_title() {
-    return QStringLiteral("CriStudio %1").arg(QStringLiteral(CRISTUDIO_VERSION));
+    return QCoreApplication::translate("MainWindow.UiHelpers", "CriStudio %1").arg(QStringLiteral(CRISTUDIO_VERSION));
 }
 
 
@@ -965,40 +968,40 @@ std::optional<cricodecs::KeyRecoveryMode> choose_key_recovery_mode(
     layout->setSpacing(10);
 
     auto* heading = new QLabel(
-        QStringLiteral("How should %1 selected files be interpreted?")
+        QCoreApplication::translate("MainWindow.UiHelpers", "How should %1 selected files be interpreted?")
             .arg(QLocale().toString(static_cast<qulonglong>(source_count))),
         &dialog);
     heading->setObjectName(QStringLiteral("RecoveryNotificationTitle"));
     heading->setWordWrap(true);
     layout->addWidget(heading);
 
-    auto* independent = new QRadioButton(QStringLiteral("Recover each file independently"), &dialog);
+    auto* independent = new QRadioButton(QCoreApplication::translate("MainWindow.UiHelpers", "Recover each file independently"), &dialog);
     independent->setChecked(true);
     layout->addWidget(independent);
     auto* independent_help = make_dim_label(
-        QStringLiteral("Use this when the selection may contain unrelated banks or containers with different keys."),
+        QCoreApplication::translate("MainWindow.UiHelpers", "Use this when the selection may contain unrelated banks or containers with different keys."),
         &dialog);
     independent_help->setWordWrap(true);
     independent_help->setContentsMargins(24, 0, 0, 4);
     layout->addWidget(independent_help);
 
-    auto* shared = new QRadioButton(QStringLiteral("Treat all files as one shared base-key set"), &dialog);
+    auto* shared = new QRadioButton(QCoreApplication::translate("MainWindow.UiHelpers", "Treat all files as one shared base-key set"), &dialog);
     layout->addWidget(shared);
     auto* shared_help = make_dim_label(
-        QStringLiteral("Combine evidence across files. Choose this only when they are expected to share one base key; AWB subkeys are handled automatically."),
+        QCoreApplication::translate("MainWindow.UiHelpers", "Combine evidence across files. Choose this only when they are expected to share one base key; AWB subkeys are handled automatically."),
         &dialog);
     shared_help->setWordWrap(true);
     shared_help->setContentsMargins(24, 0, 0, 4);
     layout->addWidget(shared_help);
 
     auto* note = make_dim_label(
-        QStringLiteral("Files without a supported encrypted stream are skipped and reported."),
+        QCoreApplication::translate("MainWindow.UiHelpers", "Files without a supported encrypted stream are skipped and reported."),
         &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Recover"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("MainWindow.UiHelpers", "Recover"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -1155,7 +1158,7 @@ constexpr qsizetype MaxInterimRecoveryGroups = static_cast<qsizetype>(MaxInterim
         : 0u;
     auto result = shown.join(QStringLiteral(", "));
     if (remaining != 0u) {
-        result += QStringLiteral("  +%1 more").arg(static_cast<qulonglong>(remaining));
+        result += QCoreApplication::translate("MainWindow.UiHelpers", "  +%1 more").arg(static_cast<qulonglong>(remaining));
     }
     return result;
 }
@@ -1204,7 +1207,7 @@ void configure_recovery_table(QTreeWidget* table) {
     table->setColumnCount(4);
     table->setHeaderLabels({
         QStringLiteral("Key"),
-        QStringLiteral("Mean score"),
+        QCoreApplication::translate("MainWindow.UiHelpers", "Mean score"),
         QStringLiteral("Count"),
         QStringLiteral("Files"),
     });
@@ -1220,7 +1223,7 @@ void configure_recovery_table(QTreeWidget* table) {
     table->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     table->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     table->header()->setSectionResizeMode(3, QHeaderView::Stretch);
-    table->headerItem()->setToolTip(1, QStringLiteral("Normalized structural score; higher ranks first"));
+    table->headerItem()->setToolTip(1, QCoreApplication::translate("MainWindow.UiHelpers", "Normalized structural score; higher ranks first"));
     table->sortItems(1, Qt::DescendingOrder);
     QObject::connect(table, &QTreeWidget::itemExpanded, table, [](QTreeWidgetItem* item) {
         if (item == nullptr || item->parent() != nullptr || item->childCount() != 0) return;
@@ -1233,7 +1236,7 @@ void configure_recovery_table(QTreeWidget* table) {
         const auto omitted = item->data(3, RecoveryOmittedFilesRole).toULongLong();
         if (omitted != 0u) {
             auto* child = new QTreeWidgetItem(item);
-            child->setText(3, QStringLiteral("%1 additional files omitted to cap memory use")
+            child->setText(3, QCoreApplication::translate("MainWindow.UiHelpers", "%1 additional files omitted to cap memory use")
                 .arg(omitted));
             child->setFlags(child->flags() & ~Qt::ItemIsSelectable);
         }
@@ -1257,9 +1260,11 @@ void add_recovery_group(QTreeWidget* table, const KeyRecoveryGroup& group) {
     item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
     item->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
     if (group.recommended_count != 0u) {
-        item->setToolTip(0, QStringLiteral(
-            "Recommended by the recovery engine's combined codec evidence for %1 source(s)."
-        ).arg(static_cast<qulonglong>(group.recommended_count)));
+        item->setToolTip(0, QCoreApplication::translate(
+            "MainWindow.UiHelpers",
+            "Recommended by the recovery engine's combined codec evidence for %n source(s).",
+            nullptr,
+            static_cast<int>(group.recommended_count)));
     }
     if (group.count > 1u) {
         item->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
@@ -1306,7 +1311,7 @@ public:
         auto* layout = new QVBoxLayout(this);
         layout->setContentsMargins(14, 14, 14, 14);
         layout->setSpacing(10);
-        m_status = new QLabel(QStringLiteral("Preparing key recovery..."), this);
+        m_status = new QLabel(QCoreApplication::translate("MainWindow.UiHelpers", "Preparing key recovery..."), this);
         m_status->setWordWrap(true);
         layout->addWidget(m_status);
         m_progress = new QProgressBar(this);
@@ -1318,13 +1323,13 @@ public:
 
         auto* actions = new QHBoxLayout;
         actions->addStretch(1);
-        m_copy_selected = new QPushButton(QStringLiteral("Copy Selected"), this);
+        m_copy_selected = new QPushButton(QCoreApplication::translate("MainWindow.UiHelpers", "Copy Selected"), this);
         m_copy_selected->setEnabled(false);
         actions->addWidget(m_copy_selected);
-        m_copy_all = new QPushButton(QStringLiteral("Copy All"), this);
+        m_copy_all = new QPushButton(QCoreApplication::translate("MainWindow.UiHelpers", "Copy All"), this);
         m_copy_all->setEnabled(false);
         actions->addWidget(m_copy_all);
-        m_cancel_or_close = new QPushButton(QStringLiteral("Cancel"), this);
+        m_cancel_or_close = new QPushButton(QCoreApplication::translate("MainWindow.UiHelpers", "Cancel"), this);
         m_cancel_or_close->setEnabled(static_cast<bool>(m_cancel));
         m_cancel_or_close->setVisible(static_cast<bool>(m_cancel));
         actions->addWidget(m_cancel_or_close);
@@ -1369,7 +1374,7 @@ public:
         for (const auto& group : groups) m_all_keys.push_back(group.key);
         const auto visible_limit = finished ? MaxVisibleRecoveryGroups : MaxInterimRecoveryGroups;
         if (groups.size() > static_cast<size_t>(visible_limit)) {
-            status += QStringLiteral(" Showing the top %1 of %2 key groups.")
+            status += QCoreApplication::translate("MainWindow.UiHelpers", " Showing the top %1 of %2 key groups.")
                 .arg(visible_limit)
                 .arg(static_cast<qulonglong>(groups.size()));
         }
@@ -1393,7 +1398,7 @@ public:
         m_copy_all->setEnabled(!m_all_keys.isEmpty());
         if (finished) {
             m_finished = true;
-            m_cancel_or_close->setText(QStringLiteral("Close"));
+            m_cancel_or_close->setText(QCoreApplication::translate("MainWindow.UiHelpers", "Close"));
             m_cancel_or_close->setEnabled(true);
             m_progress->setValue(m_progress->maximum());
             present();
@@ -1419,7 +1424,7 @@ private:
         }
         m_cancel_requested = true;
         m_cancel_or_close->setEnabled(false);
-        m_status->setText(QStringLiteral("Canceling key recovery..."));
+        m_status->setText(QCoreApplication::translate("MainWindow.UiHelpers", "Canceling key recovery..."));
         m_cancel();
     }
 
@@ -1489,7 +1494,7 @@ public:
             auto* icon = new QLabel(this);
             icon->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(22, 22));
             icon->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-            icon->setAccessibleName(QStringLiteral("Recovery warning"));
+            icon->setAccessibleName(QCoreApplication::translate("MainWindow.UiHelpers", "Recovery warning"));
             message_row->addWidget(icon, 0, Qt::AlignTop);
             message_row->addWidget(summary_label, 1);
             layout->addLayout(message_row);
@@ -1524,17 +1529,17 @@ public:
         actions->setSpacing(7);
         actions->addStretch(1);
         if (details_view != nullptr) {
-            auto* details_button = new QPushButton(QStringLiteral("Details"), this);
+            auto* details_button = new QPushButton(QCoreApplication::translate("MainWindow.UiHelpers", "Details"), this);
             details_button->setCheckable(true);
             QObject::connect(details_button, &QPushButton::toggled, this, [details_button, details_view](bool visible) {
                 details_view->setVisible(visible);
-                details_button->setText(visible ? QStringLiteral("Hide details") : QStringLiteral("Details"));
+                details_button->setText(visible ? QCoreApplication::translate("MainWindow.UiHelpers", "Hide details") : QCoreApplication::translate("MainWindow.UiHelpers", "Details"));
             });
             actions->addWidget(details_button);
         }
         QPushButton* copy_selected = nullptr;
         if (table != nullptr) {
-            copy_selected = new QPushButton(QStringLiteral("Copy Selected"), this);
+            copy_selected = new QPushButton(QCoreApplication::translate("MainWindow.UiHelpers", "Copy Selected"), this);
             copy_selected->setEnabled(false);
             QObject::connect(table->selectionModel(), &QItemSelectionModel::selectionChanged,
                 this, [table, copy_selected] {
@@ -1542,7 +1547,7 @@ public:
                 });
             QObject::connect(copy_selected, &QPushButton::clicked, this, [table, copy_selected] {
                 copy_recovery_keys(selected_recovery_keys(table));
-                copy_selected->setText(QStringLiteral("Copied"));
+                copy_selected->setText(QCoreApplication::translate("MainWindow.UiHelpers", "Copied"));
             });
             auto* copy_shortcut = new QShortcut(QKeySequence::Copy, table);
             QObject::connect(copy_shortcut, &QShortcut::activated, this, [table] {
@@ -1555,7 +1560,7 @@ public:
             QObject::connect(copy_button, &QPushButton::clicked, this, [copy_button, copy_text = std::move(copy_text)] {
                 if (auto* clipboard = QGuiApplication::clipboard(); clipboard != nullptr) {
                     clipboard->setText(copy_text);
-                    copy_button->setText(QStringLiteral("Copied"));
+                    copy_button->setText(QCoreApplication::translate("MainWindow.UiHelpers", "Copied"));
                 }
             });
             actions->addWidget(copy_button);

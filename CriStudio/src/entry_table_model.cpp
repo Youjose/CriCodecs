@@ -1,8 +1,10 @@
+#include "shared/i18n.hpp"
 #include "entry_table_model.hpp"
 
 #include "format_icon.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QApplication>
 #include <QBrush>
 #include <QColor>
@@ -129,7 +131,7 @@ QVariant sort_value(
     int column
 ) {
     if (!folder && summary.source_format == "MUX_PREVIEW") {
-        return column == 0 ? QStringLiteral("00mux preview") : QStringLiteral("00");
+        return column == 0 ? QCoreApplication::translate("EntryTableModel", "00mux preview") : QStringLiteral("00");
     }
 
     switch (column) {
@@ -252,7 +254,7 @@ QVariant EntryTableModel::data(const QModelIndex& index, int role) const {
         if (role == Qt::ToolTipRole) {
             switch (index.column()) {
             case 0: return display_string(node->folder ? node->name : summary.name);
-            case 1: return node->folder ? QStringLiteral("folder") : display_string(summary.type);
+            case 1: return node->folder ? QCoreApplication::translate("EntryTableModel", "folder") : display_string(summary.type);
             case 2: return node->folder ? QVariant{} : display_string(summary.size);
             case 3: return node->folder ? QVariant{} : display_string(summary.offset);
             case 4: return display_string(summary.detail);
@@ -290,7 +292,7 @@ QVariant EntryTableModel::data(const QModelIndex& index, int role) const {
         case 0:
             return display_string(node->folder ? node->name + "/" : node->name);
         case 1:
-            return node->folder ? QStringLiteral("folder") : display_string(summary.type);
+            return node->folder ? QCoreApplication::translate("EntryTableModel", "folder") : display_string(summary.type);
         case 2:
             return node->folder ? QVariant{} : display_string(summary.size);
         case 3:
@@ -305,7 +307,7 @@ QVariant EntryTableModel::data(const QModelIndex& index, int role) const {
     if (role == Qt::ToolTipRole) {
         switch (index.column()) {
         case 0: return display_string(node->folder ? node->name : summary.name);
-        case 1: return node->folder ? QStringLiteral("folder") : display_string(summary.type);
+        case 1: return node->folder ? QCoreApplication::translate("EntryTableModel", "folder") : display_string(summary.type);
         case 2: return node->folder ? QVariant{} : display_string(summary.size);
         case 3: return node->folder ? QVariant{} : display_string(summary.offset);
         case 4: return display_string(summary.detail);
@@ -338,7 +340,7 @@ QVariant EntryTableModel::data(const QModelIndex& index, int role) const {
     case 0:
         return display_string(node->folder ? node->name + "/" : node->name);
     case 1:
-        return node->folder ? QStringLiteral("folder") : display_string(summary.type);
+        return node->folder ? QCoreApplication::translate("EntryTableModel", "folder") : display_string(summary.type);
     case 2:
         return node->folder ? QVariant{} : display_string(summary.size);
     case 3:
@@ -378,15 +380,15 @@ QVariant EntryTableModel::headerData(int section, Qt::Orientation orientation, i
 
     switch (section) {
     case 0:
-        return QStringLiteral("Name");
+        return QCoreApplication::translate("EntryTableModel", "Name");
     case 1:
-        return QStringLiteral("Type");
+        return QCoreApplication::translate("EntryTableModel", "Type");
     case 2:
-        return QStringLiteral("Size");
+        return QCoreApplication::translate("EntryTableModel", "Size");
     case 3:
-        return QStringLiteral("Offset");
+        return QCoreApplication::translate("EntryTableModel", "Offset");
     case 4:
-        return QStringLiteral("Detail");
+        return QCoreApplication::translate("EntryTableModel", "Detail");
     default:
         return {};
     }
@@ -453,6 +455,12 @@ void EntryTableModel::clear() {
     m_flat_path.shrink_to_fit();
     m_scratch_summary = {};
     m_root = std::make_unique<Node>();
+    endResetModel();
+}
+
+void EntryTableModel::retranslate() {
+    beginResetModel();
+    rebuild();
     endResetModel();
 }
 
@@ -560,7 +568,7 @@ EntryTableModel::Node* EntryTableModel::find_or_add_folder(Node& parent, std::st
     auto child = std::make_unique<Node>();
     child->name = std::move(name);
     child->summary.name = child->name;
-    child->summary.type = "folder";
+    child->summary.type = cristudio::i18n::translate_utf8("EntryTableModel", "folder");
     child->folder = true;
     child->parent = &parent;
     auto* raw = child.get();
@@ -651,7 +659,7 @@ void EntryTableModel::update_folder_details(Node& node) {
 
     if (node.folder) {
         const auto child_count = node.children.size();
-        node.summary.detail = std::to_string(child_count) + (child_count == 1 ? " item" : " items");
+        node.summary.detail = std::to_string(child_count) + (child_count == 1 ? cristudio::i18n::translate_utf8("EntryTableModel", " item") : cristudio::i18n::translate_utf8("EntryTableModel", " items"));
         for (const auto& child : node.children) {
             const auto& child_summary = child->value();
             if (!child_summary.has_source) {

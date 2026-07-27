@@ -6,7 +6,9 @@
 #include "key_panel.hpp"
 #include "ui_helpers.hpp"
 #include "../path_text.hpp"
+#include "../shared/translation_manager.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractAnimation>
 #include <QAbstractItemModel>
 #include <QAbstractItemView>
@@ -18,6 +20,7 @@
 #include <QComboBox>
 #include <QCursor>
 #include <QDialog>
+#include <QEvent>
 #include <QFontDatabase>
 #include <QFutureWatcher>
 #include <QGridLayout>
@@ -73,10 +76,13 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace cristudio {
 namespace {
+
+constexpr std::string_view mux_preview_prefix = "Mux preview/";
 
 class FileFilterProxyModel final : public QSortFilterProxyModel {
 public:
@@ -191,9 +197,20 @@ void update_file_type_filter_label(QComboBox* combo) {
     }
     const QSignalBlocker blocker(combo);
     const auto selected = selected_file_type_filters(combo);
+    const auto single_label = [&]() {
+        if (selected.size() != 1) {
+            return QString{};
+        }
+        for (int index = 1; index < combo->count(); ++index) {
+            if (combo->itemData(index).toString().compare(selected.front(), Qt::CaseInsensitive) == 0) {
+                return combo->itemText(index);
+            }
+        }
+        return selected.front();
+    }();
     const auto label = selected.isEmpty()
-        ? QStringLiteral("All types")
-        : (selected.size() == 1 ? selected.front() : QStringLiteral("%1 types").arg(selected.size()));
+        ? QCoreApplication::translate("MainWindow.Chrome", "All types")
+        : (selected.size() == 1 ? single_label : QCoreApplication::translate("MainWindow.Chrome", "%1 types").arg(selected.size()));
     combo->setItemText(0, label);
     combo->setItemData(0, selected.isEmpty() ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
     combo->setCurrentIndex(0);
@@ -205,21 +222,30 @@ void refresh_file_type_filter(QComboBox* combo, const FileListModel* model) {
     }
     const QSignalBlocker blocker(combo);
     const auto previous = selected_file_type_filters(combo);
-    QStringList formats;
+    std::vector<std::pair<QString, QString>> formats;
     for (int row = 0; row < model->rowCount(); ++row) {
-        const auto format = model->index(row, 0).data(FileListModel::FilterFormatRole).toString();
-        if (!format.isEmpty() && !formats.contains(format, Qt::CaseInsensitive)) {
-            formats.push_back(format);
+        const auto index = model->index(row, 0);
+        const auto id = index.data(FileListModel::FilterFormatRole).toString();
+        const auto label = index.data(FileListModel::FilterFormatLabelRole).toString();
+        if (
+            !id.isEmpty() &&
+            std::ranges::none_of(formats, [&id](const auto& item) {
+                return item.first.compare(id, Qt::CaseInsensitive) == 0;
+            })
+        ) {
+            formats.emplace_back(id, label);
         }
     }
-    formats.sort(Qt::CaseInsensitive);
+    std::ranges::sort(formats, [](const auto& left, const auto& right) {
+        return left.second.compare(right.second, Qt::CaseInsensitive) < 0;
+    });
 
     combo->clear();
-    combo->addItem(QStringLiteral("All types"), QString{});
+    combo->addItem(QCoreApplication::translate("MainWindow.Chrome", "All types"), QString{});
     combo->setItemData(0, Qt::Checked, Qt::CheckStateRole);
-    for (const auto& format : formats) {
-        combo->addItem(format, format);
-        combo->setItemData(combo->count() - 1, previous.contains(format, Qt::CaseInsensitive) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+    for (const auto& [id, label] : formats) {
+        combo->addItem(label, id);
+        combo->setItemData(combo->count() - 1, previous.contains(id, Qt::CaseInsensitive) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
     }
     update_file_type_filter_label(combo);
 }
@@ -682,7 +708,7 @@ private:
 };
 
 bool is_mux_document(const LoadedDocument& document) {
-    const auto format = utf8_to_qstring(document.format).toLower();
+    const auto format = utf8_to_qstring(document_format_id(document)).toLower();
     return format.contains(QStringLiteral("usm")) ||
            format.contains(QStringLiteral("sfd")) ||
            format.contains(QStringLiteral("sofdec"));
@@ -760,14 +786,191 @@ QString format_memory_size(uint64_t bytes) {
     constexpr double gib = mib * 1024.0;
     const auto value = static_cast<double>(bytes);
     if (value >= gib) {
-        return QStringLiteral("%1 GB").arg(value / gib, 0, 'f', 2);
+        return QCoreApplication::translate("MainWindow.Chrome", "%1 GB").arg(value / gib, 0, 'f', 2);
     }
-    return QStringLiteral("%1 MB").arg(value / mib, 0, 'f', value >= 100.0 * mib ? 0 : 1);
+    return QCoreApplication::translate("MainWindow.Chrome", "%1 MB").arg(value / mib, 0, 'f', value >= 100.0 * mib ? 0 : 1);
 }
 
 
 
 } // namespace
+
+void MainWindow::bind_ui_text(
+    QObject* object,
+    const char* property,
+    const char* source,
+    const char* context
+) {
+    if (object != nullptr) {
+        m_ui_text_bindings.push_back({object, property, source, context});
+    }
+}
+
+void MainWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    if (event == nullptr || event->type() != QEvent::LanguageChange || m_retranslate_pending) {
+        return;
+    }
+    m_retranslate_pending = true;
+    QTimer::singleShot(0, this, [this] {
+        m_retranslate_pending = false;
+        retranslate_ui();
+    });
+}
+
+void MainWindow::sync_language_actions() {
+    if (m_language_group == nullptr) {
+        return;
+    }
+    const auto current = i18n::TranslationManager::instance().selected_code();
+    for (auto* action : m_language_group->actions()) {
+        const QSignalBlocker blocker(action);
+        action->setChecked(action->data().toString() == current);
+    }
+}
+
+void MainWindow::apply_pending_language() {
+    if (m_pending_language_code.isEmpty()) {
+        return;
+    }
+    if (has_background_work()) {
+        sync_language_actions();
+        statusBar()->showMessage(
+            QCoreApplication::translate("MainWindow.Chrome", "Language change will apply after background work finishes."),
+            3000
+        );
+        QTimer::singleShot(100, this, &MainWindow::apply_pending_language);
+        return;
+    }
+
+    const auto code = std::exchange(m_pending_language_code, {});
+    if (!i18n::TranslationManager::instance().set_language_code(code)) {
+        statusBar()->showMessage(
+            QCoreApplication::translate("MainWindow.Chrome", "Could not load the selected language."),
+            5000
+        );
+    }
+    sync_language_actions();
+}
+
+void MainWindow::retranslate_ui() {
+    for (const auto& binding : m_ui_text_bindings) {
+        if (binding.object != nullptr) {
+            binding.object->setProperty(
+                binding.property,
+                QCoreApplication::translate(binding.context, binding.source)
+            );
+        }
+    }
+
+    setWindowTitle(app_title());
+    sync_language_actions();
+    if (m_file_sort != nullptr && m_file_sort->count() >= 4) {
+        m_file_sort->setItemText(0, QCoreApplication::translate("MainWindow.Chrome", "Name A-Z"));
+        m_file_sort->setItemText(1, QCoreApplication::translate("MainWindow.Chrome", "Name Z-A"));
+        m_file_sort->setItemText(2, QCoreApplication::translate("MainWindow.Chrome", "Smallest"));
+        m_file_sort->setItemText(3, QCoreApplication::translate("MainWindow.Chrome", "Largest"));
+    }
+    if (m_entry_view_mode != nullptr && m_entry_view_mode->count() >= 2) {
+        m_entry_view_mode->setItemText(0, QCoreApplication::translate("MainWindow.Chrome", "Tree"));
+        m_entry_view_mode->setItemText(1, QCoreApplication::translate("MainWindow.Chrome", "List"));
+    }
+    {
+        for (auto* button : findChildren<QToolButton*>(QStringLiteral("EntryViewModeSegment"))) {
+            const bool list_mode = button->property("modeValue").toInt() == 1;
+            const auto mode = list_mode
+                ? QCoreApplication::translate("MainWindow.Chrome", "List")
+                : QCoreApplication::translate("MainWindow.Chrome", "Tree");
+            button->setText(mode);
+            button->setToolTip(
+                QCoreApplication::translate("MainWindow.Chrome", "Show entries as %1").arg(mode.toLower())
+            );
+        }
+    }
+    if (m_audio_play_button != nullptr) {
+        const bool playing = m_audio_player != nullptr &&
+            m_audio_player->playbackState() == QMediaPlayer::PlayingState;
+        const auto play_text = playing
+            ? QCoreApplication::translate("MainWindow.Chrome", "Pause")
+            : QCoreApplication::translate("MainWindow.Chrome", "Play");
+        m_audio_play_button->setText(play_text);
+    }
+    if (m_audio_status_label != nullptr && m_audio_source_path.isEmpty()) {
+        m_audio_status_label->setText(QCoreApplication::translate("MainWindow.Chrome", "No playable audio selected"));
+    }
+    retranslate_decryption_keys_window();
+
+    if (m_file_model != nullptr) {
+        m_file_model->retranslate();
+    }
+    refresh_file_type_filter(m_file_type_filter, m_file_model);
+    if (m_entry_model != nullptr) {
+        m_entry_model->retranslate();
+    }
+    if (m_nested_entry_model != nullptr) {
+        m_nested_entry_model->retranslate();
+    }
+    if (m_editor_workspace != nullptr) {
+        m_editor_workspace->retranslate();
+    }
+
+    if (m_workspace_tabs != nullptr && m_workspace_tabs->count() >= 2) {
+        m_workspace_tabs->setTabText(0, QCoreApplication::translate("MainWindow.Chrome", "Browse"));
+        m_workspace_tabs->setTabText(1, QCoreApplication::translate("MainWindow.Chrome", "Editor"));
+    }
+    if (m_preview_tabs != nullptr && m_preview_tabs->count() >= 2) {
+        m_preview_tabs->setTabText(0, QCoreApplication::translate("MainWindow.Chrome", "Preview"));
+        m_preview_tabs->setTabText(1, QCoreApplication::translate("MainWindow.Chrome", "Raw"));
+    }
+
+    const LoadedDocument* current_document = nullptr;
+    if (
+        m_file_view != nullptr &&
+        m_file_proxy != nullptr &&
+        m_file_model != nullptr &&
+        m_file_view->currentIndex().isValid()
+    ) {
+        current_document = m_file_model->document_at(
+            m_file_proxy->mapToSource(m_file_view->currentIndex()).row()
+        );
+    }
+    if (current_document != nullptr) {
+        m_doc_title->setText(utf8_to_qstring(current_document->display_name));
+        m_doc_subtitle->setText(utf8_to_qstring(localized_document_format(*current_document)));
+        populate_info_grid(m_info_grid, current_document->info);
+        update_document_key_panel(current_document);
+        const bool has_entries = !current_document->entries.empty();
+        const auto extract_text = has_entries
+            ? QCoreApplication::translate("MainWindow.Chrome", "Extract All")
+            : QCoreApplication::translate("MainWindow.Chrome", "Extract");
+        const auto raw_text = has_entries
+            ? QCoreApplication::translate("MainWindow.Chrome", "All Raw")
+            : QCoreApplication::translate("MainWindow.Chrome", "Raw");
+        m_doc_extract_button->setText(extract_text);
+        m_doc_extract_raw_button->setText(raw_text);
+    } else {
+        const auto title = QCoreApplication::translate("MainWindow.Chrome", "No file selected");
+        const auto subtitle = QCoreApplication::translate("MainWindow.Chrome", "Open or drop CRI files to inspect them.");
+        m_doc_title->setText(title);
+        m_doc_subtitle->setText(subtitle);
+    }
+    if (m_current_preview_entry) {
+        auto title = utf8_to_qstring(m_current_preview_entry->name);
+        if (title.startsWith(QLatin1String(mux_preview_prefix.data(), mux_preview_prefix.size()))) {
+            title.remove(0, static_cast<int>(mux_preview_prefix.size()));
+        }
+        m_nested_title->setText(title);
+        m_nested_subtitle->setText(utf8_to_qstring(m_current_preview_entry->type));
+        populate_entry_preview_metadata(*m_current_preview_entry);
+        update_preview_key_panel(*m_current_preview_entry);
+    }
+
+    update_file_sort();
+    update_file_list_status();
+    update_entry_selection_status();
+    update_entry_path_bar();
+    update_memory_usage_label();
+}
 
 void MainWindow::build_ui() {
     m_file_model = new FileListModel(this);
@@ -790,17 +993,17 @@ void MainWindow::build_ui() {
 
     m_file_filter = new QLineEdit(this);
     m_file_filter->setObjectName(QStringLiteral("SearchField"));
-    m_file_filter->setPlaceholderText(QStringLiteral("Search files"));
+    m_file_filter->setPlaceholderText(QCoreApplication::translate("MainWindow.Chrome", "Search files"));
     m_file_sort = new QComboBox(this);
     m_file_sort->setObjectName(QStringLiteral("FileSortCombo"));
-    m_file_sort->setToolTip(QStringLiteral("Sort loaded assets"));
-    m_file_sort->addItem(QStringLiteral("Name A-Z"), QVariant::fromValue<int>(0));
-    m_file_sort->addItem(QStringLiteral("Name Z-A"), QVariant::fromValue<int>(1));
-    m_file_sort->addItem(QStringLiteral("Smallest"), QVariant::fromValue<int>(2));
-    m_file_sort->addItem(QStringLiteral("Largest"), QVariant::fromValue<int>(3));
+    m_file_sort->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Sort loaded assets"));
+    m_file_sort->addItem(QCoreApplication::translate("MainWindow.Chrome", "Name A-Z"), QVariant::fromValue<int>(0));
+    m_file_sort->addItem(QCoreApplication::translate("MainWindow.Chrome", "Name Z-A"), QVariant::fromValue<int>(1));
+    m_file_sort->addItem(QCoreApplication::translate("MainWindow.Chrome", "Smallest"), QVariant::fromValue<int>(2));
+    m_file_sort->addItem(QCoreApplication::translate("MainWindow.Chrome", "Largest"), QVariant::fromValue<int>(3));
     m_file_type_filter = new FileTypeFilterCombo(this);
     m_file_type_filter->setObjectName(QStringLiteral("FileTypeFilterCombo"));
-    m_file_type_filter->setToolTip(QStringLiteral("Filter loaded files by detected type"));
+    m_file_type_filter->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Filter loaded files by detected type"));
     m_file_type_filter->view()->setMouseTracking(true);
     refresh_file_type_filter(m_file_type_filter, m_file_model);
     m_file_view = new QListView(this);
@@ -814,10 +1017,10 @@ void MainWindow::build_ui() {
     m_file_view->setSpacing(2);
     m_file_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_file_view->setItemDelegate(new LoadedFileDelegate(m_file_filter, m_file_view));
-    m_file_list_status = new QLabel(QStringLiteral("0 loaded"), this);
+    m_file_list_status = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "0 loaded"), this);
     m_file_list_status->setObjectName(QStringLiteral("FileListStatus"));
 
-    m_left_panel_button = make_panel_button(make_sidebar_icon(true), QStringLiteral("Toggle loaded files panel"), this);
+    m_left_panel_button = make_panel_button(make_sidebar_icon(true), QCoreApplication::translate("MainWindow.Chrome", "Toggle loaded files panel"), this);
     m_left_panel_button->setChecked(true);
     connect(m_left_panel_button, &QToolButton::clicked, this, [this](bool checked) {
         if (m_toggle_left_action != nullptr) {
@@ -827,7 +1030,7 @@ void MainWindow::build_ui() {
     });
     m_clear_files_button = make_rail_action_button(
         make_action_icon(ActionGlyph::Clear),
-        QStringLiteral("Unload all files"),
+        QCoreApplication::translate("MainWindow.Chrome", "Unload all files"),
         this
     );
     connect(m_clear_files_button, &QToolButton::clicked, this, &MainWindow::clear_loaded_files);
@@ -849,9 +1052,9 @@ void MainWindow::build_ui() {
     left_layout->addWidget(m_file_list_status);
     m_left_panel->setMinimumWidth(260);
 
-    m_doc_title = new QLabel(QStringLiteral("No file selected"), this);
+    m_doc_title = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "No file selected"), this);
     m_doc_title->setObjectName(QStringLiteral("DocumentTitle"));
-    m_doc_subtitle = new QLabel(QStringLiteral("Open or drop CRI files to inspect them."), this);
+    m_doc_subtitle = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "Open or drop CRI files to inspect them."), this);
     m_doc_subtitle->setObjectName(QStringLiteral("DocumentSubtitle"));
 
     auto* info_content = new QWidget(this);
@@ -863,40 +1066,40 @@ void MainWindow::build_ui() {
     m_doc_key_panel = make_key_panel(m_doc_key_label, m_doc_key_input, m_doc_key_base_input, m_doc_key_apply, this);
     m_doc_mux_preview_button = new QToolButton(this);
     m_doc_mux_preview_button->setObjectName(QStringLiteral("ActionButton"));
-    m_doc_mux_preview_button->setText(QStringLiteral("Mux preview"));
+    m_doc_mux_preview_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Mux preview"));
     m_doc_mux_preview_button->setIcon(make_action_icon(ActionGlyph::MuxPreview));
     m_doc_mux_preview_button->setIconSize(QSize(18, 18));
     m_doc_mux_preview_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_doc_mux_preview_button->setToolTip(QStringLiteral("Return to the composed USM/SFD preview"));
-    m_doc_mux_preview_button->setAccessibleName(QStringLiteral("Show mux preview"));
+    m_doc_mux_preview_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Return to the composed USM/SFD preview"));
+    m_doc_mux_preview_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Show mux preview"));
     m_doc_mux_preview_button->hide();
     m_doc_extract_button = new QToolButton(this);
     m_doc_extract_button->setObjectName(QStringLiteral("ActionButton"));
-    m_doc_extract_button->setText(QStringLiteral("Extract All"));
+    m_doc_extract_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Extract All"));
     m_doc_extract_button->setIcon(make_action_icon(ActionGlyph::Extract));
     m_doc_extract_button->setIconSize(QSize(18, 18));
     m_doc_extract_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_doc_extract_button->setToolTip(QStringLiteral("Extract the selected loaded file"));
-    m_doc_extract_button->setAccessibleName(QStringLiteral("Extract selected loaded file"));
+    m_doc_extract_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Extract the selected loaded file"));
+    m_doc_extract_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Extract selected loaded file"));
     m_doc_extract_button->hide();
     m_doc_extract_raw_button = new QToolButton(this);
     m_doc_extract_raw_button->setObjectName(QStringLiteral("ActionButton"));
-    m_doc_extract_raw_button->setText(QStringLiteral("All Raw"));
+    m_doc_extract_raw_button->setText(QCoreApplication::translate("MainWindow.Chrome", "All Raw"));
     m_doc_extract_raw_button->setIcon(make_action_icon(ActionGlyph::RawExtract));
     m_doc_extract_raw_button->setIconSize(QSize(18, 18));
     m_doc_extract_raw_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_doc_extract_raw_button->setToolTip(QStringLiteral("Extract the selected loaded file without decode or mux conversion"));
-    m_doc_extract_raw_button->setAccessibleName(QStringLiteral("Raw extract selected loaded file"));
+    m_doc_extract_raw_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Extract the selected loaded file without decode or mux conversion"));
+    m_doc_extract_raw_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Raw extract selected loaded file"));
     m_doc_extract_raw_button->hide();
 
     m_entry_filter = new QLineEdit(this);
     m_entry_filter->setObjectName(QStringLiteral("SearchField"));
-    m_entry_filter->setPlaceholderText(QStringLiteral("Search entries"));
+    m_entry_filter->setPlaceholderText(QCoreApplication::translate("MainWindow.Chrome", "Search entries"));
     m_entry_view_mode = new QComboBox(this);
     m_entry_view_mode->setObjectName(QStringLiteral("EntryViewModeCombo"));
-    m_entry_view_mode->setToolTip(QStringLiteral("Choose archive entry view mode"));
-    m_entry_view_mode->addItem(QStringLiteral("Tree"), QVariant::fromValue<int>(0));
-    m_entry_view_mode->addItem(QStringLiteral("List"), QVariant::fromValue<int>(1));
+    m_entry_view_mode->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Choose archive entry view mode"));
+    m_entry_view_mode->addItem(QCoreApplication::translate("MainWindow.Chrome", "Tree"), QVariant::fromValue<int>(0));
+    m_entry_view_mode->addItem(QCoreApplication::translate("MainWindow.Chrome", "List"), QVariant::fromValue<int>(1));
     m_entry_view_mode->setMinimumWidth(116);
     m_entry_view_mode->hide();
     auto* entry_view_selector = new QWidget(this);
@@ -905,14 +1108,14 @@ void MainWindow::build_ui() {
     entry_view_selector_layout->setContentsMargins(0, 0, 0, 0);
     entry_view_selector_layout->setSpacing(0);
     entry_view_selector_layout->addWidget(m_entry_view_mode, 0);
-    for (const auto& item : {std::pair{QStringLiteral("Tree"), 0}, std::pair{QStringLiteral("List"), 1}}) {
+    for (const auto& item : {std::pair{QCoreApplication::translate("MainWindow.Chrome", "Tree"), 0}, std::pair{QCoreApplication::translate("MainWindow.Chrome", "List"), 1}}) {
         auto* button = new QToolButton(entry_view_selector);
         button->setObjectName(QStringLiteral("EntryViewModeSegment"));
         button->setText(item.first);
         button->setProperty("modeValue", item.second);
         button->setCheckable(true);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setToolTip(QStringLiteral("Show entries as %1").arg(item.first.toLower()));
+        button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Show entries as %1").arg(item.first.toLower()));
         entry_view_selector_layout->addWidget(button, 0);
         connect(button, &QToolButton::clicked, m_entry_view_mode, [this, value = item.second] {
             m_entry_view_mode->setCurrentIndex(value);
@@ -951,7 +1154,7 @@ void MainWindow::build_ui() {
     m_entry_view->setColumnWidth(4, 220);
     m_entry_filter->hide();
     m_entry_view->hide();
-    m_entry_selection_status = new QLabel(QStringLiteral("0 selected"), this);
+    m_entry_selection_status = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "0 selected"), this);
     m_entry_selection_status->setObjectName(QStringLiteral("EntrySelectionStatus"));
     m_entry_selection_status->hide();
 
@@ -986,9 +1189,9 @@ void MainWindow::build_ui() {
     entry_path_layout->setSpacing(6);
     m_entry_up_button = new QToolButton(m_entry_path_row);
     m_entry_up_button->setObjectName(QStringLiteral("SmallToolButton"));
-    m_entry_up_button->setText(QStringLiteral("Up"));
-    m_entry_up_button->setToolTip(QStringLiteral("Go to the parent archive folder"));
-    m_entry_up_button->setAccessibleName(QStringLiteral("Go to parent archive folder"));
+    m_entry_up_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Up"));
+    m_entry_up_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Go to the parent archive folder"));
+    m_entry_up_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Go to parent archive folder"));
     m_entry_path_label = new QLabel(m_entry_path_row);
     m_entry_path_label->setObjectName(QStringLiteral("EntryPathLabel"));
     m_entry_path_label->setTextFormat(Qt::RichText);
@@ -1010,7 +1213,7 @@ void MainWindow::build_ui() {
     auto* nested_layout = new QVBoxLayout(m_nested_panel);
     nested_layout->setContentsMargins(8, 8, 8, 8);
     nested_layout->setSpacing(8);
-    m_preview_panel_button = make_panel_button(make_sidebar_icon(false), QStringLiteral("Toggle entry preview panel"), m_nested_panel);
+    m_preview_panel_button = make_panel_button(make_sidebar_icon(false), QCoreApplication::translate("MainWindow.Chrome", "Toggle entry preview panel"), m_nested_panel);
     m_preview_panel_button->setChecked(false);
     connect(m_preview_panel_button, &QToolButton::clicked, this, [this](bool checked) {
         if (m_toggle_preview_action != nullptr) {
@@ -1018,62 +1221,62 @@ void MainWindow::build_ui() {
         }
         toggle_preview_panel();
     });
-    m_nested_title = new QLabel(QStringLiteral("Entry preview"), m_nested_panel);
+    m_nested_title = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "Entry preview"), m_nested_panel);
     m_nested_title->setObjectName(QStringLiteral("PreviewTitle"));
-    m_nested_subtitle = new QLabel(QStringLiteral("Select a supported embedded file."), m_nested_panel);
+    m_nested_subtitle = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "Select a supported embedded file."), m_nested_panel);
     m_nested_subtitle->setObjectName(QStringLiteral("PreviewSubtitle"));
     m_preview_extract_button = new QToolButton(m_nested_panel);
     m_preview_extract_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_extract_button->setText(QStringLiteral("Extract Entry"));
+    m_preview_extract_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Extract Entry"));
     m_preview_extract_button->setIcon(make_action_icon(ActionGlyph::Extract));
     m_preview_extract_button->setIconSize(QSize(18, 18));
     m_preview_extract_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_extract_button->setToolTip(QStringLiteral("Extract this previewed archive entry"));
-    m_preview_extract_button->setAccessibleName(QStringLiteral("Extract previewed archive entry"));
+    m_preview_extract_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Extract this previewed archive entry"));
+    m_preview_extract_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Extract previewed archive entry"));
     m_preview_extract_button->hide();
     m_preview_extract_raw_button = new QToolButton(m_nested_panel);
     m_preview_extract_raw_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_extract_raw_button->setText(QStringLiteral("Entry Raw"));
+    m_preview_extract_raw_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Entry Raw"));
     m_preview_extract_raw_button->setIcon(make_action_icon(ActionGlyph::RawExtract));
     m_preview_extract_raw_button->setIconSize(QSize(18, 18));
     m_preview_extract_raw_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_extract_raw_button->setToolTip(QStringLiteral("Extract this previewed archive entry without decode or mux conversion"));
-    m_preview_extract_raw_button->setAccessibleName(QStringLiteral("Raw extract previewed archive entry"));
+    m_preview_extract_raw_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Extract this previewed archive entry without decode or mux conversion"));
+    m_preview_extract_raw_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Raw extract previewed archive entry"));
     m_preview_extract_raw_button->hide();
     m_preview_recover_key_button = new QToolButton(m_nested_panel);
     m_preview_recover_key_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_recover_key_button->setText(QStringLiteral("Recover HCA Key"));
+    m_preview_recover_key_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Recover HCA Key"));
     m_preview_recover_key_button->setIcon(make_action_icon(ActionGlyph::RecoverKey));
     m_preview_recover_key_button->setIconSize(QSize(18, 18));
     m_preview_recover_key_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_recover_key_button->setToolTip(QStringLiteral("Recover an HCA type-56 key from this previewed file"));
-    m_preview_recover_key_button->setAccessibleName(QStringLiteral("Recover HCA key from previewed file"));
+    m_preview_recover_key_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Recover an HCA type-56 key from this previewed file"));
+    m_preview_recover_key_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Recover HCA key from previewed file"));
     m_preview_recover_key_button->hide();
     m_preview_recover_usm_key_button = new QToolButton(m_nested_panel);
     m_preview_recover_usm_key_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_recover_usm_key_button->setText(QStringLiteral("Recover USM Key"));
+    m_preview_recover_usm_key_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Recover USM Key"));
     m_preview_recover_usm_key_button->setIcon(make_action_icon(ActionGlyph::RecoverKey));
     m_preview_recover_usm_key_button->setIconSize(QSize(18, 18));
     m_preview_recover_usm_key_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_recover_usm_key_button->setToolTip(QStringLiteral("Recover a USM mask key from audio and video evidence"));
-    m_preview_recover_usm_key_button->setAccessibleName(QStringLiteral("Recover USM key from previewed file"));
+    m_preview_recover_usm_key_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Recover a USM mask key from audio and video evidence"));
+    m_preview_recover_usm_key_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Recover USM key from previewed file"));
     m_preview_recover_usm_key_button->hide();
     m_preview_recover_adx_key_button = new QToolButton(m_nested_panel);
     m_preview_recover_adx_key_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_recover_adx_key_button->setText(QStringLiteral("Recover ADX Key"));
+    m_preview_recover_adx_key_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Recover ADX Key"));
     m_preview_recover_adx_key_button->setIcon(make_action_icon(ActionGlyph::RecoverKey));
     m_preview_recover_adx_key_button->setIconSize(QSize(18, 18));
     m_preview_recover_adx_key_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_recover_adx_key_button->setAccessibleName(QStringLiteral("Recover ADX or AHX key from previewed file"));
+    m_preview_recover_adx_key_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Recover ADX or AHX key from previewed file"));
     m_preview_recover_adx_key_button->hide();
     m_preview_recover_aac_key_button = new QToolButton(m_nested_panel);
     m_preview_recover_aac_key_button->setObjectName(QStringLiteral("ActionButton"));
-    m_preview_recover_aac_key_button->setText(QStringLiteral("Recover AAC Key"));
+    m_preview_recover_aac_key_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Recover AAC Key"));
     m_preview_recover_aac_key_button->setIcon(make_action_icon(ActionGlyph::RecoverKey));
     m_preview_recover_aac_key_button->setIconSize(QSize(18, 18));
     m_preview_recover_aac_key_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_preview_recover_aac_key_button->setToolTip(QStringLiteral("Recover the effective AAC key from this ACB/AWB M4A source"));
-    m_preview_recover_aac_key_button->setAccessibleName(QStringLiteral("Recover AAC key from previewed ACB or AWB source"));
+    m_preview_recover_aac_key_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Recover the effective AAC key from this ACB/AWB M4A source"));
+    m_preview_recover_aac_key_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Recover AAC key from previewed ACB or AWB source"));
     m_preview_recover_aac_key_button->hide();
     auto* nested_content = new QWidget(m_nested_panel);
     m_nested_info_panel = nested_content;
@@ -1149,14 +1352,14 @@ void MainWindow::build_ui() {
     auto* mux_audio_layout = new QHBoxLayout(m_mux_audio_row);
     mux_audio_layout->setContentsMargins(0, 0, 0, 0);
     mux_audio_layout->setSpacing(8);
-    auto* mux_audio_label = make_dim_label(QStringLiteral("Audio channel"), m_mux_audio_row);
+    auto* mux_audio_label = make_dim_label(QCoreApplication::translate("MainWindow.Chrome", "Audio channel"), m_mux_audio_row);
     m_mux_audio_combo = new QComboBox(m_mux_audio_row);
     m_mux_audio_combo->setObjectName(QStringLiteral("MuxAudioCombo"));
-    m_mux_audio_combo->setToolTip(QStringLiteral("Choose which stream to mux with the video preview"));
+    m_mux_audio_combo->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Choose which stream to mux with the video preview"));
     auto* mux_audio_button = new QToolButton(m_mux_audio_row);
     mux_audio_button->setArrowType(Qt::DownArrow);
-    mux_audio_button->setToolTip(QStringLiteral("Show mux audio choices"));
-    mux_audio_button->setAccessibleName(QStringLiteral("Show mux audio choices"));
+    mux_audio_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Show mux audio choices"));
+    mux_audio_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Show mux audio choices"));
     mux_audio_layout->addWidget(mux_audio_label, 0);
     mux_audio_layout->addWidget(m_mux_audio_combo, 1);
     mux_audio_layout->addWidget(mux_audio_button, 0);
@@ -1165,14 +1368,14 @@ void MainWindow::build_ui() {
     auto* mux_subtitle_layout = new QHBoxLayout(m_mux_subtitle_row);
     mux_subtitle_layout->setContentsMargins(0, 0, 0, 0);
     mux_subtitle_layout->setSpacing(8);
-    auto* mux_subtitle_label = make_dim_label(QStringLiteral("Subtitles"), m_mux_subtitle_row);
+    auto* mux_subtitle_label = make_dim_label(QCoreApplication::translate("MainWindow.Chrome", "Subtitles"), m_mux_subtitle_row);
     m_mux_subtitle_combo = new QComboBox(m_mux_subtitle_row);
     m_mux_subtitle_combo->setObjectName(QStringLiteral("MuxSubtitleCombo"));
-    m_mux_subtitle_combo->setToolTip(QStringLiteral("Choose which subtitle language to display"));
+    m_mux_subtitle_combo->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Choose which subtitle language to display"));
     auto* mux_subtitle_button = new QToolButton(m_mux_subtitle_row);
     mux_subtitle_button->setArrowType(Qt::DownArrow);
-    mux_subtitle_button->setToolTip(QStringLiteral("Show mux subtitle choices"));
-    mux_subtitle_button->setAccessibleName(QStringLiteral("Show mux subtitle choices"));
+    mux_subtitle_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Show mux subtitle choices"));
+    mux_subtitle_button->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Show mux subtitle choices"));
     mux_subtitle_layout->addWidget(mux_subtitle_label, 0);
     mux_subtitle_layout->addWidget(m_mux_subtitle_combo, 1);
     mux_subtitle_layout->addWidget(mux_subtitle_button, 0);
@@ -1182,23 +1385,23 @@ void MainWindow::build_ui() {
     audio_top->setSpacing(8);
     m_audio_play_button = new QToolButton(m_audio_panel);
     m_audio_play_button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    m_audio_play_button->setText(QStringLiteral("Play"));
+    m_audio_play_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Play"));
     m_audio_play_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     m_audio_play_button->setEnabled(false);
-    m_audio_status_label = new QLabel(QStringLiteral("No playable audio selected"), m_audio_panel);
+    m_audio_status_label = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "No playable audio selected"), m_audio_panel);
     m_audio_status_label->setObjectName(QStringLiteral("AudioStatus"));
     m_audio_status_label->setWordWrap(true);
     m_audio_volume_label = new QLabel(m_audio_panel);
     m_audio_volume_label->setPixmap(style()->standardIcon(QStyle::SP_MediaVolume).pixmap(16, 16));
-    m_audio_volume_label->setToolTip(QStringLiteral("Volume"));
-    m_audio_volume_label->setAccessibleName(QStringLiteral("Volume"));
+    m_audio_volume_label->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Volume"));
+    m_audio_volume_label->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Volume"));
     m_audio_volume_slider = new QSlider(Qt::Horizontal, m_audio_panel);
     m_audio_volume_slider->setObjectName(QStringLiteral("VolumeSlider"));
     m_audio_volume_slider->setRange(0, 100);
     m_audio_volume_slider->setValue(80);
     m_audio_volume_slider->setFixedWidth(96);
-    m_audio_volume_slider->setToolTip(QStringLiteral("Playback volume"));
-    m_audio_volume_slider->setAccessibleName(QStringLiteral("Playback volume"));
+    m_audio_volume_slider->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Playback volume"));
+    m_audio_volume_slider->setAccessibleName(QCoreApplication::translate("MainWindow.Chrome", "Playback volume"));
     audio_top->addWidget(m_audio_play_button, 0);
     audio_top->addWidget(m_audio_status_label, 1);
     audio_top->addWidget(m_audio_volume_label, 0, Qt::AlignVCenter);
@@ -1210,7 +1413,7 @@ void MainWindow::build_ui() {
     auto* loop_header = new QHBoxLayout();
     loop_header->setContentsMargins(0, 0, 0, 0);
     loop_header->setSpacing(8);
-    m_audio_loop_toggle = new QCheckBox(QStringLiteral("Loop selected range"), m_audio_loop_row);
+    m_audio_loop_toggle = new QCheckBox(QCoreApplication::translate("MainWindow.Chrome", "Loop selected range"), m_audio_loop_row);
     m_audio_loop_toggle->setEnabled(false);
     loop_header->addWidget(m_audio_loop_toggle, 0);
     loop_header->addStretch(1);
@@ -1259,8 +1462,8 @@ void MainWindow::build_ui() {
     preview_tab_layout->addWidget(m_nested_image_scroll, 8);
     preview_tab_layout->addWidget(m_nested_body, 8);
     preview_tab_layout->addStretch(1);
-    m_preview_tabs->addTab(m_preview_tab, QStringLiteral("Preview"));
-    m_preview_tabs->addTab(m_raw_hex, QStringLiteral("Raw"));
+    m_preview_tabs->addTab(m_preview_tab, QCoreApplication::translate("MainWindow.Chrome", "Preview"));
+    m_preview_tabs->addTab(m_raw_hex, QCoreApplication::translate("MainWindow.Chrome", "Raw"));
     m_preview_tabs->setTabEnabled(1, false);
     nested_layout->addWidget(m_nested_title);
     nested_layout->addWidget(m_nested_subtitle);
@@ -1368,8 +1571,8 @@ void MainWindow::build_ui() {
     m_workspace_tabs = new WorkspaceTabWidget(this);
     m_workspace_tabs->setObjectName(QStringLiteral("WorkspaceTabs"));
     m_workspace_tabs->setDocumentMode(false);
-    m_workspace_tabs->addTab(m_content_host, QStringLiteral("Browse"));
-    m_workspace_tabs->addTab(m_editor_workspace, QStringLiteral("Editor"));
+    m_workspace_tabs->addTab(m_content_host, QCoreApplication::translate("MainWindow.Chrome", "Browse"));
+    m_workspace_tabs->addTab(m_editor_workspace, QCoreApplication::translate("MainWindow.Chrome", "Editor"));
     connect(m_workspace_tabs, &QTabWidget::currentChanged, this, [this, content_host = m_content_host](int index) {
         if (m_workspace_tabs->widget(index) != content_host) {
             reset_audio_preview();
@@ -1383,7 +1586,7 @@ void MainWindow::build_ui() {
     m_drop_overlay->setAttribute(Qt::WA_TransparentForMouseEvents);
     auto* drop_layout = new QVBoxLayout(m_drop_overlay);
     drop_layout->setContentsMargins(28, 28, 28, 28);
-    auto* drop_label = new QLabel(QStringLiteral("Drop files or folders"), m_drop_overlay);
+    auto* drop_label = new QLabel(QCoreApplication::translate("MainWindow.Chrome", "Drop files or folders"), m_drop_overlay);
     drop_label->setObjectName(QStringLiteral("DropOverlayLabel"));
     drop_label->setAlignment(Qt::AlignCenter);
     drop_layout->addWidget(drop_label, 1);
@@ -1416,10 +1619,10 @@ void MainWindow::build_ui() {
     m_loading_status_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_loading_status_label->hide();
     m_cancel_extraction_button = new QToolButton(this);
-    m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+    m_cancel_extraction_button->setText(QCoreApplication::translate("MainWindow.Chrome", "Cancel"));
     m_cancel_extraction_button->setIcon(style()->standardIcon(QStyle::SP_DialogCancelButton));
     m_cancel_extraction_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_cancel_extraction_button->setToolTip(QStringLiteral("Stop the current extraction"));
+    m_cancel_extraction_button->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Stop the current extraction"));
     m_cancel_extraction_button->hide();
     connect(m_cancel_extraction_button, &QToolButton::clicked, this, &MainWindow::cancel_extraction);
     statusBar()->addPermanentWidget(m_loading_status_label);
@@ -1502,14 +1705,14 @@ void MainWindow::build_ui() {
         auto sources = current_preview_recovery_sources();
         const auto label = m_current_preview_entry.has_value()
             ? utf8_to_qstring(m_current_preview_entry->name)
-            : QStringLiteral("Previewed file");
+            : QCoreApplication::translate("MainWindow.Chrome", "Previewed file");
         start_hca_key_recovery(std::move(sources), label);
     });
     connect(m_preview_recover_usm_key_button, &QToolButton::clicked, this, [this] {
         auto sources = current_preview_usm_recovery_sources();
         const auto label = m_current_preview_entry.has_value()
             ? utf8_to_qstring(m_current_preview_entry->name)
-            : QStringLiteral("Previewed file");
+            : QCoreApplication::translate("MainWindow.Chrome", "Previewed file");
         start_usm_key_recovery(std::move(sources), label);
     });
     connect(m_preview_recover_adx_key_button, &QToolButton::clicked, this, [this] {
@@ -1520,14 +1723,14 @@ void MainWindow::build_ui() {
         auto sources = current_preview_adx_recovery_sources();
         const auto label = m_current_preview_entry.has_value()
             ? utf8_to_qstring(m_current_preview_entry->name)
-            : QStringLiteral("Previewed file");
+            : QCoreApplication::translate("MainWindow.Chrome", "Previewed file");
         start_adx_key_recovery(std::move(sources), *kind, label);
     });
     connect(m_preview_recover_aac_key_button, &QToolButton::clicked, this, [this] {
         auto sources = current_preview_aac_recovery_sources();
         const auto label = m_current_preview_entry.has_value()
             ? utf8_to_qstring(m_current_preview_entry->name)
-            : QStringLiteral("Previewed ACB/AWB");
+            : QCoreApplication::translate("MainWindow.Chrome", "Previewed ACB/AWB");
         start_aac_key_recovery(std::move(sources), label);
     });
     connect(m_preview_tabs, &QTabWidget::currentChanged, this, [this](int index) {
@@ -1771,136 +1974,186 @@ void MainWindow::build_ui() {
             }
         });
 
-    statusBar()->showMessage(QStringLiteral("Ready"));
+    bind_ui_text(m_file_filter, "placeholderText", "Search files");
+    bind_ui_text(m_file_sort, "toolTip", "Sort loaded assets");
+    bind_ui_text(m_file_type_filter, "toolTip", "Filter loaded files by detected type");
+    bind_ui_text(m_left_panel_button, "toolTip", "Toggle loaded files panel");
+    bind_ui_text(m_clear_files_button, "toolTip", "Unload all files");
+    bind_ui_text(m_doc_mux_preview_button, "accessibleName", "Show mux preview");
+    bind_ui_text(m_doc_extract_button, "toolTip", "Extract the selected loaded file");
+    bind_ui_text(m_doc_extract_button, "accessibleName", "Extract selected loaded file");
+    bind_ui_text(m_doc_extract_raw_button, "toolTip", "Extract the selected loaded file without decode or mux conversion");
+    bind_ui_text(m_doc_extract_raw_button, "accessibleName", "Raw extract selected loaded file");
+    bind_ui_text(m_entry_filter, "placeholderText", "Search entries");
+    bind_ui_text(m_entry_view_mode, "toolTip", "Choose archive entry view mode");
+    bind_ui_text(m_entry_up_button, "text", "Up");
+    bind_ui_text(m_entry_up_button, "toolTip", "Go to the parent archive folder");
+    bind_ui_text(m_entry_up_button, "accessibleName", "Go to parent archive folder");
+    bind_ui_text(m_preview_panel_button, "toolTip", "Toggle entry preview panel");
+    bind_ui_text(m_preview_extract_button, "text", "Extract Entry");
+    bind_ui_text(m_preview_extract_button, "toolTip", "Extract this previewed archive entry");
+    bind_ui_text(m_preview_extract_button, "accessibleName", "Extract previewed archive entry");
+    bind_ui_text(m_preview_extract_raw_button, "text", "Entry Raw");
+    bind_ui_text(m_preview_extract_raw_button, "toolTip", "Extract this previewed archive entry without decode or mux conversion");
+    bind_ui_text(m_preview_extract_raw_button, "accessibleName", "Raw extract previewed archive entry");
+    bind_ui_text(m_preview_recover_key_button, "text", "Recover HCA Key");
+    bind_ui_text(m_preview_recover_key_button, "toolTip", "Recover an HCA type-56 key from this previewed file");
+    bind_ui_text(m_preview_recover_key_button, "accessibleName", "Recover HCA key from previewed file");
+    bind_ui_text(m_preview_recover_usm_key_button, "text", "Recover USM Key");
+    bind_ui_text(m_preview_recover_usm_key_button, "toolTip", "Recover a USM mask key from audio and video evidence");
+    bind_ui_text(m_preview_recover_usm_key_button, "accessibleName", "Recover USM key from previewed file");
+    bind_ui_text(m_preview_recover_adx_key_button, "text", "Recover ADX Key");
+    bind_ui_text(m_preview_recover_adx_key_button, "accessibleName", "Recover ADX or AHX key from previewed file");
+    bind_ui_text(m_preview_recover_aac_key_button, "text", "Recover AAC Key");
+    bind_ui_text(m_preview_recover_aac_key_button, "toolTip", "Recover the effective AAC key from this ACB/AWB M4A source");
+    bind_ui_text(m_preview_recover_aac_key_button, "accessibleName", "Recover AAC key from previewed ACB or AWB source");
+    bind_ui_text(mux_audio_label, "text", "Audio channel");
+    bind_ui_text(m_mux_audio_combo, "toolTip", "Choose which stream to mux with the video preview");
+    bind_ui_text(mux_audio_button, "toolTip", "Show mux audio choices");
+    bind_ui_text(mux_audio_button, "accessibleName", "Show mux audio choices");
+    bind_ui_text(mux_subtitle_label, "text", "Subtitles");
+    bind_ui_text(m_mux_subtitle_combo, "toolTip", "Choose which subtitle language to display");
+    bind_ui_text(mux_subtitle_button, "toolTip", "Show mux subtitle choices");
+    bind_ui_text(mux_subtitle_button, "accessibleName", "Show mux subtitle choices");
+    bind_ui_text(m_audio_volume_label, "toolTip", "Volume");
+    bind_ui_text(m_audio_volume_label, "accessibleName", "Volume");
+    bind_ui_text(m_audio_volume_slider, "toolTip", "Playback volume");
+    bind_ui_text(m_audio_volume_slider, "accessibleName", "Playback volume");
+    bind_ui_text(m_audio_loop_toggle, "text", "Loop selected range");
+    bind_ui_text(drop_label, "text", "Drop files or folders");
+    bind_ui_text(m_cancel_extraction_button, "text", "Cancel");
+    bind_ui_text(m_cancel_extraction_button, "toolTip", "Stop the current extraction");
+
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.Chrome", "Ready"));
     update_file_sort();
     update_file_list_status();
 }
 
 void MainWindow::build_menus() {
-    auto* file_menu = menuBar()->addMenu(QStringLiteral("&File"));
-    auto* open_files_action = file_menu->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), QStringLiteral("&Open Files..."));
+    auto* file_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&File"));
+    auto* open_files_action = file_menu->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), QCoreApplication::translate("MainWindow.Chrome", "&Open Files..."));
     open_files_action->setShortcut(QKeySequence::Open);
     connect(open_files_action, &QAction::triggered, this, &MainWindow::open_files);
 
-    auto* open_folder_action = file_menu->addAction(QStringLiteral("Open &Folder..."));
+    auto* open_folder_action = file_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Open &Folder..."));
     connect(open_folder_action, &QAction::triggered, this, &MainWindow::open_folder);
 
     file_menu->addSeparator();
-    auto* new_menu = file_menu->addMenu(QStringLiteral("&New"));
-    auto* new_utf_action = new_menu->addAction(QStringLiteral("&UTF Table"));
+    auto* new_menu = file_menu->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&New"));
+    auto* new_utf_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&UTF Table"));
     connect(new_utf_action, &QAction::triggered, this, &MainWindow::new_utf_editor_document);
-    auto* new_afs_action = new_menu->addAction(QStringLiteral("&AFS Archive"));
+    auto* new_afs_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&AFS Archive"));
     connect(new_afs_action, &QAction::triggered, this, &MainWindow::new_afs_editor_document);
-    auto* new_awb_action = new_menu->addAction(QStringLiteral("A&WB/AFS2 Archive"));
+    auto* new_awb_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "A&WB/AFS2 Archive"));
     connect(new_awb_action, &QAction::triggered, this, &MainWindow::new_awb_editor_document);
-    auto* new_acx_action = new_menu->addAction(QStringLiteral("A&CX Archive"));
+    auto* new_acx_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "A&CX Archive"));
     connect(new_acx_action, &QAction::triggered, this, &MainWindow::new_acx_editor_document);
-    auto* new_cpk_action = new_menu->addAction(QStringLiteral("C&PK Archive"));
+    auto* new_cpk_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "C&PK Archive"));
     connect(new_cpk_action, &QAction::triggered, this, &MainWindow::new_cpk_editor_document);
     new_menu->addSeparator();
-    auto* new_audio_encode_action = new_menu->addAction(QStringLiteral("Audio &Encode Job"));
+    auto* new_audio_encode_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Audio &Encode Job"));
     connect(new_audio_encode_action, &QAction::triggered, this, &MainWindow::new_audio_encode_document);
-    auto* new_usm_build_action = new_menu->addAction(QStringLiteral("&USM Movie..."));
+    auto* new_usm_build_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "US&M Movie..."));
     connect(new_usm_build_action, &QAction::triggered, this, &MainWindow::new_media_build_document);
-    auto* new_sfd_build_action = new_menu->addAction(QStringLiteral("S&FD Movie..."));
+    auto* new_sfd_build_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "S&FD Movie..."));
     connect(new_sfd_build_action, &QAction::triggered, this, &MainWindow::new_sfd_build_document);
-    auto* new_aax_build_action = new_menu->addAction(QStringLiteral("&AAX From ADX..."));
+    auto* new_aax_build_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "AA&X From ADX..."));
     connect(new_aax_build_action, &QAction::triggered, this, &MainWindow::new_aax_build_document);
-    auto* new_aix_build_action = new_menu->addAction(QStringLiteral("A&IX From ADX..."));
+    auto* new_aix_build_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "A&IX From ADX..."));
     connect(new_aix_build_action, &QAction::triggered, this, &MainWindow::new_aix_build_document);
-    auto* new_csb_build_action = new_menu->addAction(QStringLiteral("&CSB From Folder..."));
+    auto* new_csb_build_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "CS&B From Folder..."));
     connect(new_csb_build_action, &QAction::triggered, this, &MainWindow::new_csb_build_document);
-    auto* new_cvm_script_action = new_menu->addAction(QStringLiteral("CVM From C&VS..."));
+    auto* new_cvm_script_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "CVM From C&VS..."));
     connect(new_cvm_script_action, &QAction::triggered, this, &MainWindow::new_cvm_from_script_document);
-    auto* new_cvm_directory_action = new_menu->addAction(QStringLiteral("CVM From F&older..."));
+    auto* new_cvm_directory_action = new_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "CVM From F&older..."));
     connect(new_cvm_directory_action, &QAction::triggered, this, &MainWindow::new_cvm_from_directory_document);
 
     file_menu->addSeparator();
-    auto* extract_all_action = file_menu->addAction(make_action_icon(ActionGlyph::Extract), QStringLiteral("Extract &All..."));
+    auto* extract_all_action = file_menu->addAction(make_action_icon(ActionGlyph::Extract), QCoreApplication::translate("MainWindow.Chrome", "Extract &All..."));
     connect(extract_all_action, &QAction::triggered, this, [this] {
         start_extraction(all_file_targets(), ExtractionMode::Decoded);
     });
-    auto* extract_all_raw_action = file_menu->addAction(make_action_icon(ActionGlyph::RawExtract), QStringLiteral("Extract All &Raw..."));
+    auto* extract_all_raw_action = file_menu->addAction(make_action_icon(ActionGlyph::RawExtract), QCoreApplication::translate("MainWindow.Chrome", "Extract All &Raw..."));
     connect(extract_all_raw_action, &QAction::triggered, this, [this] {
         start_extraction(all_file_targets(), ExtractionMode::Raw);
     });
     auto* recover_hca_keys_action = file_menu->addAction(
         make_action_icon(ActionGlyph::RecoverKey),
-        QStringLiteral("Recover HCA Keys from All Loaded Files"));
+        QCoreApplication::translate("MainWindow.Chrome", "Recover HCA Keys from All Loaded Files"));
     connect(recover_hca_keys_action, &QAction::triggered, this, [this] {
         auto sources = all_file_recovery_sources();
         const auto count = sources.size();
         start_hca_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.Chrome", "%n loaded file(s)", nullptr, static_cast<int>(count)));
     });
     auto* recover_aac_keys_action = file_menu->addAction(
         make_action_icon(ActionGlyph::RecoverKey),
-        QStringLiteral("Recover AAC Keys from Loaded ACB/AWB Files"));
+        QCoreApplication::translate("MainWindow.Chrome", "Recover AAC Keys from Loaded ACB/AWB Files"));
     connect(recover_aac_keys_action, &QAction::triggered, this, [this] {
         auto sources = all_file_aac_recovery_sources();
         const auto count = sources.size();
         start_aac_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 loaded ACB/AWB file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.Chrome", "%n loaded ACB/AWB file(s)", nullptr, static_cast<int>(count)));
     });
     auto* recover_usm_keys_action = file_menu->addAction(
         make_action_icon(ActionGlyph::RecoverKey),
-        QStringLiteral("Recover USM Keys from All Loaded Files"));
+        QCoreApplication::translate("MainWindow.Chrome", "Recover USM Keys from All Loaded Files"));
     connect(recover_usm_keys_action, &QAction::triggered, this, [this] {
         auto sources = all_file_usm_recovery_sources();
         const auto count = sources.size();
         start_usm_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.Chrome", "%n loaded file(s)", nullptr, static_cast<int>(count)));
     });
     auto* recover_adx_keys_action = file_menu->addAction(
         make_action_icon(ActionGlyph::RecoverKey),
-        QStringLiteral("Recover ADX Keys from All Loaded Files"));
+        QCoreApplication::translate("MainWindow.Chrome", "Recover ADX Keys from All Loaded Files"));
     connect(recover_adx_keys_action, &QAction::triggered, this, [this] {
         auto sources = all_file_adx_recovery_sources();
         const auto count = sources.size();
         start_adx_key_recovery(
             std::move(sources),
             AdxRecoveryKind::Adx,
-            QStringLiteral("%1 loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.Chrome", "%n loaded file(s)", nullptr, static_cast<int>(count)));
     });
     auto* recover_ahx_keys_action = file_menu->addAction(
         make_action_icon(ActionGlyph::RecoverKey),
-        QStringLiteral("Recover AHX Keys from All Loaded Files"));
+        QCoreApplication::translate("MainWindow.Chrome", "Recover AHX Keys from All Loaded Files"));
     connect(recover_ahx_keys_action, &QAction::triggered, this, [this] {
         auto sources = all_file_adx_recovery_sources();
         const auto count = sources.size();
         start_adx_key_recovery(
             std::move(sources),
             AdxRecoveryKind::Ahx,
-            QStringLiteral("%1 loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.Chrome", "%n loaded file(s)", nullptr, static_cast<int>(count)));
     });
 
     file_menu->addSeparator();
-    auto* clear_action = file_menu->addAction(make_action_icon(ActionGlyph::Clear), QStringLiteral("&Clear Loaded Files"));
+    auto* clear_action = file_menu->addAction(make_action_icon(ActionGlyph::Clear), QCoreApplication::translate("MainWindow.Chrome", "&Clear Loaded Files"));
     connect(clear_action, &QAction::triggered, this, &MainWindow::clear_loaded_files);
 
     file_menu->addSeparator();
-    auto* exit_action = file_menu->addAction(QStringLiteral("E&xit"));
+    auto* exit_action = file_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "E&xit"));
     exit_action->setShortcut(QKeySequence::Quit);
     connect(exit_action, &QAction::triggered, this, &QWidget::close);
 
-    m_edit_menu = menuBar()->addMenu(QStringLiteral("&Edit"));
-    m_decryption_keys_action = m_edit_menu->addAction(QStringLiteral("&Cryptography Keys"));
+    m_edit_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&Edit"));
+    m_decryption_keys_action = m_edit_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&Cryptography Keys"));
     connect(m_decryption_keys_action, &QAction::triggered, this, &MainWindow::show_decryption_keys_panel);
     m_edit_menu->addSeparator();
-    m_extract_mux_outputs_action = m_edit_menu->addAction(QStringLiteral("Extract USM/SFD &Mux Outputs"));
+    m_extract_mux_outputs_action = m_edit_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Extract USM/SFD &Mux Outputs"));
     m_extract_mux_outputs_action->setCheckable(true);
     m_extract_mux_outputs_action->setChecked(m_allow_mux_extract_outputs);
     connect(m_extract_mux_outputs_action, &QAction::toggled, this, [this](bool checked) {
         m_allow_mux_extract_outputs = checked;
     });
 
-    auto* view_menu = menuBar()->addMenu(QStringLiteral("&View"));
+    auto* view_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&View"));
     auto* theme_group = new QActionGroup(this);
-    m_light_theme_action = view_menu->addAction(QStringLiteral("&Light Mode"));
-    m_dark_theme_action = view_menu->addAction(QStringLiteral("&Dark Mode"));
+    m_light_theme_action = view_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&Light Mode"));
+    m_dark_theme_action = view_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&Dark Mode"));
     m_light_theme_action->setCheckable(true);
     m_dark_theme_action->setCheckable(true);
     theme_group->addAction(m_light_theme_action);
@@ -1910,15 +2163,49 @@ void MainWindow::build_menus() {
     connect(m_light_theme_action, &QAction::triggered, this, [this] { set_theme(Theme::Light); });
     connect(m_dark_theme_action, &QAction::triggered, this, [this] { set_theme(Theme::Dark); });
     view_menu->addSeparator();
-    m_compact_lists_action = view_menu->addAction(QStringLiteral("&Compact Lists"));
-    m_compact_lists_action->setCheckable(true);
     QSettings ui_settings(QStringLiteral("CriCodecs"), QStringLiteral("CriStudio"));
+    auto* language_menu = view_menu->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&Language"));
+    m_language_group = new QActionGroup(language_menu);
+    m_language_group->setExclusive(true);
+    const auto current_language = i18n::TranslationManager::instance().selected_code();
+    const auto add_language_action = [
+        this,
+        language_menu,
+        &current_language
+    ](const QString& code, const char* source) {
+        auto* action = language_menu->addAction(
+            QCoreApplication::translate("MainWindow.Chrome", source)
+        );
+        action->setCheckable(true);
+        action->setData(code);
+        action->setChecked(current_language == code);
+        m_language_group->addAction(action);
+        bind_ui_text(action, "text", source);
+        connect(action, &QAction::triggered, this, [this, code](bool checked) {
+            if (!checked) {
+                return;
+            }
+            m_pending_language_code = code;
+            apply_pending_language();
+        });
+    };
+    // Language codes are stable settings values. Labels are localized autonyms.
+    add_language_action(QStringLiteral("system"), "System Default");
+    language_menu->addSeparator();
+    add_language_action(QStringLiteral("en"), "English");
+    add_language_action(QStringLiteral("es"), "Español");
+    add_language_action(QStringLiteral("ja"), "日本語");
+    add_language_action(QStringLiteral("zh_CN"), "简体中文");
+    add_language_action(QStringLiteral("zh_TW"), "繁體中文");
+    view_menu->addSeparator();
+    m_compact_lists_action = view_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&Compact Lists"));
+    m_compact_lists_action->setCheckable(true);
     m_compact_lists_action->setChecked(ui_settings.value(QStringLiteral("ui/compactLists"), false).toBool());
     connect(m_compact_lists_action, &QAction::toggled, this, &MainWindow::set_compact_lists);
     set_compact_lists(m_compact_lists_action->isChecked());
 
-    auto* window_menu = menuBar()->addMenu(QStringLiteral("&Window"));
-    m_toggle_left_action = window_menu->addAction(make_sidebar_icon(true), QStringLiteral("Loaded Files Panel"));
+    auto* window_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&Window"));
+    m_toggle_left_action = window_menu->addAction(make_sidebar_icon(true), QCoreApplication::translate("MainWindow.Chrome", "Loaded Files Panel"));
     m_toggle_left_action->setCheckable(true);
     m_toggle_left_action->setChecked(true);
     connect(m_toggle_left_action, &QAction::triggered, this, [this](bool checked) {
@@ -1928,7 +2215,7 @@ void MainWindow::build_menus() {
         toggle_left_panel();
     });
 
-    m_toggle_preview_action = window_menu->addAction(make_sidebar_icon(false), QStringLiteral("Entry Preview Panel"));
+    m_toggle_preview_action = window_menu->addAction(make_sidebar_icon(false), QCoreApplication::translate("MainWindow.Chrome", "Entry Preview Panel"));
     m_toggle_preview_action->setCheckable(true);
     m_toggle_preview_action->setChecked(false);
     connect(m_toggle_preview_action, &QAction::triggered, this, [this](bool checked) {
@@ -1939,7 +2226,7 @@ void MainWindow::build_menus() {
     });
 
     window_menu->addSeparator();
-    m_always_show_access_keys_action = window_menu->addAction(QStringLiteral("Always Show &Access Keys"));
+    m_always_show_access_keys_action = window_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Always Show &Access Keys"));
     m_always_show_access_keys_action->setCheckable(true);
     m_always_show_access_keys_action->setChecked(qApp->property("alwaysShowAccessKeys").toBool());
     connect(m_always_show_access_keys_action, &QAction::toggled, this, [](bool visible) {
@@ -1952,7 +2239,7 @@ void MainWindow::build_menus() {
     });
 
     window_menu->addSeparator();
-    auto* lock_left_shelf_action = window_menu->addAction(QStringLiteral("Lock Loaded Files Shelf"));
+    auto* lock_left_shelf_action = window_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Lock Loaded Files Shelf"));
     lock_left_shelf_action->setCheckable(true);
     connect(lock_left_shelf_action, &QAction::triggered, this, [this](bool locked) {
         if (m_left_edge_rail != nullptr) {
@@ -1960,7 +2247,7 @@ void MainWindow::build_menus() {
         }
     });
 
-    auto* lock_preview_shelf_action = window_menu->addAction(QStringLiteral("Lock Preview Shelf"));
+    auto* lock_preview_shelf_action = window_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Lock Preview Shelf"));
     lock_preview_shelf_action->setCheckable(true);
     connect(lock_preview_shelf_action, &QAction::triggered, this, [this](bool locked) {
         if (m_right_edge_rail != nullptr) {
@@ -1968,7 +2255,7 @@ void MainWindow::build_menus() {
         }
     });
 
-    auto* lock_workspace_ribbon_action = window_menu->addAction(QStringLiteral("Lock Browse/Editor Ribbon"));
+    auto* lock_workspace_ribbon_action = window_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Lock Browse/Editor Ribbon"));
     lock_workspace_ribbon_action->setCheckable(true);
     lock_workspace_ribbon_action->setChecked(true);
     connect(lock_workspace_ribbon_action, &QAction::triggered, this, [this](bool locked) {
@@ -1981,7 +2268,7 @@ void MainWindow::build_menus() {
     }
 
     window_menu->addSeparator();
-    auto* reset_layout_action = window_menu->addAction(QStringLiteral("&Reset Layout"));
+    auto* reset_layout_action = window_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&Reset Layout"));
     connect(reset_layout_action, &QAction::triggered, this, [this] {
         if (m_toggle_left_action != nullptr) {
             m_toggle_left_action->setChecked(true);
@@ -2000,21 +2287,68 @@ void MainWindow::build_menus() {
         settings.remove(QStringLiteral("ui"));
     });
 
-    auto* help_menu = menuBar()->addMenu(QStringLiteral("&Help"));
-    auto* log_action = help_menu->addAction(QStringLiteral("Log File Location"));
+    auto* help_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&Help"));
+    auto* log_action = help_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "Log File Location"));
     connect(log_action, &QAction::triggered, this, [this] {
         statusBar()->showMessage(log_path(), 8000);
     });
-    auto* about_action = help_menu->addAction(QStringLiteral("&About CriStudio"));
+    auto* about_action = help_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&About CriStudio"));
     connect(about_action, &QAction::triggered, this, [this] {
-        statusBar()->showMessage(app_title() + QStringLiteral(" uses the native CriCodecs core."), 8000);
+        statusBar()->showMessage(app_title() + QCoreApplication::translate("MainWindow.Chrome", " uses the native CriCodecs core."), 8000);
     });
+
+    bind_ui_text(file_menu->menuAction(), "text", "&File");
+    bind_ui_text(open_files_action, "text", "&Open Files...");
+    bind_ui_text(open_folder_action, "text", "Open &Folder...");
+    bind_ui_text(new_menu->menuAction(), "text", "&New");
+    bind_ui_text(new_utf_action, "text", "&UTF Table");
+    bind_ui_text(new_afs_action, "text", "&AFS Archive");
+    bind_ui_text(new_awb_action, "text", "A&WB/AFS2 Archive");
+    bind_ui_text(new_acx_action, "text", "A&CX Archive");
+    bind_ui_text(new_cpk_action, "text", "C&PK Archive");
+    bind_ui_text(new_audio_encode_action, "text", "Audio &Encode Job");
+    bind_ui_text(new_usm_build_action, "text", "US&M Movie...");
+    bind_ui_text(new_sfd_build_action, "text", "S&FD Movie...");
+    bind_ui_text(new_aax_build_action, "text", "AA&X From ADX...");
+    bind_ui_text(new_aix_build_action, "text", "A&IX From ADX...");
+    bind_ui_text(new_csb_build_action, "text", "CS&B From Folder...");
+    bind_ui_text(new_cvm_script_action, "text", "CVM From C&VS...");
+    bind_ui_text(new_cvm_directory_action, "text", "CVM From F&older...");
+    bind_ui_text(extract_all_action, "text", "Extract &All...");
+    bind_ui_text(extract_all_raw_action, "text", "Extract All &Raw...");
+    bind_ui_text(recover_hca_keys_action, "text", "Recover HCA Keys from All Loaded Files");
+    bind_ui_text(recover_aac_keys_action, "text", "Recover AAC Keys from Loaded ACB/AWB Files");
+    bind_ui_text(recover_usm_keys_action, "text", "Recover USM Keys from All Loaded Files");
+    bind_ui_text(recover_adx_keys_action, "text", "Recover ADX Keys from All Loaded Files");
+    bind_ui_text(recover_ahx_keys_action, "text", "Recover AHX Keys from All Loaded Files");
+    bind_ui_text(clear_action, "text", "&Clear Loaded Files");
+    bind_ui_text(exit_action, "text", "E&xit");
+    bind_ui_text(m_edit_menu->menuAction(), "text", "&Edit");
+    bind_ui_text(m_decryption_keys_action, "text", "&Cryptography Keys");
+    bind_ui_text(m_extract_mux_outputs_action, "text", "Extract USM/SFD &Mux Outputs");
+    bind_ui_text(view_menu->menuAction(), "text", "&View");
+    bind_ui_text(m_light_theme_action, "text", "&Light Mode");
+    bind_ui_text(m_dark_theme_action, "text", "&Dark Mode");
+    bind_ui_text(language_menu->menuAction(), "text", "&Language");
+    bind_ui_text(m_compact_lists_action, "text", "&Compact Lists");
+    bind_ui_text(window_menu->menuAction(), "text", "&Window");
+    bind_ui_text(m_toggle_left_action, "text", "Loaded Files Panel");
+    bind_ui_text(m_toggle_preview_action, "text", "Entry Preview Panel");
+    bind_ui_text(m_always_show_access_keys_action, "text", "Always Show &Access Keys");
+    bind_ui_text(lock_left_shelf_action, "text", "Lock Loaded Files Shelf");
+    bind_ui_text(lock_preview_shelf_action, "text", "Lock Preview Shelf");
+    bind_ui_text(lock_workspace_ribbon_action, "text", "Lock Browse/Editor Ribbon");
+    bind_ui_text(reset_layout_action, "text", "&Reset Layout");
+    bind_ui_text(help_menu->menuAction(), "text", "&Help");
+    bind_ui_text(log_action, "text", "Log File Location");
+    bind_ui_text(about_action, "text", "&About CriStudio");
 
     m_memory_usage_label = new QLabel(this);
     m_memory_usage_label->setObjectName(QStringLiteral("MemoryUsageLabel"));
     m_memory_usage_label->setMinimumWidth(96);
     m_memory_usage_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_memory_usage_label->setToolTip(QStringLiteral("Resident process memory"));
+    m_memory_usage_label->setToolTip(QCoreApplication::translate("MainWindow.Chrome", "Resident process memory"));
+    bind_ui_text(m_memory_usage_label, "toolTip", "Resident process memory");
     menuBar()->setCornerWidget(m_memory_usage_label, Qt::TopRightCorner);
 
     m_memory_usage_timer = new QTimer(this);
@@ -2029,10 +2363,10 @@ void MainWindow::update_memory_usage_label() {
     }
     const auto bytes = resident_memory_bytes();
     if (!bytes) {
-        m_memory_usage_label->setText(QStringLiteral("Mem --"));
+        m_memory_usage_label->setText(QCoreApplication::translate("MainWindow.Chrome", "Mem --"));
         return;
     }
-    m_memory_usage_label->setText(QStringLiteral("Mem %1").arg(format_memory_size(*bytes)));
+    m_memory_usage_label->setText(QCoreApplication::translate("MainWindow.Chrome", "Mem %1").arg(format_memory_size(*bytes)));
 }
 
 void MainWindow::toggle_left_panel() {

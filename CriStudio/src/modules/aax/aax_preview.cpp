@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/aax/aax_preview.hpp"
 
 #include "modules/adx/adx_preview.hpp"
@@ -10,7 +11,7 @@ std::expected<AudioPreview, std::string> audio_preview(
 ) {
     auto adx_bytes = aax.adx_data();
     if (!adx_bytes) {
-        return std::unexpected("AAX preview failed: " + adx_bytes.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Aax.AaxPreview", "AAX preview failed: ") + adx_bytes.error());
     }
     return modules::adx::audio_preview_from_bytes(*adx_bytes, keys);
 }
@@ -21,7 +22,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
 ) {
     auto aax = cricodecs::aax::AaxContainer::load(bytes);
     if (!aax) {
-        return std::unexpected("AAX preview failed: " + aax.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Aax.AaxPreview", "AAX preview failed: ") + aax.error());
     }
     return audio_preview(*aax, keys);
 }
@@ -32,7 +33,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_file(
 ) {
     auto aax = cricodecs::aax::AaxContainer::load(path);
     if (!aax) {
-        return std::unexpected("AAX preview failed: " + aax.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Aax.AaxPreview", "AAX preview failed: ") + aax.error());
     }
     return audio_preview(*aax, keys);
 }

@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "editor/editor_document_ui.hpp"
 
 #include "editor/archive_editor_helpers.hpp"
@@ -24,6 +25,7 @@
 #include "acb_container.hpp"
 #include "utf_table.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractItemView>
 #include <QAction>
 #include <QCheckBox>
@@ -171,52 +173,52 @@ std::vector<InfoRow> document_info_rows(const EditorDocumentInfoView& view) {
         return rows;
     }
 
-    rows.push_back({"Session", view.request->source_kind == EditorOpenRequest::SourceKind::Scratch ? "Scratch" : "Independent copy"});
-    rows.push_back({"Format", editor_format_label(*view.request).toStdString()});
-    rows.push_back({"Bytes", std::to_string(view.byte_count)});
+    rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Session"), view.request->source_kind == EditorOpenRequest::SourceKind::Scratch ? cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Scratch") : cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Independent copy")});
+    rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Format"), editor_format_label(*view.request).toStdString()});
+    rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Bytes"), std::to_string(view.byte_count)});
     if (!view.request->source_path.empty()) {
-        rows.push_back({"Source path", path_to_utf8(view.request->source_path)});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Source path"), path_to_utf8(view.request->source_path)});
     }
     if (!view.request->source_archive_path.empty()) {
-        rows.push_back({"Source archive", path_to_utf8(view.request->source_archive_path)});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Source archive"), path_to_utf8(view.request->source_archive_path)});
     }
     if (!view.request->source_archive_format.empty()) {
-        rows.push_back({"Archive format", view.request->source_archive_format});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive format"), view.request->source_archive_format});
     }
-    rows.push_back({"Validation", view.has_utf ? "UTF native build path available" : "Inspection/Save As copy path"});
+    rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Validation"), view.has_utf ? cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "UTF native build path available") : cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Inspection/Save As copy path")});
 
     if (view.has_utf && view.utf != nullptr) {
-        rows.push_back({"Table", std::string(view.utf->table_name())});
-        rows.push_back({"Version", std::to_string(view.utf->version())});
-        rows.push_back({"Rows", std::to_string(view.utf->row_count())});
-        rows.push_back({"Columns", std::to_string(view.utf->column_count())});
-        rows.push_back({"Row width", std::to_string(view.utf->row_width())});
-        rows.push_back({"Data alignment", std::to_string(view.utf->data_alignment())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Table"), std::string(view.utf->table_name())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Version"), std::to_string(view.utf->version())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Rows"), std::to_string(view.utf->row_count())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Columns"), std::to_string(view.utf->column_count())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Row width"), std::to_string(view.utf->row_width())});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Data alignment"), std::to_string(view.utf->data_alignment())});
         const auto table_size = view.utf->table_size() != 0 ? view.utf->table_size() : static_cast<uint32_t>(view.byte_count);
-        rows.push_back({"Table size", std::to_string(table_size)});
-        rows.push_back({"Text encoding", view.utf->text_encoding() ? *view.utf->text_encoding() : "default"});
-        rows.push_back({"Serialized bytes", std::to_string(view.byte_count)});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Table size"), std::to_string(table_size)});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Text encoding"), view.utf->text_encoding() ? *view.utf->text_encoding() : cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "default")});
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Serialized bytes"), std::to_string(view.byte_count)});
     } else if (view.transform_kind != TransformKind::None && view.transform != nullptr) {
         append_transform_info_rows(rows, view.transform_kind, *view.transform);
     } else if (view.archive != nullptr && view.archive->kind == ArchiveKind::Afs && view.archive->afs != nullptr) {
-        rows.back().value = "AFS native archive build path available";
-        rows.push_back({"Archive kind", "AFS"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "AFS native archive build path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive kind"), "AFS"});
         append_info_rows(rows, modules::afs::detail_rows(*view.archive->afs));
     } else if (view.archive != nullptr && view.archive->kind == ArchiveKind::Awb && view.archive->awb != nullptr) {
-        rows.back().value = "AWB native archive build path available";
-        rows.push_back({"Archive kind", "AWB/AFS2"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "AWB native archive build path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive kind"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "AWB/AFS2")});
         append_info_rows(rows, modules::awb::detail_rows(*view.archive->awb, view.request->keys));
     } else if (view.archive != nullptr && view.archive->kind == ArchiveKind::Acx && view.archive->acx != nullptr) {
-        rows.back().value = "ACX native rebuild path available";
-        rows.push_back({"Archive kind", "ACX"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "ACX native rebuild path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive kind"), "ACX"});
         append_info_rows(rows, modules::acx::detail_rows(*view.archive->acx));
     } else if (view.archive != nullptr && view.archive->kind == ArchiveKind::Cpk && view.archive->cpk != nullptr) {
-        rows.back().value = "CPK native archive save path available";
-        rows.push_back({"Archive kind", "CPK"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "CPK native archive save path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive kind"), "CPK"});
         append_info_rows(rows, modules::cpk::detail_rows(*view.archive->cpk), 32);
     } else if (view.archive != nullptr && view.archive->kind == ArchiveKind::Cvm && view.archive->cvm != nullptr) {
-        rows.back().value = "CVM native ROFS save path available";
-        rows.push_back({"Archive kind", "CVM/ROFS"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "CVM native ROFS save path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Archive kind"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "CVM/ROFS")});
         append_info_rows(rows, modules::cvm::detail_rows(*view.archive->cvm), 32);
     }
 
@@ -261,30 +263,30 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
 
     ui.save_button = new QToolButton(action_panel);
     ui.save_button->setObjectName(QStringLiteral("ActionButton"));
-    ui.save_button->setText(QStringLiteral("Save"));
+    ui.save_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Save"));
     ui.save_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    ui.save_button->setToolTip(QStringLiteral("Save to the last path chosen with Save As; asks for a path the first time."));
+    ui.save_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Save to the last path chosen with Save As; asks for a path the first time."));
     action_layout->addWidget(ui.save_button, 0, 0);
 
     ui.save_as_button = new QToolButton(action_panel);
     ui.save_as_button->setObjectName(QStringLiteral("ActionButton"));
-    ui.save_as_button->setText(QStringLiteral("Save As"));
+    ui.save_as_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Save As"));
     ui.save_as_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    ui.save_as_button->setToolTip(QStringLiteral("Build or copy this independent editor session to a chosen path."));
+    ui.save_as_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Build or copy this independent editor session to a chosen path."));
     action_layout->addWidget(ui.save_as_button, 0, 1);
 
     ui.build_button = new QToolButton(action_panel);
     ui.build_button->setObjectName(QStringLiteral("ActionButton"));
-    ui.build_button->setText(QStringLiteral("Build"));
+    ui.build_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Build"));
     ui.build_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    ui.build_button->setToolTip(QStringLiteral("Validate and rebuild the in-memory editor object."));
+    ui.build_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Validate and rebuild the in-memory editor object."));
     action_layout->addWidget(ui.build_button, 1, 0);
 
     ui.extract_button = new QToolButton(action_panel);
     ui.extract_button->setObjectName(QStringLiteral("ActionButton"));
-    ui.extract_button->setText(QStringLiteral("Extract"));
+    ui.extract_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Extract"));
     ui.extract_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    ui.extract_button->setToolTip(QStringLiteral("Write this independent editor session's current bytes to a chosen folder."));
+    ui.extract_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Write this independent editor session's current bytes to a chosen folder."));
     action_layout->addWidget(ui.extract_button, 1, 1);
     header_layout->addWidget(action_panel, 0, 2, 2, 1, Qt::AlignRight | Qt::AlignVCenter);
     header_layout->setColumnStretch(1, 1);
@@ -294,16 +296,17 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* utf_toolbar_layout = new QHBoxLayout(ui.utf_toolbar);
     utf_toolbar_layout->setContentsMargins(0, 0, 0, 0);
     utf_toolbar_layout->setSpacing(8);
-    utf_toolbar_layout->addWidget(dim_label(QStringLiteral("Table"), ui.utf_toolbar), 0);
+    ui.table_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Table"), ui.utf_toolbar);
+    utf_toolbar_layout->addWidget(ui.table_label, 0);
     ui.table_name_edit = new QLineEdit(ui.utf_toolbar);
     ui.table_name_edit->setClearButtonEnabled(true);
-    ui.table_name_edit->setToolTip(QStringLiteral("Rename the UTF table."));
+    ui.table_name_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Rename the UTF table."));
     utf_toolbar_layout->addWidget(ui.table_name_edit, 2);
-    ui.apply_table_name_button = toolbar_button(QStringLiteral("Rename Table"), ui.utf_toolbar);
-    ui.add_row_button = toolbar_button(QStringLiteral("Add Row"), ui.utf_toolbar);
-    ui.remove_row_button = toolbar_button(QStringLiteral("Remove Row"), ui.utf_toolbar);
-    ui.add_column_button = toolbar_button(QStringLiteral("Add Column"), ui.utf_toolbar);
-    ui.remove_column_button = toolbar_button(QStringLiteral("Remove Column"), ui.utf_toolbar);
+    ui.apply_table_name_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Rename Table"), ui.utf_toolbar);
+    ui.add_row_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Add Row"), ui.utf_toolbar);
+    ui.remove_row_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Remove Row"), ui.utf_toolbar);
+    ui.add_column_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Add Column"), ui.utf_toolbar);
+    ui.remove_column_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Remove Column"), ui.utf_toolbar);
     utf_toolbar_layout->addWidget(ui.apply_table_name_button, 0);
     utf_toolbar_layout->addWidget(ui.add_row_button, 0);
     utf_toolbar_layout->addWidget(ui.remove_row_button, 0);
@@ -317,32 +320,32 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* archive_toolbar_layout = new QHBoxLayout(ui.archive_toolbar);
     archive_toolbar_layout->setContentsMargins(0, 0, 0, 0);
     archive_toolbar_layout->setSpacing(8);
-    ui.archive_kind_label = dim_label(QStringLiteral("Archive"), ui.archive_toolbar);
+    ui.archive_kind_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Archive"), ui.archive_toolbar);
     archive_toolbar_layout->addWidget(ui.archive_kind_label, 0);
-    ui.add_archive_file_button = toolbar_button(QStringLiteral("Add File"), ui.archive_toolbar);
-    ui.replace_archive_file_button = toolbar_button(QStringLiteral("Replace File"), ui.archive_toolbar);
-    ui.remove_archive_file_button = toolbar_button(QStringLiteral("Remove Entry"), ui.archive_toolbar);
-    ui.move_archive_entry_up_button = toolbar_button(QStringLiteral("Move Up"), ui.archive_toolbar);
-    ui.move_archive_entry_down_button = toolbar_button(QStringLiteral("Move Down"), ui.archive_toolbar);
-    ui.rename_archive_entry_button = toolbar_button(QStringLiteral("Rename Entry"), ui.archive_toolbar);
-    ui.reserve_afs_id_button = toolbar_button(QStringLiteral("Reserve ID"), ui.archive_toolbar);
-    ui.set_afs_timestamp_button = toolbar_button(QStringLiteral("Set Timestamp"), ui.archive_toolbar);
-    ui.set_archive_wave_id_button = toolbar_button(QStringLiteral("Set Wave ID"), ui.archive_toolbar);
-    ui.batch_awb_wave_ids_button = toolbar_button(QStringLiteral("Batch Wave IDs"), ui.archive_toolbar);
-    ui.archive_entry_options_button = toolbar_button(QStringLiteral("Entry Props"), ui.archive_toolbar);
-    ui.archive_options_button = toolbar_button(QStringLiteral("Options"), ui.archive_toolbar);
-    ui.archive_compression_button = toolbar_button(QStringLiteral("Compression"), ui.archive_toolbar);
+    ui.add_archive_file_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Add File"), ui.archive_toolbar);
+    ui.replace_archive_file_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Replace File"), ui.archive_toolbar);
+    ui.remove_archive_file_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Remove Entry"), ui.archive_toolbar);
+    ui.move_archive_entry_up_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Move Up"), ui.archive_toolbar);
+    ui.move_archive_entry_down_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Move Down"), ui.archive_toolbar);
+    ui.rename_archive_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Rename Entry"), ui.archive_toolbar);
+    ui.reserve_afs_id_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Reserve ID"), ui.archive_toolbar);
+    ui.set_afs_timestamp_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Set Timestamp"), ui.archive_toolbar);
+    ui.set_archive_wave_id_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Set Wave ID"), ui.archive_toolbar);
+    ui.batch_awb_wave_ids_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Batch Wave IDs"), ui.archive_toolbar);
+    ui.archive_entry_options_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Entry Props"), ui.archive_toolbar);
+    ui.archive_options_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Options"), ui.archive_toolbar);
+    ui.archive_compression_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Compression"), ui.archive_toolbar);
     auto* archive_compression_menu = new QMenu(ui.archive_compression_button);
-    ui.archive_compress_all_action = archive_compression_menu->addAction(QStringLiteral("Compress all on save"));
-    ui.archive_store_all_action = archive_compression_menu->addAction(QStringLiteral("Store all uncompressed"));
+    ui.archive_compress_all_action = archive_compression_menu->addAction(QCoreApplication::translate("Editor.EditorDocumentUi", "Compress all on save"));
+    ui.archive_store_all_action = archive_compression_menu->addAction(QCoreApplication::translate("Editor.EditorDocumentUi", "Store all uncompressed"));
     ui.archive_compression_button->setMenu(archive_compression_menu);
-    ui.archive_compression_button->setToolTip(QStringLiteral("Set the save-time compression policy for every CPK entry."));
-    ui.import_afs_als_button = toolbar_button(QStringLiteral("Import ALS"), ui.archive_toolbar);
-    ui.export_afs_header_button = toolbar_button(QStringLiteral("Export Header"), ui.archive_toolbar);
-    ui.import_cvm_script_button = toolbar_button(QStringLiteral("Import CVS"), ui.archive_toolbar);
-    ui.export_cvm_script_button = toolbar_button(QStringLiteral("Export CVS"), ui.archive_toolbar);
-    ui.extract_archive_entry_button = toolbar_button(QStringLiteral("Extract Entry"), ui.archive_toolbar);
-    ui.extract_raw_archive_entry_button = toolbar_button(QStringLiteral("Extract Raw"), ui.archive_toolbar);
+    ui.archive_compression_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Set the save-time compression policy for every CPK entry."));
+    ui.import_afs_als_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Import ALS"), ui.archive_toolbar);
+    ui.export_afs_header_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Export Header"), ui.archive_toolbar);
+    ui.import_cvm_script_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Import CVS"), ui.archive_toolbar);
+    ui.export_cvm_script_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Export CVS"), ui.archive_toolbar);
+    ui.extract_archive_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Extract Entry"), ui.archive_toolbar);
+    ui.extract_raw_archive_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Extract Raw"), ui.archive_toolbar);
     for (auto* button : {
         ui.add_archive_file_button, ui.replace_archive_file_button, ui.remove_archive_file_button,
         ui.move_archive_entry_up_button, ui.move_archive_entry_down_button, ui.rename_archive_entry_button,
@@ -362,32 +365,32 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* transform_toolbar_layout = new QHBoxLayout(ui.transform_toolbar);
     transform_toolbar_layout->setContentsMargins(0, 0, 0, 0);
     transform_toolbar_layout->setSpacing(8);
-    ui.transform_kind_label = dim_label(QStringLiteral("Transform"), ui.transform_toolbar);
+    ui.transform_kind_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Transform"), ui.transform_toolbar);
     transform_toolbar_layout->addWidget(ui.transform_kind_label, 0);
-    ui.encode_transform_button = toolbar_button(QStringLiteral("Encode from WAV"), ui.transform_toolbar);
-    ui.decode_transform_button = toolbar_button(QStringLiteral("Decode WAV"), ui.transform_toolbar);
-    ui.decrypt_transform_button = toolbar_button(QStringLiteral("Decrypt"), ui.transform_toolbar);
-    ui.encrypt_transform_button = toolbar_button(QStringLiteral("Encrypt"), ui.transform_toolbar);
-    ui.rebuild_transform_button = toolbar_button(QStringLiteral("Rebuild"), ui.transform_toolbar);
-    ui.transform_options_button = toolbar_button(QStringLiteral("Options"), ui.transform_toolbar);
-    ui.extract_transform_button = toolbar_button(QStringLiteral("Extract"), ui.transform_toolbar);
-    ui.adx_container_build_button = toolbar_button(QStringLiteral("Build from ADX"), ui.transform_toolbar);
-    ui.csb_directory_build_button = toolbar_button(QStringLiteral("Build from Folder"), ui.transform_toolbar);
-    ui.media_build_wizard_button = toolbar_button(QStringLiteral("Build Wizard"), ui.transform_toolbar);
-    ui.editor_mux_preview_button = toolbar_button(QStringLiteral("Preview"), ui.transform_toolbar);
-    ui.open_acb_awb_button = toolbar_button(QStringLiteral("Open AWB"), ui.transform_toolbar);
-    ui.export_acb_awb_button = toolbar_button(QStringLiteral("Export AWB"), ui.transform_toolbar);
-    ui.add_transform_entry_button = toolbar_button(QStringLiteral("Add"), ui.transform_toolbar);
-    ui.replace_transform_entry_button = toolbar_button(QStringLiteral("Replace"), ui.transform_toolbar);
-    ui.remove_transform_entry_button = toolbar_button(QStringLiteral("Remove"), ui.transform_toolbar);
-    ui.move_transform_entry_up_button = toolbar_button(QStringLiteral("Up"), ui.transform_toolbar);
-    ui.move_transform_entry_down_button = toolbar_button(QStringLiteral("Down"), ui.transform_toolbar);
-    ui.rename_transform_entry_button = toolbar_button(QStringLiteral("Rename"), ui.transform_toolbar);
-    ui.toggle_transform_entry_flag_button = toolbar_button(QStringLiteral("Toggle"), ui.transform_toolbar);
+    ui.encode_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Encode from WAV"), ui.transform_toolbar);
+    ui.decode_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Decode WAV"), ui.transform_toolbar);
+    ui.decrypt_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Decrypt"), ui.transform_toolbar);
+    ui.encrypt_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Encrypt"), ui.transform_toolbar);
+    ui.rebuild_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Rebuild"), ui.transform_toolbar);
+    ui.transform_options_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Options"), ui.transform_toolbar);
+    ui.extract_transform_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Extract"), ui.transform_toolbar);
+    ui.adx_container_build_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Build from ADX"), ui.transform_toolbar);
+    ui.csb_directory_build_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Build from Folder"), ui.transform_toolbar);
+    ui.media_build_wizard_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Build Wizard"), ui.transform_toolbar);
+    ui.editor_mux_preview_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Preview"), ui.transform_toolbar);
+    ui.open_acb_awb_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Open AWB"), ui.transform_toolbar);
+    ui.export_acb_awb_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Export AWB"), ui.transform_toolbar);
+    ui.add_transform_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Add"), ui.transform_toolbar);
+    ui.replace_transform_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Replace"), ui.transform_toolbar);
+    ui.remove_transform_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Remove"), ui.transform_toolbar);
+    ui.move_transform_entry_up_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Up"), ui.transform_toolbar);
+    ui.move_transform_entry_down_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Down"), ui.transform_toolbar);
+    ui.rename_transform_entry_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Rename"), ui.transform_toolbar);
+    ui.toggle_transform_entry_flag_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Toggle"), ui.transform_toolbar);
     ui.transform_filter_edit = new QLineEdit(ui.transform_toolbar);
     ui.transform_filter_edit->setClearButtonEnabled(true);
-    ui.transform_filter_edit->setPlaceholderText(QStringLiteral("Filter rows"));
-    ui.transform_filter_edit->setToolTip(QStringLiteral("Filter transform rows by field or value."));
+    ui.transform_filter_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentUi", "Filter rows"));
+    ui.transform_filter_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Filter transform rows by field or value."));
     for (auto* button : {
         ui.encode_transform_button, ui.decode_transform_button, ui.decrypt_transform_button,
         ui.encrypt_transform_button, ui.rebuild_transform_button, ui.transform_options_button,
@@ -408,30 +411,31 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* key_layout = new QHBoxLayout(ui.cri_key_panel);
     key_layout->setContentsMargins(0, 0, 0, 0);
     key_layout->setSpacing(6);
-    ui.local_key_label = dim_label(QStringLiteral("Local CRI key"), ui.cri_key_panel);
+    ui.local_key_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Local CRI key"), ui.cri_key_panel);
     key_layout->addWidget(ui.local_key_label, 0);
     ui.local_key_type = new QComboBox(ui.cri_key_panel);
-    ui.local_key_type->addItem(QStringLiteral("No key"), static_cast<int>(DecryptionKeys::AdxMode::None));
-    ui.local_key_type->addItem(QStringLiteral("Type 8 string"), static_cast<int>(DecryptionKeys::AdxMode::Type8String));
-    ui.local_key_type->addItem(QStringLiteral("Type 9 number"), static_cast<int>(DecryptionKeys::AdxMode::Type9Number));
-    ui.local_key_type->addItem(QStringLiteral("Key triplet"), static_cast<int>(DecryptionKeys::AdxMode::AhxTriplet));
-    ui.local_key_type->setToolTip(QStringLiteral("Choose the ADX/AHX key representation explicitly."));
+    ui.local_key_type->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "No key"), static_cast<int>(DecryptionKeys::AdxMode::None));
+    ui.local_key_type->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "Type 8 string"), static_cast<int>(DecryptionKeys::AdxMode::Type8String));
+    ui.local_key_type->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "Type 9 number"), static_cast<int>(DecryptionKeys::AdxMode::Type9Number));
+    ui.local_key_type->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "Key triplet"), static_cast<int>(DecryptionKeys::AdxMode::AhxTriplet));
+    ui.local_key_type->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Choose the ADX/AHX key representation explicitly."));
     ui.local_key_type->hide();
     key_layout->addWidget(ui.local_key_type, 0);
     ui.cri_key_edit = new QLineEdit(ui.cri_key_panel);
     ui.cri_key_edit->setClearButtonEnabled(true);
-    ui.cri_key_edit->setPlaceholderText(QStringLiteral("No key"));
-    ui.cri_key_edit->setToolTip(QStringLiteral("This key belongs only to this editor tab and does not change the global CRI key."));
+    ui.cri_key_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentUi", "No key"));
+    ui.cri_key_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "This key belongs only to this editor tab and does not change the global CRI key."));
     key_layout->addWidget(ui.cri_key_edit, 1);
     ui.cri_key_base = new QComboBox(ui.cri_key_panel);
-    ui.cri_key_base->addItem(QStringLiteral("hex"), 16);
-    ui.cri_key_base->addItem(QStringLiteral("dec"), 10);
+    ui.cri_key_base->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "hex"), 16);
+    ui.cri_key_base->addItem(QCoreApplication::translate("Editor.EditorDocumentUi", "dec"), 10);
     key_layout->addWidget(ui.cri_key_base, 0);
     ui.adx_subkey_panel = new QWidget(ui.cri_key_panel);
     auto* adx_subkey_layout = new QHBoxLayout(ui.adx_subkey_panel);
     adx_subkey_layout->setContentsMargins(0, 0, 0, 0);
     adx_subkey_layout->setSpacing(4);
-    adx_subkey_layout->addWidget(dim_label(QStringLiteral("Subkey"), ui.adx_subkey_panel));
+    ui.adx_subkey_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Subkey"), ui.adx_subkey_panel);
+    adx_subkey_layout->addWidget(ui.adx_subkey_label);
     ui.adx_subkey_spin = new QSpinBox(ui.adx_subkey_panel);
     ui.adx_subkey_spin->setRange(0, std::numeric_limits<uint16_t>::max());
     adx_subkey_layout->addWidget(ui.adx_subkey_spin);
@@ -452,11 +456,14 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     triplet_validator(ui.adx_triplet_start);
     triplet_validator(ui.adx_triplet_mult);
     triplet_validator(ui.adx_triplet_add);
-    triplet_layout->addWidget(dim_label(QStringLiteral("Start"), ui.adx_triplet_panel));
+    ui.adx_triplet_start_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Start"), ui.adx_triplet_panel);
+    triplet_layout->addWidget(ui.adx_triplet_start_label);
     triplet_layout->addWidget(ui.adx_triplet_start);
-    triplet_layout->addWidget(dim_label(QStringLiteral("Mult"), ui.adx_triplet_panel));
+    ui.adx_triplet_mult_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Mult"), ui.adx_triplet_panel);
+    triplet_layout->addWidget(ui.adx_triplet_mult_label);
     triplet_layout->addWidget(ui.adx_triplet_mult);
-    triplet_layout->addWidget(dim_label(QStringLiteral("Add"), ui.adx_triplet_panel));
+    ui.adx_triplet_add_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Add"), ui.adx_triplet_panel);
+    triplet_layout->addWidget(ui.adx_triplet_add_label);
     triplet_layout->addWidget(ui.adx_triplet_add);
     ui.adx_triplet_panel->hide();
     key_layout->addWidget(ui.adx_triplet_panel, 1);
@@ -465,13 +472,14 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     cvm_scramble_layout->setContentsMargins(0, 0, 0, 0);
     cvm_scramble_layout->setSpacing(8);
     ui.cvm_scramble_check = new ToggleSwitch(ui.cvm_scramble_panel);
-    ui.cvm_scramble_check->setAccessibleName(QStringLiteral("Scramble CVM metadata on save"));
-    ui.cvm_scramble_check->setToolTip(QStringLiteral("Write a scrambled CVM TOC using this tab's key string. Reading remains automatic."));
+    ui.cvm_scramble_check->setAccessibleName(QCoreApplication::translate("Editor.EditorDocumentUi", "Scramble CVM metadata on save"));
+    ui.cvm_scramble_check->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Write a scrambled CVM TOC using this tab's key string. Reading remains automatic."));
     cvm_scramble_layout->addWidget(ui.cvm_scramble_check, 0);
-    cvm_scramble_layout->addWidget(dim_label(QStringLiteral("Scramble on save"), ui.cvm_scramble_panel), 0);
+    ui.cvm_scramble_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Scramble on save"), ui.cvm_scramble_panel);
+    cvm_scramble_layout->addWidget(ui.cvm_scramble_label, 0);
     ui.cvm_scramble_panel->hide();
     key_layout->addWidget(ui.cvm_scramble_panel, 0);
-    ui.apply_cri_key_button = toolbar_button(QStringLiteral("Apply locally"), ui.cri_key_panel);
+    ui.apply_cri_key_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Apply locally"), ui.cri_key_panel);
     key_layout->addWidget(ui.apply_cri_key_button, 0);
     key_layout->addStretch(1);
     ui.cri_key_panel->hide();
@@ -529,10 +537,10 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     inspector_layout->setSpacing(8);
 
     ui.log_toggle_button = new QToolButton(inspector);
-    ui.log_toggle_button->setText(QStringLiteral("Log"));
+    ui.log_toggle_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Log"));
     ui.log_toggle_button->setCheckable(true);
     ui.log_toggle_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    ui.log_toggle_button->setToolTip(QStringLiteral("Show or hide editor session log."));
+    ui.log_toggle_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Show or hide editor session log."));
     inspector_layout->addWidget(ui.log_toggle_button, 0, Qt::AlignRight);
 
     auto* inspector_splitter = new QSplitter(Qt::Vertical, inspector);
@@ -576,10 +584,11 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* mux_audio_layout = new QHBoxLayout(ui.mux_audio_row);
     mux_audio_layout->setContentsMargins(0, 0, 0, 0);
     mux_audio_layout->setSpacing(8);
-    mux_audio_layout->addWidget(dim_label(QStringLiteral("Audio channel"), ui.mux_audio_row), 0);
+    ui.mux_audio_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Audio channel"), ui.mux_audio_row);
+    mux_audio_layout->addWidget(ui.mux_audio_label, 0);
     ui.mux_audio_combo = new QComboBox(ui.mux_audio_row);
     ui.mux_audio_combo->setObjectName(QStringLiteral("MuxAudioCombo"));
-    ui.mux_audio_combo->setToolTip(QStringLiteral("Choose which audio stream to preview with the video."));
+    ui.mux_audio_combo->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Choose which audio stream to preview with the video."));
     mux_audio_layout->addWidget(ui.mux_audio_combo, 1);
     ui.mux_audio_row->hide();
     media_controls_layout->addWidget(ui.mux_audio_row);
@@ -587,10 +596,11 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* mux_subtitle_layout = new QHBoxLayout(ui.mux_subtitle_row);
     mux_subtitle_layout->setContentsMargins(0, 0, 0, 0);
     mux_subtitle_layout->setSpacing(8);
-    mux_subtitle_layout->addWidget(dim_label(QStringLiteral("Subtitles"), ui.mux_subtitle_row), 0);
+    ui.mux_subtitle_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Subtitles"), ui.mux_subtitle_row);
+    mux_subtitle_layout->addWidget(ui.mux_subtitle_label, 0);
     ui.mux_subtitle_combo = new QComboBox(ui.mux_subtitle_row);
     ui.mux_subtitle_combo->setObjectName(QStringLiteral("MuxSubtitleCombo"));
-    ui.mux_subtitle_combo->setToolTip(QStringLiteral("Choose which subtitle track to display."));
+    ui.mux_subtitle_combo->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Choose which subtitle track to display."));
     mux_subtitle_layout->addWidget(ui.mux_subtitle_combo, 1);
     ui.mux_subtitle_row->hide();
     media_controls_layout->addWidget(ui.mux_subtitle_row);
@@ -599,32 +609,32 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     mux_controls->setSpacing(8);
     ui.mux_play_button = new QToolButton(ui.media_controls_panel);
     ui.mux_play_button->setIcon(ui.media_controls_panel->style()->standardIcon(QStyle::SP_MediaPlay));
-    ui.mux_play_button->setText(QStringLiteral("Play"));
+    ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentUi", "Play"));
     ui.mux_play_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     ui.mux_play_button->setEnabled(false);
-    ui.mux_status_label = new QLabel(QStringLiteral("No playable media selected"), ui.media_controls_panel);
+    ui.mux_status_label = new QLabel(QCoreApplication::translate("Editor.EditorDocumentUi", "No playable media selected"), ui.media_controls_panel);
     ui.mux_status_label->setObjectName(QStringLiteral("AudioStatus"));
     ui.mux_status_label->setWordWrap(true);
-    auto* volume_label = new QLabel(ui.media_controls_panel);
-    volume_label->setPixmap(ui.media_controls_panel->style()->standardIcon(QStyle::SP_MediaVolume).pixmap(16, 16));
-    volume_label->setToolTip(QStringLiteral("Volume"));
-    volume_label->setAccessibleName(QStringLiteral("Volume"));
+    ui.media_volume_label = new QLabel(ui.media_controls_panel);
+    ui.media_volume_label->setPixmap(ui.media_controls_panel->style()->standardIcon(QStyle::SP_MediaVolume).pixmap(16, 16));
+    ui.media_volume_label->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Volume"));
+    ui.media_volume_label->setAccessibleName(QCoreApplication::translate("Editor.EditorDocumentUi", "Volume"));
     ui.media_volume_slider = new QSlider(Qt::Horizontal, ui.media_controls_panel);
     ui.media_volume_slider->setObjectName(QStringLiteral("VolumeSlider"));
     ui.media_volume_slider->setRange(0, 100);
     ui.media_volume_slider->setValue(80);
     ui.media_volume_slider->setFixedWidth(96);
-    ui.media_volume_slider->setToolTip(QStringLiteral("Playback volume"));
+    ui.media_volume_slider->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Playback volume"));
     mux_controls->addWidget(ui.mux_play_button, 0);
     mux_controls->addWidget(ui.mux_status_label, 1);
-    mux_controls->addWidget(volume_label, 0, Qt::AlignVCenter);
+    mux_controls->addWidget(ui.media_volume_label, 0, Qt::AlignVCenter);
     mux_controls->addWidget(ui.media_volume_slider, 0, Qt::AlignVCenter);
     media_controls_layout->addLayout(mux_controls);
     ui.media_loop_row = new QWidget(ui.media_controls_panel);
     auto* loop_layout = new QVBoxLayout(ui.media_loop_row);
     loop_layout->setContentsMargins(0, 0, 0, 0);
     loop_layout->setSpacing(4);
-    ui.media_loop_toggle = new QCheckBox(QStringLiteral("Loop selected range"), ui.media_loop_row);
+    ui.media_loop_toggle = new QCheckBox(QCoreApplication::translate("Editor.EditorDocumentUi", "Loop selected range"), ui.media_loop_row);
     ui.media_loop_list = new QListWidget(ui.media_loop_row);
     ui.media_loop_list->setObjectName(QStringLiteral("LoopList"));
     ui.media_loop_list->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -673,13 +683,13 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     );
     ui.schema_table->setColumnCount(7);
     ui.schema_table->setHorizontalHeaderLabels({
-        QStringLiteral("Column"),
-        QStringLiteral("Type"),
-        QStringLiteral("Flags"),
-        QStringLiteral("Default"),
-        QStringLiteral("Default Offset"),
-        QStringLiteral("Row Offset"),
-        QStringLiteral("Index")
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Column"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Type"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Flags"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Default"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Default Offset"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Row Offset"),
+        QCoreApplication::translate("Editor.EditorDocumentUi", "Index")
     });
     ui.schema_table->setMinimumHeight(132);
     ui.schema_table->hide();
@@ -701,13 +711,14 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     auto* edit_layout = new QHBoxLayout(ui.utf_edit_panel);
     edit_layout->setContentsMargins(0, 0, 0, 0);
     edit_layout->setSpacing(6);
-    edit_layout->addWidget(dim_label(QStringLiteral("Value"), ui.utf_edit_panel), 0);
+    ui.value_label = dim_label(QCoreApplication::translate("Editor.EditorDocumentUi", "Value"), ui.utf_edit_panel);
+    edit_layout->addWidget(ui.value_label, 0);
     ui.value_type_label = dim_label(QString{}, ui.utf_edit_panel);
     ui.value_type_label->setMinimumWidth(42);
     edit_layout->addWidget(ui.value_type_label, 0);
     ui.value_edit = new QLineEdit(ui.utf_edit_panel);
     ui.value_edit->setClearButtonEnabled(true);
-    ui.value_edit->setToolTip(QStringLiteral("Edit the selected UTF cell. Binary and GUID values use hex byte text."));
+    ui.value_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "Edit the selected UTF cell. Binary and GUID values use hex byte text."));
     ui.unsigned_value_validator = new QRegularExpressionValidator(
         QRegularExpression(QStringLiteral(R"((?:0[xX][0-9A-Fa-f]+|[0-9]+))")), ui.value_edit);
     ui.signed_value_validator = new QRegularExpressionValidator(
@@ -718,10 +729,10 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     ui.guid_value_validator = new QRegularExpressionValidator(
         QRegularExpression(QStringLiteral("[0-9A-Fa-f]{32}")), ui.value_edit);
     edit_layout->addWidget(ui.value_edit, 1);
-    ui.apply_value_button = toolbar_button(QStringLiteral("Apply Value"), ui.utf_edit_panel);
+    ui.apply_value_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Apply Value"), ui.utf_edit_panel);
     ui.apply_value_button->setEnabled(false);
     edit_layout->addWidget(ui.apply_value_button, 0);
-    ui.rename_column_button = toolbar_button(QStringLiteral("Rename Column"), ui.utf_edit_panel);
+    ui.rename_column_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Rename Column"), ui.utf_edit_panel);
     ui.rename_column_button->setEnabled(false);
     edit_layout->addWidget(ui.rename_column_button, 0);
     preview_layout->addWidget(ui.utf_edit_panel, 0);
@@ -729,15 +740,15 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     ui.binary_actions_panel = new QWidget(preview_page);
     auto* binary_layout = new QHBoxLayout(ui.binary_actions_panel);
     binary_layout->setContentsMargins(0, 0, 0, 0);
-    ui.replace_binary_button = toolbar_button(QStringLiteral("Replace Binary From File"), ui.binary_actions_panel);
+    ui.replace_binary_button = toolbar_button(QCoreApplication::translate("Editor.EditorDocumentUi", "Replace Binary From File"), ui.binary_actions_panel);
     ui.replace_binary_button->setEnabled(false);
-    ui.replace_binary_button->setToolTip(QStringLiteral("For UTF VLData cells, replace this editor session's binary value without mutating the browser-loaded object."));
+    ui.replace_binary_button->setToolTip(QCoreApplication::translate("Editor.EditorDocumentUi", "For UTF VLData cells, replace this editor session's binary value without mutating the browser-loaded object."));
     binary_layout->addWidget(ui.replace_binary_button, 0);
     binary_layout->addStretch(1);
     preview_layout->addWidget(ui.binary_actions_panel, 0);
 
-    ui.preview_tabs->addTab(preview_page, QStringLiteral("Preview"));
-    ui.preview_tabs->addTab(raw_page, QStringLiteral("Raw"));
+    ui.preview_tabs->addTab(preview_page, QCoreApplication::translate("Editor.EditorDocumentUi", "Preview"));
+    ui.preview_tabs->addTab(raw_page, QCoreApplication::translate("Editor.EditorDocumentUi", "Raw"));
     ui.preview_tabs->setCurrentIndex(0);
     ui.preview_tabs->setTabEnabled(0, false);
     ui.preview_tabs->setTabEnabled(1, false);
@@ -762,6 +773,130 @@ EditorDocumentUi build_editor_document_ui(QWidget* parent) {
     outer->addWidget(ui.progress);
 
     return ui;
+}
+
+void retranslate_editor_document_ui(EditorDocumentUi& ui) {
+    constexpr auto context = "Editor.EditorDocumentUi";
+    const auto tr = [context](const char* source) {
+        return QCoreApplication::translate(context, source);
+    };
+
+    ui.save_button->setText(tr("Save"));
+    ui.save_button->setToolTip(tr("Save to the last path chosen with Save As; asks for a path the first time."));
+    ui.save_as_button->setText(tr("Save As"));
+    ui.save_as_button->setToolTip(tr("Build or copy this independent editor session to a chosen path."));
+    ui.build_button->setText(tr("Build"));
+    ui.build_button->setToolTip(tr("Validate and rebuild the in-memory editor object."));
+    ui.extract_button->setText(tr("Extract"));
+    ui.extract_button->setToolTip(tr("Write this independent editor session's current bytes to a chosen folder."));
+
+    ui.table_label->setText(tr("Table"));
+    ui.table_name_edit->setToolTip(tr("Rename the UTF table."));
+    ui.apply_table_name_button->setText(tr("Rename Table"));
+    ui.add_row_button->setText(tr("Add Row"));
+    ui.remove_row_button->setText(tr("Remove Row"));
+    ui.add_column_button->setText(tr("Add Column"));
+    ui.remove_column_button->setText(tr("Remove Column"));
+
+    ui.archive_kind_label->setText(tr("Archive"));
+    ui.add_archive_file_button->setText(tr("Add File"));
+    ui.replace_archive_file_button->setText(tr("Replace File"));
+    ui.remove_archive_file_button->setText(tr("Remove Entry"));
+    ui.move_archive_entry_up_button->setText(tr("Move Up"));
+    ui.move_archive_entry_down_button->setText(tr("Move Down"));
+    ui.rename_archive_entry_button->setText(tr("Rename Entry"));
+    ui.reserve_afs_id_button->setText(tr("Reserve ID"));
+    ui.set_afs_timestamp_button->setText(tr("Set Timestamp"));
+    ui.set_archive_wave_id_button->setText(tr("Set Wave ID"));
+    ui.batch_awb_wave_ids_button->setText(tr("Batch Wave IDs"));
+    ui.archive_entry_options_button->setText(tr("Entry Props"));
+    ui.archive_options_button->setText(tr("Options"));
+    ui.archive_compression_button->setText(tr("Compression"));
+    ui.archive_compress_all_action->setText(tr("Compress all on save"));
+    ui.archive_store_all_action->setText(tr("Store all uncompressed"));
+    ui.archive_compression_button->setToolTip(tr("Set the save-time compression policy for every CPK entry."));
+    ui.import_afs_als_button->setText(tr("Import ALS"));
+    ui.export_afs_header_button->setText(tr("Export Header"));
+    ui.import_cvm_script_button->setText(tr("Import CVS"));
+    ui.export_cvm_script_button->setText(tr("Export CVS"));
+    ui.extract_archive_entry_button->setText(tr("Extract Entry"));
+    ui.extract_raw_archive_entry_button->setText(tr("Extract Raw"));
+
+    ui.transform_kind_label->setText(tr("Transform"));
+    ui.encode_transform_button->setText(tr("Encode from WAV"));
+    ui.decode_transform_button->setText(tr("Decode WAV"));
+    ui.decrypt_transform_button->setText(tr("Decrypt"));
+    ui.encrypt_transform_button->setText(tr("Encrypt"));
+    ui.rebuild_transform_button->setText(tr("Rebuild"));
+    ui.transform_options_button->setText(tr("Options"));
+    ui.extract_transform_button->setText(tr("Extract"));
+    ui.adx_container_build_button->setText(tr("Build from ADX"));
+    ui.csb_directory_build_button->setText(tr("Build from Folder"));
+    ui.media_build_wizard_button->setText(tr("Build Wizard"));
+    ui.editor_mux_preview_button->setText(tr("Preview"));
+    ui.open_acb_awb_button->setText(tr("Open AWB"));
+    ui.export_acb_awb_button->setText(tr("Export AWB"));
+    ui.add_transform_entry_button->setText(tr("Add"));
+    ui.replace_transform_entry_button->setText(tr("Replace"));
+    ui.remove_transform_entry_button->setText(tr("Remove"));
+    ui.move_transform_entry_up_button->setText(tr("Up"));
+    ui.move_transform_entry_down_button->setText(tr("Down"));
+    ui.rename_transform_entry_button->setText(tr("Rename"));
+    ui.toggle_transform_entry_flag_button->setText(tr("Toggle"));
+    ui.transform_filter_edit->setPlaceholderText(tr("Filter rows"));
+    ui.transform_filter_edit->setToolTip(tr("Filter transform rows by field or value."));
+
+    ui.local_key_label->setText(tr("Local CRI key"));
+    ui.local_key_type->setItemText(0, tr("No key"));
+    ui.local_key_type->setItemText(1, tr("Type 8 string"));
+    ui.local_key_type->setItemText(2, tr("Type 9 number"));
+    ui.local_key_type->setItemText(3, tr("Key triplet"));
+    ui.local_key_type->setToolTip(tr("Choose the ADX/AHX key representation explicitly."));
+    ui.cri_key_edit->setPlaceholderText(tr("No key"));
+    ui.cri_key_edit->setToolTip(tr("This key belongs only to this editor tab and does not change the global CRI key."));
+    ui.cri_key_base->setItemText(0, tr("hex"));
+    ui.cri_key_base->setItemText(1, tr("dec"));
+    ui.adx_subkey_label->setText(tr("Subkey"));
+    ui.adx_triplet_start_label->setText(tr("Start"));
+    ui.adx_triplet_mult_label->setText(tr("Mult"));
+    ui.adx_triplet_add_label->setText(tr("Add"));
+    ui.cvm_scramble_check->setAccessibleName(tr("Scramble CVM metadata on save"));
+    ui.cvm_scramble_check->setToolTip(tr("Write a scrambled CVM TOC using this tab's key string. Reading remains automatic."));
+    ui.cvm_scramble_label->setText(tr("Scramble on save"));
+    ui.apply_cri_key_button->setText(tr("Apply locally"));
+
+    ui.log_toggle_button->setText(tr("Log"));
+    ui.log_toggle_button->setToolTip(tr("Show or hide editor session log."));
+    ui.mux_audio_label->setText(tr("Audio channel"));
+    ui.mux_audio_combo->setToolTip(tr("Choose which audio stream to preview with the video."));
+    ui.mux_subtitle_label->setText(tr("Subtitles"));
+    ui.mux_subtitle_combo->setToolTip(tr("Choose which subtitle track to display."));
+    ui.mux_play_button->setText(tr("Play"));
+    if (!ui.mux_play_button->isEnabled()) {
+        ui.mux_status_label->setText(tr("No playable media selected"));
+    }
+    ui.media_volume_label->setToolTip(tr("Volume"));
+    ui.media_volume_label->setAccessibleName(tr("Volume"));
+    ui.media_volume_slider->setToolTip(tr("Playback volume"));
+    ui.media_loop_toggle->setText(tr("Loop selected range"));
+
+    ui.schema_table->setHorizontalHeaderLabels({
+        tr("Column"),
+        tr("Type"),
+        tr("Flags"),
+        tr("Default"),
+        tr("Default Offset"),
+        tr("Row Offset"),
+        tr("Index")
+    });
+    ui.value_label->setText(tr("Value"));
+    ui.value_edit->setToolTip(tr("Edit the selected UTF cell. Binary and GUID values use hex byte text."));
+    ui.apply_value_button->setText(tr("Apply Value"));
+    ui.rename_column_button->setText(tr("Rename Column"));
+    ui.replace_binary_button->setText(tr("Replace Binary From File"));
+    ui.replace_binary_button->setToolTip(tr("For UTF VLData cells, replace this editor session's binary value without mutating the browser-loaded object."));
+    ui.preview_tabs->setTabText(0, tr("Preview"));
+    ui.preview_tabs->setTabText(1, tr("Raw"));
 }
 
 void refresh_archive_document_ui(
@@ -796,9 +931,9 @@ void refresh_archive_document_ui(
     ui.set_archive_wave_id_button->setVisible(view.kind == ArchiveKind::Awb);
     ui.batch_awb_wave_ids_button->setVisible(view.kind == ArchiveKind::Awb);
     ui.archive_entry_options_button->setVisible(view.kind == ArchiveKind::Cpk || view.kind == ArchiveKind::Cvm);
-    ui.add_archive_file_button->setText(view.kind == ArchiveKind::Cpk ? QStringLiteral("Add...") : QStringLiteral("Add File"));
+    ui.add_archive_file_button->setText(view.kind == ArchiveKind::Cpk ? QCoreApplication::translate("Editor.EditorDocumentUi", "Add...") : QCoreApplication::translate("Editor.EditorDocumentUi", "Add File"));
     ui.add_archive_file_button->setToolTip(view.kind == ArchiveKind::Cpk
-        ? QStringLiteral("Add multiple files or a folder tree while preserving paths relative to the selected folder.")
+        ? QCoreApplication::translate("Editor.EditorDocumentUi", "Add multiple files or a folder tree while preserving paths relative to the selected folder.")
         : QString{});
     const bool can_reorder_archive = view.kind == ArchiveKind::Afs ||
                                      view.kind == ArchiveKind::Awb ||
@@ -915,17 +1050,17 @@ void refresh_transform_document_ui(
         (kind == TransformKind::Aax && view.aax != nullptr) ||
         (kind == TransformKind::Csb && view.csb != nullptr));
     ui.add_transform_entry_button->setText(
-        kind == TransformKind::Aix ? QStringLiteral("Add...") : QStringLiteral("Add"));
+        kind == TransformKind::Aix ? QCoreApplication::translate("Editor.EditorDocumentUi", "Add...") : QCoreApplication::translate("Editor.EditorDocumentUi", "Add"));
     ui.add_transform_entry_button->setToolTip(kind == TransformKind::Aix
-        ? QStringLiteral("Add a complete segment or a complete layer of ADX streams.")
+        ? QCoreApplication::translate("Editor.EditorDocumentUi", "Add a complete segment or a complete layer of ADX streams.")
         : QString{});
     ui.toggle_transform_entry_flag_button->setText(
-        kind == TransformKind::Aax ? QStringLiteral("Toggle Loop") : QStringLiteral("Toggle Streamed"));
+        kind == TransformKind::Aax ? QCoreApplication::translate("Editor.EditorDocumentUi", "Toggle Loop") : QCoreApplication::translate("Editor.EditorDocumentUi", "Toggle Streamed"));
     ui.transform_filter_edit->setVisible(kind == TransformKind::Usm);
     ui.transform_filter_edit->setPlaceholderText(
         kind == TransformKind::Usm
-            ? QStringLiteral("Filter rows: sfv, sfa, sbt, ch 0, utf...")
-            : QStringLiteral("Filter rows")
+            ? QCoreApplication::translate("Editor.EditorDocumentUi", "Filter rows: sfv, sfa, sbt, ch 0, utf...")
+            : QCoreApplication::translate("Editor.EditorDocumentUi", "Filter rows")
     );
 
     std::vector<modules::TransformDetailRow> filtered_rows;
@@ -960,10 +1095,10 @@ void refresh_document_info_ui(EditorDocumentUi& ui, QWidget* parent, const Edito
     const auto all_rows = document_info_rows(view);
     std::vector<InfoRow> rows;
     rows.reserve(6);
-    static constexpr std::array<std::string_view, 6> header_fields{
-        "Session", "Format", "Bytes", "Source path", "Validation", "Inspector kind"
+    static const std::array<std::string, 6> header_fields{
+        cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Session"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Format"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Bytes"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Source path"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Validation"), cristudio::i18n::translate_utf8("Editor.EditorDocumentUi", "Inspector kind")
     };
-    for (const auto field : header_fields) {
+    for (const auto& field : header_fields) {
         const auto found = std::ranges::find(all_rows, field, &InfoRow::name);
         if (found != all_rows.end()) {
             rows.push_back(*found);

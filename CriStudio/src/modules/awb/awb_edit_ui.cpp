@@ -5,6 +5,7 @@
 #include "modules/ui_value_helpers.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -54,12 +55,12 @@ void populate_editor_archive_table(
     table->clear();
     table->setColumnCount(6);
     table->setHorizontalHeaderLabels({
-        QStringLiteral("Index"),
-        QStringLiteral("Wave ID"),
-        QStringLiteral("Offset"),
-        QStringLiteral("Size"),
-        QStringLiteral("Suggested Path"),
-        QStringLiteral("AAC State")
+        QCoreApplication::translate("Awb.AwbEditUi", "Index"),
+        QCoreApplication::translate("Awb.AwbEditUi", "Wave ID"),
+        QCoreApplication::translate("Awb.AwbEditUi", "Offset"),
+        QCoreApplication::translate("Awb.AwbEditUi", "Size"),
+        QCoreApplication::translate("Awb.AwbEditUi", "Suggested Path"),
+        QCoreApplication::translate("Awb.AwbEditUi", "AAC State")
     });
     table->setRowCount(static_cast<int>(awb.file_count()));
     for (uint32_t index = 0; index < awb.file_count(); ++index) {
@@ -86,12 +87,12 @@ std::optional<uint64_t> choose_wave_id(
 
     const auto current = awb.entry(index).wave_id;
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Set AWB wave ID"));
+    dialog.setWindowTitle(QCoreApplication::translate("Awb.AwbEditUi", "Set AWB wave ID"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     auto* wave_id_edit = make_unsigned_integer_edit(
-        current, 0, std::numeric_limits<uint64_t>::max(), &dialog, QStringLiteral("Wave ID"));
-    form->addRow(QStringLiteral("Wave ID"), wave_id_edit);
+        current, 0, std::numeric_limits<uint64_t>::max(), &dialog, QCoreApplication::translate("Awb.AwbEditUi", "Wave ID"));
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Wave ID"), wave_id_edit);
     layout->addLayout(form);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addWidget(buttons);
@@ -102,31 +103,31 @@ std::optional<uint64_t> choose_wave_id(
         return std::nullopt;
     }
     auto wave_id = unsigned_integer_value(
-        wave_id_edit, 0, std::numeric_limits<uint64_t>::max(), QStringLiteral("Wave ID"));
+        wave_id_edit, 0, std::numeric_limits<uint64_t>::max(), QCoreApplication::translate("Awb.AwbEditUi", "Wave ID"));
     return wave_id ? std::optional<uint64_t>(*wave_id) : std::nullopt;
 }
 
 std::optional<BatchWaveIdOptions> choose_batch_wave_ids(QWidget* parent) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Batch AWB wave IDs"));
+    dialog.setWindowTitle(QCoreApplication::translate("Awb.AwbEditUi", "Batch AWB wave IDs"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     auto* start_edit = make_unsigned_integer_edit(
-        0, 0, std::numeric_limits<uint64_t>::max(), &dialog, QStringLiteral("Start wave ID"));
+        0, 0, std::numeric_limits<uint64_t>::max(), &dialog, QCoreApplication::translate("Awb.AwbEditUi", "Start wave ID"));
     auto* step_edit = make_unsigned_integer_edit(
-        1, 1, std::numeric_limits<uint64_t>::max(), &dialog, QStringLiteral("Wave ID step"));
-    form->addRow(QStringLiteral("Start wave ID"), start_edit);
-    form->addRow(QStringLiteral("Step"), step_edit);
+        1, 1, std::numeric_limits<uint64_t>::max(), &dialog, QCoreApplication::translate("Awb.AwbEditUi", "Wave ID step"));
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Start wave ID"), start_edit);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Step"), step_edit);
     layout->addLayout(form);
 
-    auto* note = dim_label(QStringLiteral("Wave IDs are assigned by current entry order. Payload bytes are unchanged."), &dialog);
+    auto* note = dim_label(QCoreApplication::translate("Awb.AwbEditUi", "Wave IDs are assigned by current entry order. Payload bytes are unchanged."), &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Assign"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Awb.AwbEditUi", "Assign"));
     bind_valid_inputs(buttons->button(QDialogButtonBox::Ok), {start_edit, step_edit});
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -136,9 +137,9 @@ std::optional<BatchWaveIdOptions> choose_batch_wave_ids(QWidget* parent) {
     }
 
     const auto start = unsigned_integer_value(
-        start_edit, 0, std::numeric_limits<uint64_t>::max(), QStringLiteral("Start wave ID"));
+        start_edit, 0, std::numeric_limits<uint64_t>::max(), QCoreApplication::translate("Awb.AwbEditUi", "Start wave ID"));
     const auto step = unsigned_integer_value(
-        step_edit, 1, std::numeric_limits<uint64_t>::max(), QStringLiteral("Step"));
+        step_edit, 1, std::numeric_limits<uint64_t>::max(), QCoreApplication::translate("Awb.AwbEditUi", "Step"));
     if (!start || !step) {
         return std::nullopt;
     }
@@ -147,7 +148,7 @@ std::optional<BatchWaveIdOptions> choose_batch_wave_ids(QWidget* parent) {
 
 std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodecs::awb::AwbContainer& awb) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("AWB/AFS2 options"));
+    dialog.setWindowTitle(QCoreApplication::translate("Awb.AwbEditUi", "AWB/AFS2 options"));
     dialog.setMinimumWidth(360);
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
@@ -162,7 +163,7 @@ std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodec
     auto* alignment_spin = new QSpinBox(&dialog);
     alignment_spin->setRange(1, std::numeric_limits<uint16_t>::max());
     alignment_spin->setValue(awb.alignment());
-    alignment_spin->setSuffix(QStringLiteral(" bytes"));
+    alignment_spin->setSuffix(QCoreApplication::translate("Awb.AwbEditUi", " bytes"));
 
     auto* subkey_spin = new QSpinBox(&dialog);
     subkey_spin->setRange(0, std::numeric_limits<uint16_t>::max());
@@ -170,7 +171,7 @@ std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodec
 
     auto* id_size_combo = new QComboBox(&dialog);
     for (const int size : {1, 2, 4, 8}) {
-        id_size_combo->addItem(QStringLiteral("%1 %2").arg(size).arg(size == 1 ? QStringLiteral("byte") : QStringLiteral("bytes")), size);
+        id_size_combo->addItem(QStringLiteral("%1 %2").arg(size).arg(size == 1 ? QCoreApplication::translate("Awb.AwbEditUi", "byte") : QCoreApplication::translate("Awb.AwbEditUi", "bytes")), size);
     }
     if (const int combo_index = id_size_combo->findData(awb.id_size()); combo_index >= 0) {
         id_size_combo->setCurrentIndex(combo_index);
@@ -178,22 +179,22 @@ std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodec
 
     auto* offset_size_combo = new QComboBox(&dialog);
     for (const int size : {2, 4, 8}) {
-        offset_size_combo->addItem(QStringLiteral("%1 bytes").arg(size), size);
+        offset_size_combo->addItem(QCoreApplication::translate("Awb.AwbEditUi", "%1 bytes").arg(size), size);
     }
     if (const int combo_index = offset_size_combo->findData(awb.offset_size()); combo_index >= 0) {
         offset_size_combo->setCurrentIndex(combo_index);
     }
 
-    form->addRow(QStringLiteral("Files"), new QLabel(QString::number(awb.file_count()), &dialog));
-    form->addRow(QStringLiteral("Version"), version_combo);
-    form->addRow(QStringLiteral("Alignment"), alignment_spin);
-    form->addRow(QStringLiteral("Subkey"), subkey_spin);
-    form->addRow(QStringLiteral("ID size"), id_size_combo);
-    form->addRow(QStringLiteral("Offset size"), offset_size_combo);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Files"), new QLabel(QString::number(awb.file_count()), &dialog));
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Version"), version_combo);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Alignment"), alignment_spin);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Subkey"), subkey_spin);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "ID size"), id_size_combo);
+    form->addRow(QCoreApplication::translate("Awb.AwbEditUi", "Offset size"), offset_size_combo);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("AWB/AFS2 rebuilds keep entry payloads independent from the browser copy. Size controls are validated by the native AWB builder."),
+        QCoreApplication::translate("Awb.AwbEditUi", "AWB/AFS2 rebuilds keep entry payloads independent from the browser copy. Size controls are validated by the native AWB builder."),
         &dialog
     );
     note->setWordWrap(true);

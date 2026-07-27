@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/usm/media_build_validation.hpp"
 
 #include "h264.hpp"
@@ -37,13 +38,13 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
 
     const auto& header = reader.get_header();
     if (header.header_size != 32u) {
-        return std::unexpected("IVF header size is not 32 bytes");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "IVF header size is not 32 bytes"));
     }
     if (require_vp9_payloads && header.fourcc != vp9_fourcc) {
-        return std::unexpected("expected VP9 in an IVF container");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "expected VP9 in an IVF container"));
     }
     if (header.width == 0 || header.height == 0 || header.rate == 0 || header.scale == 0) {
-        return std::unexpected("IVF dimensions or frame rate are zero");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "IVF dimensions or frame rate are zero"));
     }
 
     uint32_t frames = 0;
@@ -55,10 +56,10 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
             return std::unexpected(frame.error());
         }
         if (require_vp9_payloads && !cricodecs::video::is_valid_vp9_frame(frame->data)) {
-            return std::unexpected("IVF contains an invalid VP9 frame at index " + std::to_string(frames));
+            return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "IVF contains an invalid VP9 frame at index ") + std::to_string(frames));
         }
         if (auto observed = timeline.observe(frame->timestamp); !observed) {
-            return std::unexpected(observed.error() + " at frame index " + std::to_string(frames));
+            return std::unexpected(observed.error() + cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", " at frame index ") + std::to_string(frames));
         }
         parsed_size += frame->record_bytes.size();
         ++frames;
@@ -67,12 +68,12 @@ std::expected<PreparedVideoInfo, std::string> inspect_ivf(
     std::error_code file_error;
     const auto file_size = std::filesystem::file_size(path, file_error);
     if (file_error || parsed_size != file_size) {
-        return std::unexpected("IVF has trailing or truncated frame data");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "IVF has trailing or truncated frame data"));
     }
     if (header.num_frames != frames) {
         return std::unexpected(
-            "IVF header declares " + std::to_string(header.num_frames) +
-            " frames but contains " + std::to_string(frames));
+            cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "IVF header declares ") + std::to_string(header.num_frames) +
+            cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", " frames but contains ") + std::to_string(frames));
     }
 
     return PreparedVideoInfo{
@@ -91,7 +92,7 @@ std::expected<PreparedVideoInfo, std::string> inspect_h264(const std::filesystem
     const auto structure = cricodecs::video::inspect_h264_structure(reader.data());
     if (structure.nal_units == 0 || structure.valid_nal_headers != structure.nal_units ||
         structure.valid_slice_headers < reader.frame_count() || structure.ebsp_violations != 0) {
-        return std::unexpected("H.264 Annex B structure is malformed");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "H.264 Annex B structure is malformed"));
     }
     const auto& sps = reader.sequence_parameter_set();
     const auto [rate, scale] = reader.frame_rate();
@@ -113,13 +114,13 @@ std::expected<PreparedVideoInfo, std::string> inspect_mpeg(
     }
     if (expected_type && reader.video_type() != *expected_type) {
         return std::unexpected(*expected_type == cricodecs::video::MpegVideoType::mpeg1
-            ? "expected an MPEG-1 elementary stream"
-            : "expected an MPEG-2 elementary stream");
+            ? cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "expected an MPEG-1 elementary stream")
+            : cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "expected an MPEG-2 elementary stream"));
     }
     const auto structure = cricodecs::video::inspect_mpeg_structure(reader.data());
     if (structure.pictures < reader.frame_count() || structure.slices == 0 ||
         structure.valid_start_codes != structure.start_codes || structure.violations != 0) {
-        return std::unexpected("MPEG elementary-stream structure is malformed");
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "MPEG elementary-stream structure is malformed"));
     }
     const auto& header = reader.sequence_header();
     const auto [rate, scale] = reader.frame_rate();
@@ -134,7 +135,7 @@ std::expected<PreparedVideoInfo, std::string> inspect_mpeg(
 std::expected<void, std::string> validate_nontrivial_video(const PreparedVideoInfo& info) {
     if (info.frame_count == 0) {
         return std::unexpected(
-            "the prepared stream contains no video frames. The input may be encrypted, damaged, or only partially decoded");
+            cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "the prepared stream contains no video frames. The input may be encrypted, damaged, or only partially decoded"));
     }
     return {};
 }
@@ -146,8 +147,8 @@ std::expected<void, std::string> validate_against_source(
     if (source.width != 0 && source.height != 0 &&
         (output.width != source.width || output.height != source.height)) {
         return std::unexpected(
-            "output dimensions " + std::to_string(output.width) + "x" + std::to_string(output.height) +
-            " do not match the recognizable source dimensions " + std::to_string(source.width) + "x" +
+            cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "output dimensions ") + std::to_string(output.width) + "x" + std::to_string(output.height) +
+            cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", " do not match the recognizable source dimensions ") + std::to_string(source.width) + "x" +
             std::to_string(source.height));
     }
 
@@ -157,10 +158,16 @@ std::expected<void, std::string> validate_against_source(
     const bool duration_collapsed = source.duration_ms > duration_tolerance_ms &&
         (output.duration_ms + duration_tolerance_ms) * 10u < source.duration_ms * 9u;
     if (frame_count_collapsed || duration_collapsed) {
-        return std::unexpected(
-            "output is suspiciously truncated (" + std::to_string(output.frame_count) + " frames, " +
-            std::to_string(output.duration_ms) + " ms; recognizable source has " +
-            std::to_string(source.frame_count) + " frames, " + std::to_string(source.duration_ms) + " ms)");
+        return std::unexpected(QCoreApplication::translate(
+            "Usm.MediaBuildValidation",
+            "Output is suspiciously truncated: output frames %1, output duration %2 ms; "
+            "source frames %3, source duration %4 ms.")
+            .arg(output.frame_count)
+            .arg(output.duration_ms)
+            .arg(source.frame_count)
+            .arg(source.duration_ms)
+            .toUtf8()
+            .toStdString());
     }
     return {};
 }
@@ -185,7 +192,7 @@ std::expected<PreparedVideoInfo, std::string> validate_prepared_video_output(
     PreparedVideoFormat expected_format,
     const std::optional<PreparedVideoInfo>& source_hint
 ) {
-    std::expected<PreparedVideoInfo, std::string> inspected = std::unexpected("unsupported prepared video format");
+    std::expected<PreparedVideoInfo, std::string> inspected = std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "unsupported prepared video format"));
     switch (expected_format) {
     case PreparedVideoFormat::Vp9Ivf:
         inspected = inspect_ivf(path, true);
@@ -201,15 +208,15 @@ std::expected<PreparedVideoInfo, std::string> validate_prepared_video_output(
         break;
     }
     if (!inspected) {
-        return std::unexpected("FFmpeg video output rejected: " + inspected.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "FFmpeg video output rejected: ") + inspected.error());
     }
     if (auto valid = validate_nontrivial_video(*inspected); !valid) {
-        return std::unexpected("FFmpeg video output rejected: " + valid.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "FFmpeg video output rejected: ") + valid.error());
     }
     if (source_hint) {
         if (auto valid = validate_against_source(*inspected, *source_hint); !valid) {
-            return std::unexpected("FFmpeg video output rejected: " + valid.error() +
-                ". The input may be encrypted or damaged");
+            return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "FFmpeg video output rejected: ") + valid.error() +
+                cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", ". The input may be encrypted or damaged"));
         }
     }
     return *inspected;
@@ -220,23 +227,24 @@ std::expected<PreparedAudioInfo, std::string> validate_prepared_pcm_wav(
 ) {
     cricodecs::wav::WavContainer wav;
     if (auto loaded = wav.load(path); !loaded) {
-        return std::unexpected("Audio WAV rejected: " + loaded.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "Audio WAV rejected: ") + loaded.error());
     }
     // WavContainer::get_pcm16() is the conversion boundary. In particular,
     // FFmpeg may wrap pcm_s16le in WAVE_FORMAT_EXTENSIBLE for multichannel
     // output, and the native PCM reader also supports convertible integer and
     // float WAV inputs.
     if (auto pcm = wav.get_pcm16(); !pcm) {
-        return std::unexpected("Audio WAV rejected: cannot convert to 16-bit PCM: " + pcm.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Usm.MediaBuildValidation", "Audio WAV rejected: cannot convert to 16-bit PCM: ") + pcm.error());
     }
 
     const auto samples = static_cast<uint64_t>(wav.sample_count());
     const auto rate = wav.sample_rate();
     const auto audio_duration_ms = duration_ms(samples, rate);
     if (samples == 0) {
-        return std::unexpected(
+        return std::unexpected(cristudio::i18n::translate_utf8(
+            "Usm.MediaBuildValidation",
             "Audio WAV rejected: the prepared WAV contains no sample frames. "
-            "The input may be encrypted, damaged, or only partially decoded");
+            "The input may be encrypted, damaged, or only partially decoded"));
     }
     return PreparedAudioInfo{
         .sample_count = samples,

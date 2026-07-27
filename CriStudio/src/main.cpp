@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 #include "path_text.hpp"
+#include "shared/translation_manager.hpp"
 
 #include <QApplication>
 #include <QEvent>
@@ -173,6 +174,9 @@ void configure_application_font() {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    QSettings settings(QStringLiteral("CriCodecs"), QStringLiteral("CriStudio"));
+    cristudio::i18n::TranslationManager translations(app);
+    (void)translations.initialize();
     QApplication::setStyle(QStringLiteral("Fusion"));
     QApplication::setStyle(new ShortcutUnderlineStyle(QApplication::style()->name()));
     ShortcutUnderlineController shortcut_underlines;
@@ -181,7 +185,6 @@ int main(int argc, char** argv) {
     QApplication::setOrganizationName(QStringLiteral("CriCodecs"));
     QApplication::setApplicationVersion(QStringLiteral(CRISTUDIO_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/branding/cristudio.png")));
-    QSettings settings(QStringLiteral("CriCodecs"), QStringLiteral("CriStudio"));
     app.setProperty("alwaysShowAccessKeys", settings.value(QStringLiteral("ui/alwaysShowAccessKeys"), false));
     configure_application_font();
 

@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/adx/adx_preview.hpp"
 
 #include "modules/adx/adx_common.hpp"
@@ -24,12 +25,12 @@ std::expected<AudioPreview, std::string> audio_preview(cricodecs::adx::Adx adx, 
     const bool needs_key = adx.is_encrypted() && !has_applicable_raw_key(adx, keys);
     apply_keys(adx, keys);
     if (needs_key) {
-        return std::unexpected("ADX/AHX preview needs a decryption key");
+        return std::unexpected(cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX/AHX preview needs a decryption key"));
     }
 
     auto decoded = adx.decode();
     if (!decoded) {
-        return std::unexpected("ADX/AHX decode failed: " + decoded.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX/AHX decode failed: ") + decoded.error());
     }
 
     auto loops = wav_loops_from_adx(*decoded);
@@ -40,7 +41,7 @@ std::expected<AudioPreview, std::string> audio_preview(cricodecs::adx::Adx adx, 
         loops
     );
     if (!wav_bytes) {
-        return std::unexpected("ADX/AHX WAV preview build failed: " + wav_bytes.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX/AHX WAV preview build failed: ") + wav_bytes.error());
     }
 
     return make_wav_audio_preview(
@@ -48,7 +49,7 @@ std::expected<AudioPreview, std::string> audio_preview(cricodecs::adx::Adx adx, 
         decoded->sample_rate,
         decoded->channels,
         decoded->sample_count,
-        adx.is_ahx() ? "AHX audio" : "ADX audio",
+        adx.is_ahx() ? cristudio::i18n::translate_utf8("Adx.AdxPreview", "AHX audio") : cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX audio"),
         {},
         audio_loops_from_wav_loops(loops, decoded->sample_count)
     );
@@ -60,7 +61,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
 ) {
     auto adx = cricodecs::adx::Adx::load(bytes);
     if (!adx) {
-        return std::unexpected("ADX/AHX preview failed: " + adx.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX/AHX preview failed: ") + adx.error());
     }
     return audio_preview(std::move(*adx), keys);
 }
@@ -71,7 +72,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_file(
 ) {
     auto adx = cricodecs::adx::Adx::load(path);
     if (!adx) {
-        return std::unexpected("ADX/AHX preview failed: " + adx.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Adx.AdxPreview", "ADX/AHX preview failed: ") + adx.error());
     }
     return audio_preview(std::move(*adx), keys);
 }

@@ -113,7 +113,7 @@ void add_repeat(
 
 [[nodiscard]] std::optional<uint64_t> info_value(const LoadedDocument& document, std::string_view name) {
     for (const auto& row : document.info) {
-        if (row.name == name) {
+        if (info_row_id(row) == name) {
             return decimal_prefix(row.value);
         }
     }

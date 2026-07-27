@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "../main_window.hpp"
 
 #include "../path_text.hpp"
@@ -28,13 +29,13 @@ namespace {
 
 [[nodiscard]] QString masking_inference(const UsmKeyRecoveryResult& result) {
     if (result.hca_video_supported) {
-        return QStringLiteral("Likely masked; embedded HCA and video recovery agree");
+        return QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Likely masked; embedded HCA and video recovery agree");
     }
     if (result.audio_chunks != 0u && result.audio_score > 0.0f) {
-        return QStringLiteral("Likely masked; ADX audio mask evidence was detected");
+        return QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Likely masked; ADX audio mask evidence was detected");
     }
     if (result.video_chunks != 0u) {
-        return QStringLiteral("Unknown; video model agreement is not proof of masking");
+        return QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Unknown; video model agreement is not proof of masking");
     }
     return QStringLiteral("Unknown");
 }
@@ -76,19 +77,19 @@ void MainWindow::start_usm_key_recovery(
     QString target_label
 ) {
     if (sources.empty()) {
-        statusBar()->showMessage(QStringLiteral("No files selected for USM key recovery"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "No files selected for USM key recovery"), 3000);
         return;
     }
     if (m_usm_key_recovery_running || m_hca_key_recovery_running ||
         m_adx_key_recovery_running || m_aac_key_recovery_running) {
-        statusBar()->showMessage(QStringLiteral("Key recovery is already running"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Key recovery is already running"), 3000);
         return;
     }
     const auto mode = choose_key_recovery_mode(
-        this, QStringLiteral("USM key recovery"), sources.size());
+        this, QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery"), sources.size());
     if (!mode) return;
     if (sources.size() > 1u) {
-        begin_key_recovery_progress(this, QStringLiteral("USM key recovery"), sources.size());
+        begin_key_recovery_progress(this, QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery"), sources.size());
     }
 
     if (m_preview_recover_key_button != nullptr) {
@@ -104,7 +105,7 @@ void MainWindow::start_usm_key_recovery(
         m_preview_recover_aac_key_button->setEnabled(false);
     }
 
-    statusBar()->showMessage(QStringLiteral("Recovering USM keys..."));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Recovering USM keys..."));
     m_usm_key_recovery_running = true;
     const auto request_id = ++m_usm_key_recovery_request_id;
     auto keys = m_decryption_keys;
@@ -145,14 +146,14 @@ void MainWindow::start_usm_key_recovery(
                         if (!window.isNull()) {
                             update_key_recovery_progress(
                                 window, std::move(groups), completed, total,
-                                QStringLiteral("Processed %1 of %2 selected files.").arg(completed).arg(total));
+                                QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Processed %1 of %2 selected files.").arg(completed).arg(total));
                         }
                     }, Qt::QueuedConnection);
                 }
             }
             if (task.report->usm_count == 0u) {
                 task.error = task.report->errors.empty()
-                    ? QStringLiteral("No USM containers were found.")
+                    ? QCoreApplication::translate("MainWindow.UsmKeyRecovery", "No USM containers were found.")
                     : utf8_to_qstring(task.report->errors.front());
                 task.report.reset();
                 return task;
@@ -164,7 +165,7 @@ void MainWindow::start_usm_key_recovery(
                     return support[candidate.key] != task.report->usm_count;
                 });
                 if (task.report->recovered.empty()) {
-                    task.error = QStringLiteral("No key candidate was shared by every recovered USM container.");
+                    task.error = QCoreApplication::translate("MainWindow.UsmKeyRecovery", "No key candidate was shared by every recovered USM container.");
                     task.report.reset();
                 }
             }
@@ -197,10 +198,10 @@ void MainWindow::consume_usm_key_recovery_result() {
             update_key_recovery_progress(
                 this, {}, task.requested_sources, task.requested_sources, task.error, true);
         } else {
-            show_key_recovery_error(this, QStringLiteral("USM key recovery"), task.error);
+            show_key_recovery_error(this, QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery"), task.error);
         }
-        append_log(QStringLiteral("USM key recovery failed: ") + task.error);
-        statusBar()->showMessage(QStringLiteral("USM key recovery unavailable"), 5000);
+        append_log(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery failed: ") + task.error);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery unavailable"), 5000);
         return;
     }
 
@@ -217,9 +218,11 @@ void MainWindow::consume_usm_key_recovery_result() {
         ++visible_candidate_count;
         const auto key = key_text(result.key);
         const auto score = QString::number(rank_score, 'f', 6);
-        text += QStringLiteral("%1\nKey: %2\nEvidence rank score: %3\nVideo model score: %4\nMasking: %5\n"
-                               "Video chunks: %6\nADX audio chunks: %7\nADX audio score: %8\n"
-                               "HCA streams: %9\nHCA score: %10\nHCA/video agreement: %11\nSample blocks: %12\n\n")
+        text += QCoreApplication::translate(
+                    "MainWindow.UsmKeyRecovery",
+                    "%1\nKey: %2\nEvidence rank score: %3\nVideo model score: %4\nMasking: %5\n"
+                    "Video chunks: %6\nADX audio chunks: %7\nADX audio score: %8\n"
+                    "HCA streams: %9\nHCA score: %10\nHCA/video agreement: %11\nSample blocks: %12\n\n")
                     .arg(utf8_to_qstring(result.source))
                     .arg(key)
                     .arg(score)
@@ -232,21 +235,23 @@ void MainWindow::consume_usm_key_recovery_result() {
                     .arg(QString::number(result.hca_score, 'f', 6))
                     .arg(result.hca_video_supported ? QStringLiteral("yes") : QStringLiteral("no"))
                     .arg(result.sample_blocks);
-        append_log(QStringLiteral("USM key recovery completed for %1: %2, score %3")
+        append_log(QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery completed for %1: %2, score %3")
                        .arg(utf8_to_qstring(result.source), key, score));
     }
     if (!task.report->errors.empty()) {
-        text += QStringLiteral("Unavailable targets\n");
+        text += QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Unavailable targets\n");
         for (const auto& error : task.report->errors) {
             text += QStringLiteral("- %1\n").arg(utf8_to_qstring(error));
         }
         text += QLatin1Char('\n');
     }
-    text += QStringLiteral("Candidates were not applied to the global CRI key.\n"
-                           "The evidence rank uses the strongest applicable video, ADX, or HCA score; "
-                           "it is not proof that a USM is masked.\n"
-                           "CRI key recovery returns only the effective low 56 bits; "
-                           "the original upper byte is unrecoverable.");
+    text += QCoreApplication::translate(
+        "MainWindow.UsmKeyRecovery",
+        "Candidates were not applied to the global CRI key.\n"
+        "The evidence rank uses the strongest applicable video, ADX, or HCA score; "
+        "it is not proof that a USM is masked.\n"
+        "CRI key recovery returns only the effective low 56 bits; "
+        "the original upper byte is unrecoverable.");
     auto groups = group_results(task.report->recovered);
     QStringList keys;
     keys.reserve(static_cast<qsizetype>(groups.size()));
@@ -255,12 +260,12 @@ void MainWindow::consume_usm_key_recovery_result() {
     }
     const auto candidate_count = visible_candidate_count;
     const auto summary = candidate_count == 0
-        ? QStringLiteral("No key candidate was recovered.")
+        ? QCoreApplication::translate("MainWindow.UsmKeyRecovery", "No key candidate was recovered.")
         : (candidate_count == 1
-            ? QStringLiteral("Recovered key: %1\nScore: %2")
+            ? QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Recovered key: %1\nScore: %2")
                   .arg(keys.front())
                   .arg(QString::number(groups.front().mean_score, 'f', 6))
-            : QStringLiteral("Recovered %1 candidates in %2 exact-key groups.")
+            : QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Recovered %1 candidates in %2 exact-key groups.")
                   .arg(candidate_count)
                   .arg(groups.size()));
     if (task.requested_sources > 1u) {
@@ -269,21 +274,21 @@ void MainWindow::consume_usm_key_recovery_result() {
     } else {
         show_key_recovery_result(
             this,
-            QStringLiteral("USM key recovery"),
+            QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery"),
             summary,
-            QStringLiteral("Target: %1\nUSM containers: %2\n\n%3")
+            QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Target: %1\nUSM containers: %2\n\n%3")
                 .arg(task.target_label)
                 .arg(task.report->usm_count)
                 .arg(text),
             keys.join(QLatin1Char('\n')),
-            groups.size() == 1 ? QStringLiteral("Copy Key") : QStringLiteral("Copy Keys"),
+            groups.size() == 1 ? QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Copy Key") : QCoreApplication::translate("MainWindow.UsmKeyRecovery", "Copy Keys"),
             std::move(groups)
         );
     }
     statusBar()->showMessage(
         task.report->recovered.empty()
-            ? QStringLiteral("USM key recovery found no candidate")
-            : QStringLiteral("USM key recovery completed"),
+            ? QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery found no candidate")
+            : QCoreApplication::translate("MainWindow.UsmKeyRecovery", "USM key recovery completed"),
         5000);
 }
 

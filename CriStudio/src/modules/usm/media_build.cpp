@@ -12,6 +12,7 @@
 #include "video/mpeg.hpp"
 #include "wav_container.hpp"
 
+#include <QCoreApplication>
 #include <QLockFile>
 #include <QElapsedTimer>
 #include <QFile>
@@ -138,7 +139,7 @@ std::expected<void, QString> run_process_logged(
     process.setProcessChannelMode(QProcess::MergedChannels);
     process.start();
     if (!process.waitForStarted(5000)) {
-        return std::unexpected(QStringLiteral("%1 failed: could not start process").arg(label));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "%1 failed: could not start process").arg(label));
     }
 
     constexpr qint64 process_timeout_ms = 6LL * 60LL * 60LL * 1000LL;
@@ -160,7 +161,7 @@ std::expected<void, QString> run_process_logged(
             if (!output_tail.isEmpty()) {
                 push_log(log, output_tail);
             }
-            return std::unexpected(QStringLiteral("%1 timed out after 6 hours").arg(label));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "%1 timed out after 6 hours").arg(label));
         }
     }
 
@@ -170,9 +171,9 @@ std::expected<void, QString> run_process_logged(
     }
 
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        return std::unexpected(QStringLiteral("%1 failed with exit code %2").arg(label).arg(process.exitCode()));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "%1 failed with exit code %2").arg(label).arg(process.exitCode()));
     }
-    push_log(log, QStringLiteral("%1 finished.").arg(label));
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "%1 finished.").arg(label));
     return {};
 }
 
@@ -182,29 +183,29 @@ std::expected<void, QString> publish_staged_file(
 ) {
     QFile input(path_to_qstring(staged_path));
     if (!input.open(QIODevice::ReadOnly)) {
-        return std::unexpected(QStringLiteral("Could not open staged output: %1").arg(input.errorString()));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not open staged output: %1").arg(input.errorString()));
     }
 
     QSaveFile output(path_to_qstring(output_path));
     if (!output.open(QIODevice::WriteOnly)) {
-        return std::unexpected(QStringLiteral("Could not open output transaction: %1").arg(output.errorString()));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not open output transaction: %1").arg(output.errorString()));
     }
 
     constexpr qint64 copy_chunk_size = 1024 * 1024;
     while (!input.atEnd()) {
         const auto bytes = input.read(copy_chunk_size);
         if (bytes.isEmpty() && input.error() != QFileDevice::NoError) {
-            return std::unexpected(QStringLiteral("Could not read staged output: %1").arg(input.errorString()));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not read staged output: %1").arg(input.errorString()));
         }
         if (bytes.isEmpty()) {
             break;
         }
         if (output.write(bytes) != bytes.size()) {
-            return std::unexpected(QStringLiteral("Could not write output transaction: %1").arg(output.errorString()));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not write output transaction: %1").arg(output.errorString()));
         }
     }
     if (!output.commit()) {
-        return std::unexpected(QStringLiteral("Could not commit output transaction: %1").arg(output.errorString()));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not commit output transaction: %1").arg(output.errorString()));
     }
     return {};
 }
@@ -219,17 +220,17 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
     const MediaBuildLogCallback& log
 ) {
     if (source.empty()) {
-        return std::unexpected(QStringLiteral("Video input is required"));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Video input is required"));
     }
     if (!std::filesystem::exists(source)) {
-        return std::unexpected(QStringLiteral("Video input does not exist: %1").arg(path_to_qstring(source)));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Video input does not exist: %1").arg(path_to_qstring(source)));
     }
     if (prep == MediaVideoPrep::UsePrepared) {
-        push_log(log, QStringLiteral("Using prepared video source: %1").arg(path_to_qstring(source)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Using prepared video source: %1").arg(path_to_qstring(source)));
         return source;
     }
     if (ffmpeg_path.empty()) {
-        return std::unexpected(QStringLiteral("FFmpeg is required for selected video preparation"));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "FFmpeg is required for selected video preparation"));
     }
 
     const auto source_hint = inspect_video_source_hint(source);
@@ -299,17 +300,17 @@ std::expected<std::filesystem::path, QString> prepare_video_source(
         break;
     }
 
-    if (auto result = run_process_logged(ffmpeg_path, arguments, QStringLiteral("FFmpeg video prepare"), log); !result) {
+    if (auto result = run_process_logged(ffmpeg_path, arguments, QCoreApplication::translate("Usm.MediaBuild", "FFmpeg video prepare"), log); !result) {
         return std::unexpected(result.error());
     }
     if (!expected_format) {
-        return std::unexpected(QStringLiteral("FFmpeg video output validation has no expected format"));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "FFmpeg video output validation has no expected format"));
     }
     auto validated = validate_prepared_video_output(output, *expected_format, source_hint);
     if (!validated) {
         return std::unexpected(utf8_to_qstring(validated.error()));
     }
-    push_log(log, QStringLiteral("Validated FFmpeg video output: %1 frames, %2 ms, %3x%4.")
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Validated FFmpeg video output: %1 frames, %2 ms, %3x%4.")
         .arg(validated->frame_count)
         .arg(validated->duration_ms)
         .arg(validated->width)
@@ -327,17 +328,18 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
     const MediaBuildLogCallback& log
 ) {
     if (source.empty()) {
-        return std::unexpected(QStringLiteral("Audio input is required for selected audio preparation"));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Audio input is required for selected audio preparation"));
     }
     if (!std::filesystem::exists(source)) {
-        return std::unexpected(QStringLiteral("Audio input does not exist: %1").arg(path_to_qstring(source)));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Audio input does not exist: %1").arg(path_to_qstring(source)));
     }
     if (prep == MediaAudioPrep::UsePrepared) {
-        push_log(log, QStringLiteral("Using prepared ADX/HCA audio source: %1").arg(path_to_qstring(source)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Using prepared ADX/HCA audio source: %1").arg(path_to_qstring(source)));
         return std::optional<std::filesystem::path>{source};
     }
     if (is_prepared_cri_audio(source) && prepared_cri_audio_matches_target(source, prep)) {
-        push_log(log, QStringLiteral(
+        push_log(log, QCoreApplication::translate(
+            "Usm.MediaBuild",
             "Using CriCodecs-supported ADX/HCA source without FFmpeg transcoding: %1"
         ).arg(path_to_qstring(source)));
         return std::optional<std::filesystem::path>{source};
@@ -356,22 +358,23 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
             ? cristudio::modules::adx::decode_to_wav_bytes(*bytes, keys)
             : cristudio::modules::hca::decode_to_wav_bytes(*bytes, keys);
         if (!decoded) {
-            return std::unexpected(QStringLiteral("Native CRI audio decode failed: %1")
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Native CRI audio decode failed: %1")
                 .arg(utf8_to_qstring(decoded.error())));
         }
         if (auto written = write_binary_file(wav_path, *decoded); !written) {
             return std::unexpected(utf8_to_qstring(written.error()));
         }
         use_native_wav = false;
-        push_log(log, QStringLiteral("Decoded CRI audio to PCM with CriCodecs: %1")
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Decoded CRI audio to PCM with CriCodecs: %1")
             .arg(path_to_qstring(source)));
     }
     const auto& prepared_wav_path = use_native_wav ? source : wav_path;
     if (use_native_wav) {
-        push_log(log, QStringLiteral("Using native WAV PCM conversion: %1").arg(path_to_qstring(source)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Using native WAV PCM conversion: %1").arg(path_to_qstring(source)));
     } else if (!is_prepared_cri_audio(source)) {
         if (ffmpeg_path.empty()) {
-            return std::unexpected(QStringLiteral(
+            return std::unexpected(QCoreApplication::translate(
+                "Usm.MediaBuild",
                 "FFmpeg is required because the selected audio source is not convertible by the native WAV module"
             ));
         }
@@ -392,7 +395,7 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
         if (auto result = run_process_logged(
                 ffmpeg_path,
                 arguments,
-                QStringLiteral("FFmpeg audio prepare"),
+                QCoreApplication::translate("Usm.MediaBuild", "FFmpeg audio prepare"),
                 log);
             !result) {
             return std::unexpected(result.error());
@@ -403,7 +406,9 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
     if (!validated) {
         return std::unexpected(utf8_to_qstring(validated.error()));
     }
-    push_log(log, QStringLiteral("Validated prepared audio: %1 sample frames, %2 ms, %3 Hz, %4 channel(s).")
+    push_log(log, QCoreApplication::translate(
+        "Usm.MediaBuild",
+        "Validated prepared audio: sample frames %1, duration %2 ms, sample rate %3 Hz, channels %4.")
         .arg(validated->sample_count)
         .arg(validated->duration_ms)
         .arg(validated->sample_rate)
@@ -411,7 +416,7 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
 
     cricodecs::wav::WavContainer wav;
     if (auto result = wav.load(prepared_wav_path); !result) {
-        return std::unexpected(QStringLiteral("Prepared WAV load failed: %1").arg(utf8_to_qstring(result.error())));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Prepared WAV load failed: %1").arg(utf8_to_qstring(result.error())));
     }
     std::expected<std::vector<uint8_t>, std::string> encoded;
     if (hca_output) {
@@ -422,14 +427,14 @@ std::expected<std::optional<std::filesystem::path>, QString> prepare_audio_sourc
         encoded = cricodecs::adx::AdxEncoder::encode(wav, adx_config);
     }
     if (!encoded) {
-        return std::unexpected(QStringLiteral("%1 encode failed: %2")
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "%1 encode failed: %2")
             .arg(hca_output ? QStringLiteral("HCA") : QStringLiteral("ADX"))
             .arg(utf8_to_qstring(encoded.error())));
     }
     if (auto result = write_binary_file(encoded_path, *encoded); !result) {
         return std::unexpected(utf8_to_qstring(result.error()));
     }
-    push_log(log, QStringLiteral("Encoded %1 audio: %2")
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Encoded %1 audio: %2")
         .arg(hca_output ? QStringLiteral("HCA") : QStringLiteral("ADX"))
         .arg(path_to_qstring(encoded_path)));
     return std::optional<std::filesystem::path>{encoded_path};
@@ -443,14 +448,14 @@ std::expected<cricodecs::usm::UsmReader, QString> load_existing_usm(MediaBuildCo
     cricodecs::usm::UsmReader reader;
     if (!config.existing_usm_path.empty()) {
         if (auto result = reader.load(config.existing_usm_path); !result) {
-            return std::unexpected(QStringLiteral("Current USM load failed: %1").arg(utf8_to_qstring(result.error())));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Current USM load failed: %1").arg(utf8_to_qstring(result.error())));
         }
     } else {
         if (config.existing_usm_bytes.empty()) {
-            return std::unexpected(QStringLiteral("Current USM source bytes are not available"));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Current USM source bytes are not available"));
         }
         if (auto result = reader.load(std::move(config.existing_usm_bytes)); !result) {
-            return std::unexpected(QStringLiteral("Current USM load failed: %1").arg(utf8_to_qstring(result.error())));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Current USM load failed: %1").arg(utf8_to_qstring(result.error())));
         }
     }
     if (config.keys.has_cri_key) {
@@ -493,7 +498,7 @@ std::expected<std::filesystem::path, QString> materialize_existing_track(
     if (track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Audio) {
         auto bytes = reader.extract_stream(track.stream_index);
         if (!bytes) {
-            return std::unexpected(QStringLiteral("USM stream %1 extract failed: %2")
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "USM stream %1 extract failed: %2")
                 .arg(track.stream_index)
                 .arg(utf8_to_qstring(bytes.error())));
         }
@@ -502,7 +507,7 @@ std::expected<std::filesystem::path, QString> materialize_existing_track(
         if (auto written = write_binary_file(output_path, *bytes); !written) {
             return std::unexpected(utf8_to_qstring(written.error()));
         }
-        push_log(log, QStringLiteral("Using current USM stream %1: %2")
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Using current USM stream %1: %2")
             .arg(track.stream_index)
             .arg(path_to_qstring(output_path)));
         return output_path;
@@ -511,11 +516,11 @@ std::expected<std::filesystem::path, QString> materialize_existing_track(
     const auto output_path = existing_track_path(stage_dir, track);
     auto extracted = reader.extract_file(track.stream_index, output_path);
     if (!extracted) {
-        return std::unexpected(QStringLiteral("USM stream %1 extract failed: %2")
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "USM stream %1 extract failed: %2")
             .arg(track.stream_index)
             .arg(utf8_to_qstring(extracted.error())));
     }
-    push_log(log, QStringLiteral("Using current USM stream %1: %2")
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Using current USM stream %1: %2")
         .arg(track.stream_index)
         .arg(path_to_qstring(output_path)));
     return output_path;
@@ -549,12 +554,12 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             const bool is_alpha = track.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Alpha;
             if (has_video) {
                 if (!is_alpha) {
-                    push_log(log, QStringLiteral("Skipping extra video stream %1; builder accepts one main video stream.").arg(track.stream_index));
+                    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Skipping extra video stream %1; builder accepts one main video stream.").arg(track.stream_index));
                     continue;
                 }
             }
             if (is_alpha && input.alpha_path.has_value()) {
-                return std::unexpected(QStringLiteral("Current USM contains more than one enabled alpha-video stream."));
+                return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Current USM contains more than one enabled alpha-video stream."));
             }
             if (track.replacement_source.empty()) {
                 auto materialized = materialize_existing_track(*reader, track, stage_dir, log);
@@ -642,7 +647,7 @@ std::expected<void, QString> build_existing_usm_from_tracks(
         }
         case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported: {
             if (track.enabled) {
-                return std::unexpected(QStringLiteral("USM rebuild does not support stream %1 (%2). Disable it before building.")
+                return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "USM rebuild does not support stream %1 (%2). Disable it before building.")
                     .arg(track.stream_index)
                     .arg(utf8_to_qstring(track.label)));
             }
@@ -684,7 +689,8 @@ std::expected<void, QString> build_existing_usm_from_tracks(
     }
     if (!config.alpha_source.empty()) {
         if (input.alpha_path.has_value()) {
-            return std::unexpected(QStringLiteral(
+            return std::unexpected(QCoreApplication::translate(
+                "Usm.MediaBuild",
                 "The rebuilt USM already includes an alpha-video stream. Replace that stream or disable it before adding another."
             ));
         }
@@ -709,11 +715,11 @@ std::expected<void, QString> build_existing_usm_from_tracks(
     }
 
     if (!has_video) {
-        return std::unexpected(QStringLiteral("Current USM build requires one enabled video stream."));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Current USM build requires one enabled video stream."));
     }
 
     cricodecs::usm::UsmBuilder builder;
-    push_log(log, QStringLiteral("USM current-file rebuild: %1").arg(path_to_qstring(output_path)));
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "USM current-file rebuild: %1").arg(path_to_qstring(output_path)));
     if (auto result = builder.build_to_file(output_path, input); !result) {
         return std::unexpected(utf8_to_qstring(result.error()));
     }
@@ -724,19 +730,19 @@ std::expected<void, QString> build_existing_usm_from_tracks(
 
 std::optional<QString> validate_media_build_config(const MediaBuildConfig& config, bool inspect_sources) {
     if (config.output_path.empty()) {
-        return QStringLiteral("Choose an output path.");
+        return QCoreApplication::translate("Usm.MediaBuild", "Choose an output path.");
     }
     if (config.output_path.filename().empty()) {
-        return QStringLiteral("Choose an output filename, not only a directory.");
+        return QCoreApplication::translate("Usm.MediaBuild", "Choose an output filename, not only a directory.");
     }
 
     const bool existing_build = is_existing_usm_build(config);
     if (existing_build) {
         if (config.target != MediaBuildTarget::Usm) {
-            return QStringLiteral("Existing USM streams can only be rebuilt as USM.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Existing USM streams can only be rebuilt as USM.");
         }
         if (config.existing_usm_path.empty() && !config.has_existing_usm_bytes && config.existing_usm_bytes.empty()) {
-            return QStringLiteral("Current USM source data is not available.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Current USM source data is not available.");
         }
 
         int video_count = 0;
@@ -749,7 +755,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                 continue;
             }
             if (track.filename.empty()) {
-                return QStringLiteral("Stream %1 needs a non-empty stream name.")
+                return QCoreApplication::translate("Usm.MediaBuild", "Stream %1 needs a non-empty stream name.")
                     .arg(track.stream_index);
             }
             switch (track.kind) {
@@ -765,7 +771,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Audio:
                 if (audio_channels[track.channel]) {
-                    return QStringLiteral("Audio channel %1 is assigned more than once.").arg(track.channel);
+                    return QCoreApplication::translate("Usm.MediaBuild", "Audio channel %1 is assigned more than once.").arg(track.channel);
                 }
                 audio_channels[track.channel] = true;
                 needs_ffmpeg = needs_ffmpeg ||
@@ -774,24 +780,25 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
                 if (subtitle_channels[track.channel]) {
-                    return QStringLiteral("Subtitle channel %1 is assigned more than once.").arg(track.channel);
+                    return QCoreApplication::translate("Usm.MediaBuild", "Subtitle channel %1 is assigned more than once.").arg(track.channel);
                 }
                 subtitle_channels[track.channel] = true;
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported:
-                return QStringLiteral("Disable unsupported stream %1 before rebuilding.").arg(track.stream_index);
+                return QCoreApplication::translate("Usm.MediaBuild", "Disable unsupported stream %1 before rebuilding.").arg(track.stream_index);
             }
             if (inspect_sources && !track.replacement_source.empty() &&
                 !std::filesystem::exists(track.replacement_source)) {
-                return QStringLiteral("Replacement path does not exist: %1")
+                return QCoreApplication::translate("Usm.MediaBuild", "Replacement path does not exist: %1")
                     .arg(path_to_qstring(track.replacement_source));
             }
         }
         if (video_count != 1) {
-            return QStringLiteral("Enable exactly one video stream.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Enable exactly one video stream.");
         }
         if (alpha_count > 1) {
-            return QStringLiteral(
+            return QCoreApplication::translate(
+                "Usm.MediaBuild",
                 "A USM can contain one alpha-video stream. Replace the current alpha stream or disable it before adding another."
             );
         }
@@ -799,66 +806,66 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
             (!config.alpha_source.empty() && config.alpha_prep != MediaVideoPrep::UsePrepared);
         for (const auto& track : config.audio_tracks) {
             if (track.source.empty()) {
-                return QStringLiteral("Remove empty audio tracks or choose their source files.");
+                return QCoreApplication::translate("Usm.MediaBuild", "Remove empty audio tracks or choose their source files.");
             }
             needs_ffmpeg = needs_ffmpeg || audio_prep_requires_ffmpeg(track.source, track.prep);
             if (track.channel_no.has_value()) {
                 if (audio_channels[*track.channel_no]) {
-                    return QStringLiteral("Audio channel %1 is assigned more than once.").arg(*track.channel_no);
+                    return QCoreApplication::translate("Usm.MediaBuild", "Audio channel %1 is assigned more than once.").arg(*track.channel_no);
                 }
                 audio_channels[*track.channel_no] = true;
             }
             if (inspect_sources && !std::filesystem::exists(track.source)) {
-                return QStringLiteral("Audio source does not exist: %1").arg(path_to_qstring(track.source));
+                return QCoreApplication::translate("Usm.MediaBuild", "Audio source does not exist: %1").arg(path_to_qstring(track.source));
             }
         }
         for (const auto& track : config.subtitle_tracks) {
             if (track.source.empty()) {
-                return QStringLiteral("Remove empty subtitle tracks or choose their source files.");
+                return QCoreApplication::translate("Usm.MediaBuild", "Remove empty subtitle tracks or choose their source files.");
             }
             if (track.channel_no.has_value()) {
                 if (subtitle_channels[*track.channel_no]) {
-                    return QStringLiteral("Subtitle channel %1 is assigned more than once.").arg(*track.channel_no);
+                    return QCoreApplication::translate("Usm.MediaBuild", "Subtitle channel %1 is assigned more than once.").arg(*track.channel_no);
                 }
                 subtitle_channels[*track.channel_no] = true;
             }
             if (inspect_sources && !std::filesystem::exists(track.source)) {
-                return QStringLiteral("Subtitle source does not exist: %1").arg(path_to_qstring(track.source));
+                return QCoreApplication::translate("Usm.MediaBuild", "Subtitle source does not exist: %1").arg(path_to_qstring(track.source));
             }
         }
         if (inspect_sources && !config.alpha_source.empty() &&
             !std::filesystem::exists(config.alpha_source)) {
-            return QStringLiteral("Alpha-video source does not exist: %1")
+            return QCoreApplication::translate("Usm.MediaBuild", "Alpha-video source does not exist: %1")
                 .arg(path_to_qstring(config.alpha_source));
         }
         if (needs_ffmpeg && config.ffmpeg_path.empty()) {
-            return QStringLiteral("FFmpeg was not found in PATH.");
+            return QCoreApplication::translate("Usm.MediaBuild", "FFmpeg was not found in PATH.");
         }
         if (config.encrypt_audio && !config.keys.has_cri_key) {
-            return QStringLiteral("Audio encryption requires a configured CRI key.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Audio encryption requires a configured CRI key.");
         }
         if (inspect_sources && !config.existing_usm_path.empty() &&
             !std::filesystem::exists(config.existing_usm_path)) {
-            return QStringLiteral("Current USM path does not exist.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Current USM path does not exist.");
         }
         return std::nullopt;
     }
 
     if (config.video_source.empty()) {
-        return QStringLiteral("Choose a video source.");
+        return QCoreApplication::translate("Usm.MediaBuild", "Choose a video source.");
     }
     if (config.target == MediaBuildTarget::Sfd &&
         (config.video_prep == MediaVideoPrep::FfmpegH264 || config.video_prep == MediaVideoPrep::FfmpegVp9)) {
-        return QStringLiteral("SFD requires MPEG video. Choose prepared MPEG, MPEG-1, or MPEG-2.");
+        return QCoreApplication::translate("Usm.MediaBuild", "SFD requires MPEG video. Choose prepared MPEG, MPEG-1, or MPEG-2.");
     }
     if (config.target == MediaBuildTarget::Sfd && config.audio_tracks.size() > 1) {
-        return QStringLiteral("SFD supports at most one audio track.");
+        return QCoreApplication::translate("Usm.MediaBuild", "SFD supports at most one audio track.");
     }
     if (config.target == MediaBuildTarget::Sfd && !config.subtitle_tracks.empty()) {
-        return QStringLiteral("SFD subtitle authoring is not supported.");
+        return QCoreApplication::translate("Usm.MediaBuild", "SFD subtitle authoring is not supported.");
     }
     if (config.target == MediaBuildTarget::Sfd && !config.alpha_source.empty()) {
-        return QStringLiteral("Alpha-video authoring is available for USM builds only.");
+        return QCoreApplication::translate("Usm.MediaBuild", "Alpha-video authoring is available for USM builds only.");
     }
 
     bool needs_ffmpeg = config.video_prep != MediaVideoPrep::UsePrepared ||
@@ -866,64 +873,64 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
     std::array<bool, 256> audio_channels{};
     for (const auto& track : config.audio_tracks) {
         if (track.source.empty()) {
-            return QStringLiteral("Remove empty audio tracks or choose their source files.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Remove empty audio tracks or choose their source files.");
         }
         needs_ffmpeg = needs_ffmpeg || audio_prep_requires_ffmpeg(track.source, track.prep);
         if (track.channel_no.has_value()) {
             if (audio_channels[*track.channel_no]) {
-                return QStringLiteral("Audio channel %1 is assigned more than once.").arg(*track.channel_no);
+                return QCoreApplication::translate("Usm.MediaBuild", "Audio channel %1 is assigned more than once.").arg(*track.channel_no);
             }
             audio_channels[*track.channel_no] = true;
         }
     }
 
     if (config.encrypt_audio && config.target != MediaBuildTarget::Usm) {
-        return QStringLiteral("USM audio encryption is not available for SFD.");
+        return QCoreApplication::translate("Usm.MediaBuild", "USM audio encryption is not available for SFD.");
     }
     if (config.encrypt_audio && !config.keys.has_cri_key) {
-        return QStringLiteral("Audio encryption requires a configured CRI key.");
+        return QCoreApplication::translate("Usm.MediaBuild", "Audio encryption requires a configured CRI key.");
     }
 
     std::array<bool, 256> subtitle_channels{};
     for (const auto& track : config.subtitle_tracks) {
         if (track.source.empty()) {
-            return QStringLiteral("Remove empty subtitle tracks or choose their source files.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Remove empty subtitle tracks or choose their source files.");
         }
         if (track.channel_no.has_value()) {
             if (subtitle_channels[*track.channel_no]) {
-                return QStringLiteral("Subtitle channel %1 is assigned more than once.").arg(*track.channel_no);
+                return QCoreApplication::translate("Usm.MediaBuild", "Subtitle channel %1 is assigned more than once.").arg(*track.channel_no);
             }
             subtitle_channels[*track.channel_no] = true;
         }
     }
 
     if (needs_ffmpeg && config.ffmpeg_path.empty()) {
-        return QStringLiteral("FFmpeg was not found in PATH.");
+        return QCoreApplication::translate("Usm.MediaBuild", "FFmpeg was not found in PATH.");
     }
     if (!inspect_sources) {
         return std::nullopt;
     }
     if (!std::filesystem::exists(config.video_source)) {
-        return QStringLiteral("Video source does not exist: %1").arg(path_to_qstring(config.video_source));
+        return QCoreApplication::translate("Usm.MediaBuild", "Video source does not exist: %1").arg(path_to_qstring(config.video_source));
     }
     if (!config.alpha_source.empty() && !std::filesystem::exists(config.alpha_source)) {
-        return QStringLiteral("Alpha-video source does not exist: %1").arg(path_to_qstring(config.alpha_source));
+        return QCoreApplication::translate("Usm.MediaBuild", "Alpha-video source does not exist: %1").arg(path_to_qstring(config.alpha_source));
     }
     for (const auto& track : config.audio_tracks) {
         if (!std::filesystem::exists(track.source)) {
-            return QStringLiteral("Audio source does not exist: %1").arg(path_to_qstring(track.source));
+            return QCoreApplication::translate("Usm.MediaBuild", "Audio source does not exist: %1").arg(path_to_qstring(track.source));
         }
     }
     for (const auto& track : config.subtitle_tracks) {
         if (!std::filesystem::exists(track.source)) {
-            return QStringLiteral("Subtitle source does not exist: %1").arg(path_to_qstring(track.source));
+            return QCoreApplication::translate("Usm.MediaBuild", "Subtitle source does not exist: %1").arg(path_to_qstring(track.source));
         }
     }
 
     if (config.target == MediaBuildTarget::Sfd && config.video_prep == MediaVideoPrep::UsePrepared) {
         cricodecs::video::MpegVideoReader video;
         if (auto opened = video.open(config.video_source); !opened) {
-            return QStringLiteral("Prepared SFD video is not an MPEG elementary stream: %1")
+            return QCoreApplication::translate("Usm.MediaBuild", "Prepared SFD video is not an MPEG elementary stream: %1")
                 .arg(utf8_to_qstring(opened.error()));
         }
     }
@@ -931,7 +938,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
         config.audio_tracks.front().prep == MediaAudioPrep::UsePrepared) {
         auto audio = cricodecs::adx::Adx::load(config.audio_tracks.front().source);
         if (!audio || audio->is_ahx()) {
-            return QStringLiteral("Prepared SFD audio must be ADX.");
+            return QCoreApplication::translate("Usm.MediaBuild", "Prepared SFD audio must be ADX.");
         }
     }
     return std::nullopt;
@@ -945,14 +952,14 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         std::error_code ec;
         std::filesystem::create_directories(config.output_path.parent_path(), ec);
         if (ec) {
-            return std::unexpected(QStringLiteral("Could not create output directory: %1").arg(QString::fromStdString(ec.message())));
+            return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not create output directory: %1").arg(QString::fromStdString(ec.message())));
         }
     }
 
     QLockFile output_lock(path_to_qstring(config.output_path) + QStringLiteral(".cristudio.lock"));
     output_lock.setStaleLockTime(0);
     if (!output_lock.tryLock()) {
-        return std::unexpected(QStringLiteral("Another build is already writing this output path."));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Another build is already writing this output path."));
     }
 
     const auto stage_base = config.output_path.has_parent_path()
@@ -960,12 +967,12 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         : std::filesystem::temp_directory_path();
     QTemporaryDir stage(path_to_qstring(stage_base / ".cristudio-build-XXXXXX"));
     if (!stage.isValid()) {
-        return std::unexpected(QStringLiteral("Could not create build staging directory: %1").arg(stage.errorString()));
+        return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Could not create build staging directory: %1").arg(stage.errorString()));
     }
     const auto stage_dir = path_from_qstring(stage.path());
     const auto staged_output = stage_dir /
         (config.target == MediaBuildTarget::Usm ? "result.usm" : "result.sfd");
-    push_log(log, QStringLiteral("Build staging directory: %1").arg(path_to_qstring(stage_dir)));
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Build staging directory: %1").arg(path_to_qstring(stage_dir)));
 
     if (is_existing_usm_build(config)) {
         auto result = build_existing_usm_from_tracks(config, stage_dir, staged_output, log);
@@ -975,7 +982,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         if (auto published = publish_staged_file(staged_output, config.output_path); !published) {
             return std::unexpected(published.error());
         }
-        push_log(log, QStringLiteral("Built media output: %1").arg(path_to_qstring(config.output_path)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Built media output: %1").arg(path_to_qstring(config.output_path)));
         return {};
     }
 
@@ -1059,12 +1066,12 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
                 .channel_no = subtitle.channel_no,
                 .filename = subtitle.filename,
             });
-            push_log(log, QStringLiteral("USM subtitle source: %1, language %2.")
+            push_log(log, QCoreApplication::translate("Usm.MediaBuild", "USM subtitle source: %1, language %2.")
                 .arg(path_to_qstring(subtitle.source))
                 .arg(subtitle.language_id));
         }
         cricodecs::usm::UsmBuilder builder;
-        push_log(log, QStringLiteral("USM native build: %1").arg(path_to_qstring(staged_output)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "USM native build: %1").arg(path_to_qstring(staged_output)));
         if (auto result = builder.build_to_file(staged_output, input); !result) {
             return std::unexpected(utf8_to_qstring(result.error()));
         }
@@ -1077,7 +1084,7 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         input.output_name = config.output_path.filename().string();
         input.build_profile = config.sfd_profile;
         cricodecs::sfd::SfdBuilder builder;
-        push_log(log, QStringLiteral("SFD native build: %1").arg(path_to_qstring(staged_output)));
+        push_log(log, QCoreApplication::translate("Usm.MediaBuild", "SFD native build: %1").arg(path_to_qstring(staged_output)));
         if (auto result = builder.build_to_file(staged_output, input); !result) {
             return std::unexpected(utf8_to_qstring(result.error()));
         }
@@ -1087,21 +1094,21 @@ std::expected<void, QString> build_media_from_sources(MediaBuildConfig config, M
         return std::unexpected(published.error());
     }
 
-    push_log(log, QStringLiteral("Built media output: %1").arg(path_to_qstring(config.output_path)));
+    push_log(log, QCoreApplication::translate("Usm.MediaBuild", "Built media output: %1").arg(path_to_qstring(config.output_path)));
     return {};
 }
 
 std::vector<TransformDetailRow> media_build_job_detail_rows(const DecryptionKeys& keys) {
     return {
-        {QStringLiteral("Job"), QStringLiteral("Build USM or SFD from video and optional audio sources")},
-        {QStringLiteral("Video prep"), QStringLiteral("prepared source, FFmpeg VP9, H.264, MPEG-1, or MPEG-2")},
-        {QStringLiteral("Audio prep"), QStringLiteral("no tracks, or all ADX/HCA from prepared or FFmpeg-supported audio")},
-        {QStringLiteral("Outputs"), QStringLiteral(".usm, .sfd")},
+        {QStringLiteral("Job"), QCoreApplication::translate("Usm.MediaBuild", "Build USM or SFD from video and optional audio sources")},
+        {QCoreApplication::translate("Usm.MediaBuild", "Video prep"), QCoreApplication::translate("Usm.MediaBuild", "prepared source, FFmpeg VP9, H.264, MPEG-1, or MPEG-2")},
+        {QCoreApplication::translate("Usm.MediaBuild", "Audio prep"), QCoreApplication::translate("Usm.MediaBuild", "no tracks, or all ADX/HCA from prepared or FFmpeg-supported audio")},
+        {QStringLiteral("Outputs"), QCoreApplication::translate("Usm.MediaBuild", ".usm, .sfd")},
         {
             QStringLiteral("Keys"),
             keys.has_cri_key
-                ? QStringLiteral("CRI key configured for USM ADX masking / HCA cipher-56")
-                : QStringLiteral("no CRI key configured")
+                ? QCoreApplication::translate("Usm.MediaBuild", "CRI key configured for USM ADX masking / HCA cipher-56")
+                : QCoreApplication::translate("Usm.MediaBuild", "no CRI key configured")
         }
     };
 }

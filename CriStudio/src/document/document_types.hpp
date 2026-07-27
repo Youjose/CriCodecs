@@ -6,6 +6,7 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,8 @@ struct DecryptionKeys {
 struct InfoRow {
     std::string name;
     std::string value;
+    std::string id;
+    std::string value_id;
 };
 
 struct EntrySummary {
@@ -72,6 +75,18 @@ struct LoadedDocument {
     std::vector<EntrySummary> entries;
     bool summary_loaded = true;
 };
+
+[[nodiscard]] inline std::string_view document_format_id(const LoadedDocument& document) noexcept {
+    return document.loader_tag.empty() ? std::string_view(document.format) : std::string_view(document.loader_tag);
+}
+
+[[nodiscard]] inline std::string_view info_row_id(const InfoRow& row) noexcept {
+    return row.id.empty() ? std::string_view(row.name) : std::string_view(row.id);
+}
+
+[[nodiscard]] inline std::string_view info_row_value_id(const InfoRow& row) noexcept {
+    return row.value_id.empty() ? std::string_view(row.value) : std::string_view(row.value_id);
+}
 
 struct AudioLoop {
     std::string name;

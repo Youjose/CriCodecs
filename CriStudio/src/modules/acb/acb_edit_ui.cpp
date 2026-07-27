@@ -3,6 +3,7 @@
 #include "modules/acb/acb_edit.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QFileDialog>
 
 #include <cstddef>
@@ -57,9 +58,9 @@ std::expected<std::optional<AssociatedAwbExportPayload>, QString> choose_associa
 
     const auto path_text = QFileDialog::getSaveFileName(
         parent,
-        QStringLiteral("Export associated AWB"),
+        QCoreApplication::translate("Acb.AcbEditUi", "Export associated AWB"),
         associated_awb_default_name(acb, std::move(title)),
-        QStringLiteral("AWB/AFS2 banks (*.awb);;All files (*)")
+        QCoreApplication::translate("Acb.AcbEditUi", "AWB/AFS2 banks (*.awb);;All files (*)")
     );
     if (path_text.isEmpty()) {
         return std::optional<AssociatedAwbExportPayload>{};

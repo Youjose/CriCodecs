@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/csb/csb_browse.hpp"
 
 #include "path_text.hpp"
@@ -24,11 +25,11 @@ EntrySummary sourced_entry(
 } // namespace
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::csb::CsbContainer& csb) {
-    auto doc = base_document(path, "CSB cue archive");
-    doc.info.push_back({"Name", std::string(csb.name())});
-    doc.info.push_back({"Sections", number(csb.section_count())});
-    doc.info.push_back({"Elements", number(csb.element_count())});
-    doc.info.push_back({"Streams", number(csb.stream_count())});
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Csb.CsbBrowse", "CSB cue archive"));
+    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Name"), std::string(csb.name())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Sections"), number(csb.section_count())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Elements"), number(csb.element_count())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Streams"), number(csb.stream_count())});
 
     doc.entries.reserve(csb.stream_count());
     for (uint32_t i = 0; i < csb.stream_count(); ++i) {

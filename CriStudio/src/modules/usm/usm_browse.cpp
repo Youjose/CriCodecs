@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/usm/usm_browse.hpp"
 
 #include "path_text.hpp"
@@ -26,46 +27,46 @@ EntrySummary sourced_entry(
 std::string stream_family_type(cricodecs::usm::UsmChunkType type) {
     switch (type) {
     case cricodecs::usm::UsmChunkType::SFV:
-        return "SFV video";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "SFV video");
     case cricodecs::usm::UsmChunkType::ALP:
-        return "ALP alpha video";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "ALP alpha video");
     case cricodecs::usm::UsmChunkType::SFA:
-        return "SFA audio";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "SFA audio");
     case cricodecs::usm::UsmChunkType::AHX:
-        return "AHX audio";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "AHX audio");
     case cricodecs::usm::UsmChunkType::SBT:
-        return "SBT subtitles";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "SBT subtitles");
     case cricodecs::usm::UsmChunkType::CUE:
-        return "CUE metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "CUE metadata");
     case cricodecs::usm::UsmChunkType::USR:
-        return "USR user data";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USR user data");
     case cricodecs::usm::UsmChunkType::PST:
-        return "PST picture metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "PST picture metadata");
     case cricodecs::usm::UsmChunkType::ELM:
-        return "ELM index metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "ELM index metadata");
     case cricodecs::usm::UsmChunkType::STA:
-        return "STA seek metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "STA seek metadata");
     case cricodecs::usm::UsmChunkType::ATP:
-        return "ATP picture metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "ATP picture metadata");
     case cricodecs::usm::UsmChunkType::SFSH:
-        return "SFSH header";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "SFSH header");
     case cricodecs::usm::UsmChunkType::CRID:
-        return "CRID metadata";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "CRID metadata");
     }
-    return "USM stream";
+    return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USM stream");
 }
 
 std::string audio_stream_type(const cricodecs::usm::UsmStreamInfo& stream) {
     if (stream.stream_id == cricodecs::usm::UsmChunkType::AHX) {
-        return "AHX audio";
+        return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "AHX audio");
     }
     if (stream.audio_codec) {
         const auto name = std::string(cricodecs::usm::audio_codec_name(*stream.audio_codec));
         if (name == "adx") {
-            return "ADX audio";
+            return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "ADX audio");
         }
         if (name == "hca") {
-            return "HCA audio";
+            return cristudio::i18n::translate_utf8("Usm.UsmBrowse", "HCA audio");
         }
         if (name != "unknown") {
             return name + " audio";
@@ -195,11 +196,11 @@ LoadedDocument summarize(
     const VideoFormatProbe& video_format_probe,
     bool inspect_stream_payloads
 ) {
-    auto doc = base_document(path, "USM/SofDec stream");
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USM/SofDec stream"));
     const auto container_filename = archive_display_path(usm.container_filename());
-    doc.info.push_back({"Container filename", container_filename});
-    doc.info.push_back({"Streams", number(usm.streams().size())});
-    doc.info.push_back({"Chunks", number(usm.chunks().size())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Container filename"), container_filename});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Streams"), number(usm.streams().size())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Chunks"), number(usm.chunks().size())});
     doc.info.push_back({"SFSH", bool_text(usm.sfsh_header().has_value())});
 
     doc.entries.reserve(usm.streams().size());
@@ -213,14 +214,14 @@ LoadedDocument summarize(
             stream_type(usm, i, stream, video_format_probe),
             stream.filesize == 0 ? std::string{} : byte_count(stream.filesize),
             "channel " + number(stream.channel_no),
-            "stream " + number(i) + ", avbps " + number(stream.avbps)
+            "stream " + number(i) + cristudio::i18n::translate_utf8("Usm.UsmBrowse", ", avbps ") + number(stream.avbps)
         }, path, "USM", i);
         if (inspect_stream_payloads && stream.stream_id == cricodecs::usm::UsmChunkType::SBT) {
             if (auto payload = usm.extract_stream(i)) {
                 if (auto cues = cricodecs::usm::parse_sbt_subtitles(*payload)) {
-                    entry.detail += ", cues " + number(cues->size());
+                    entry.detail += cristudio::i18n::translate_utf8("Usm.UsmBrowse", ", cues ") + number(cues->size());
                     if (!cues->empty()) {
-                        entry.detail += ", languages " + language_list(*cues);
+                        entry.detail += cristudio::i18n::translate_utf8("Usm.UsmBrowse", ", languages ") + language_list(*cues);
                     }
                 }
             }
@@ -246,16 +247,16 @@ LoadedDocument summarize_sbt_subtitles(
         return {};
     }
 
-    auto doc = base_document(path, "USM SBT subtitles");
-    doc.info.push_back({"Cues", number(cues->size())});
-    doc.info.push_back({"Languages", language_list(*cues)});
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USM SBT subtitles"));
+    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Cues"), number(cues->size())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Languages"), language_list(*cues)});
     if (!cues->empty()) {
-        doc.info.push_back({"Time unit", number(cues->front().time_unit)});
+        doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Time unit"), number(cues->front().time_unit)});
         uint32_t total_time = 0;
         for (const auto& cue : *cues) {
             total_time = (std::max)(total_time, cue.end_time());
         }
-        doc.info.push_back({"Total time", number(total_time)});
+        doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Total time"), number(total_time)});
     }
     doc.entry_columns = {"Language", "Time", "Text"};
     doc.entry_column_types = {"u32", "time", "string"};
@@ -263,8 +264,8 @@ LoadedDocument summarize_sbt_subtitles(
     for (size_t i = 0; i < cues->size(); ++i) {
         const auto& cue = (*cues)[i];
         EntrySummary entry;
-        entry.name = "cue " + number(i);
-        entry.type = "subtitle";
+        entry.name = cristudio::i18n::translate_utf8("Usm.UsmBrowse", "cue ") + number(i);
+        entry.type = cristudio::i18n::translate_utf8("Usm.UsmBrowse", "subtitle");
         entry.size = number(cue.text.size()) + " chars";
         entry.offset = subtitle_time_text(cue);
         entry.detail = cue.text;

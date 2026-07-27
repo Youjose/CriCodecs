@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "editor/hex_patterns/hex_patterns_internal.hpp"
 
 #include "io_endian.hpp"
@@ -20,20 +21,20 @@ void add_cpk_chunk_patterns_at(std::vector<HexPatternRange>& out, uint64_t total
     const auto utf_size = cricodecs::io::read_le<uint32_t>(prefix.data() + base + 0x08);
     const auto chunk_size = 0x10ull + utf_size;
     const auto enc_flag = cricodecs::io::read_le<uint32_t>(prefix.data() + base + 0x04);
-    add(out, base_offset, chunk_size, QStringLiteral("CPK chunk %1").arg(ascii_value(prefix, base, 4)), tone(0), total_size);
-    add(out, base_offset, 0x10, QStringLiteral("CPK chunk header"), tone(0), total_size);
+    add(out, base_offset, chunk_size, QCoreApplication::translate("Editor.CpkPatterns", "CPK chunk %1").arg(ascii_value(prefix, base, 4)), tone(0), total_size);
+    add(out, base_offset, 0x10, QCoreApplication::translate("Editor.CpkPatterns", "CPK chunk header"), tone(0), total_size);
     add_field(out, base_offset + 0x00, 4, QStringLiteral("chunk.magic"), ascii_value(prefix, base, 4), 0, total_size);
-    add_field(out, base_offset + 0x04, 4, QStringLiteral("UTF encryption flag"), hex_value(enc_flag, 8), 1, total_size);
-    add_field(out, base_offset + 0x08, 4, QStringLiteral("UTF payload size"), QString::number(utf_size), 2, total_size);
-    add_field(out, base_offset + 0x0C, 4, QStringLiteral("reserved"), hex_value(cricodecs::io::read_le<uint32_t>(prefix.data() + base + 0x0C), 8), 3, total_size);
+    add_field(out, base_offset + 0x04, 4, QCoreApplication::translate("Editor.CpkPatterns", "UTF encryption flag"), hex_value(enc_flag, 8), 1, total_size);
+    add_field(out, base_offset + 0x08, 4, QCoreApplication::translate("Editor.CpkPatterns", "UTF payload size"), QString::number(utf_size), 2, total_size);
+    add_field(out, base_offset + 0x0C, 4, QCoreApplication::translate("Editor.CpkPatterns", "reserved"), hex_value(cricodecs::io::read_le<uint32_t>(prefix.data() + base + 0x0C), 8), 3, total_size);
     if (utf_size != 0) {
         const auto payload_offset = base_offset + 0x10;
         add(out, payload_offset, utf_size,
-            enc_flag == 0xFFu ? QStringLiteral("clear UTF payload") : QStringLiteral("encrypted UTF payload"),
+            enc_flag == 0xFFu ? QCoreApplication::translate("Editor.CpkPatterns", "clear UTF payload") : QCoreApplication::translate("Editor.CpkPatterns", "encrypted UTF payload"),
             tone(2),
             total_size);
         add_utf_patterns_at(out, total_size, prefix, payload_offset,
-            QStringLiteral("CPK %1 UTF payload").arg(ascii_value(prefix, base, 4)));
+            QCoreApplication::translate("Editor.CpkPatterns", "CPK %1 UTF payload").arg(ascii_value(prefix, base, 4)));
     }
 }
 
@@ -42,7 +43,7 @@ void add_cpk_patterns(std::vector<HexPatternRange>& out, uint64_t total_size, st
 }
 
 void add_cpk_document_patterns(std::vector<HexPatternRange>& out, const LoadedDocument& document) {
-    const auto lower = lower_ascii(document.format);
+    const auto lower = lower_ascii(document_format_id(document));
     if (lower.find("cpk") == std::string::npos) {
         return;
     }
@@ -64,9 +65,9 @@ void add_cpk_document_patterns(std::vector<HexPatternRange>& out, const LoadedDo
             continue;
         }
         const auto total = *size + 0x10u;
-        add(out, *offset, total, QStringLiteral("CPK chunk %1").arg(QLatin1String(chunk.magic, 4)), tone(chunk.color), document.file_size);
-        add(out, *offset, 0x10, QStringLiteral("CPK chunk header"), tone(chunk.color), document.file_size);
-        add(out, *offset + 0x10u, *size, QStringLiteral("CPK UTF payload"), tone(chunk.color + 1), document.file_size);
+        add(out, *offset, total, QCoreApplication::translate("Editor.CpkPatterns", "CPK chunk %1").arg(QLatin1String(chunk.magic, 4)), tone(chunk.color), document.file_size);
+        add(out, *offset, 0x10, QCoreApplication::translate("Editor.CpkPatterns", "CPK chunk header"), tone(chunk.color), document.file_size);
+        add(out, *offset + 0x10u, *size, QCoreApplication::translate("Editor.CpkPatterns", "CPK UTF payload"), tone(chunk.color + 1), document.file_size);
     }
 }
 

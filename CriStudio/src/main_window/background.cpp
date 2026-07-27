@@ -1,7 +1,9 @@
+#include "shared/i18n.hpp"
 #include "main_window.hpp"
 
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QApplication>
 #include <QDateTime>
 #include <QFile>
@@ -39,7 +41,7 @@ bool extraction_message_is_failure_local(const std::string& message) {
     auto lower = QString::fromStdString(message).toLower();
     return lower.contains(QStringLiteral("failed")) ||
            lower.contains(QStringLiteral("error")) ||
-           lower.contains(QStringLiteral("could not")) ||
+           lower.contains(QCoreApplication::translate("MainWindow.Background", "could not")) ||
            lower.contains(QStringLiteral("missing")) ||
            lower.contains(QStringLiteral("needs "));
 }
@@ -58,6 +60,7 @@ QString archive_basename_local(QString text) {
 }
 
 QString strip_mux_prefix_local(QString text) {
+    // Internal synthetic-entry prefix; it is parsed and must never be translated.
     constexpr auto prefix = "Mux preview/";
     return text.startsWith(QLatin1String(prefix))
         ? text.mid(static_cast<int>(std::char_traits<char>::length(prefix)))
@@ -97,21 +100,21 @@ QString extraction_plan_text_local(
     }
 
     QStringList lines;
-    lines << QStringLiteral("Output: %1").arg(output_dir);
-    lines << QStringLiteral("Mode: %1").arg(mode == ExtractionMode::Raw ? QStringLiteral("raw") : QStringLiteral("decoded"));
-    lines << QStringLiteral("Targets: %1 documents, %2 entries").arg(document_count).arg(entry_count);
+    lines << QCoreApplication::translate("MainWindow.Background", "Output: %1").arg(output_dir);
+    lines << QCoreApplication::translate("MainWindow.Background", "Mode: %1").arg(mode == ExtractionMode::Raw ? QStringLiteral("raw") : QStringLiteral("decoded"));
+    lines << QCoreApplication::translate("MainWindow.Background", "Targets: %1 documents, %2 entries").arg(document_count).arg(entry_count);
     if (archive_entry_count != 0) {
-        lines << QStringLiteral("Archive entries queued by selected documents: %1").arg(archive_entry_count);
+        lines << QCoreApplication::translate("MainWindow.Background", "Archive entries queued by selected documents: %1").arg(archive_entry_count);
     }
-    lines << QStringLiteral("USM/SFD mux outputs: %1").arg(include_mux_outputs ? QStringLiteral("enabled") : QStringLiteral("disabled"));
+    lines << QCoreApplication::translate("MainWindow.Background", "USM/SFD mux outputs: %1").arg(include_mux_outputs ? QStringLiteral("enabled") : QStringLiteral("disabled"));
     lines << QString{};
-    lines << QStringLiteral("First targets:");
+    lines << QCoreApplication::translate("MainWindow.Background", "First targets:");
     const auto shown = std::min<size_t>(targets.size(), 12);
     for (size_t i = 0; i < shown; ++i) {
         lines << QStringLiteral("  %1. %2").arg(i + 1).arg(extraction_target_label_local(targets[i]));
     }
     if (targets.size() > shown) {
-        lines << QStringLiteral("  ... %1 more").arg(targets.size() - shown);
+        lines << QCoreApplication::translate("MainWindow.Background", "  ... %1 more").arg(targets.size() - shown);
     }
     return lines.join(QLatin1Char('\n'));
 }
@@ -148,16 +151,16 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
             std::make_move_iterator(paths.begin()),
             std::make_move_iterator(paths.end())
         );
-        statusBar()->showMessage(QStringLiteral("Queued files for loading"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Queued files for loading"), 3000);
         return;
     }
 
     auto progress = std::make_shared<LoadProgress>();
     m_load_progress = progress;
-    m_loading_status_label->setText(QStringLiteral("0 checked · 0 valid · 0 rejected"));
+    m_loading_status_label->setText(QCoreApplication::translate("MainWindow.Background", "0 checked · 0 valid · 0 rejected"));
     m_loading_status_label->show();
     m_loading_bar->show();
-    statusBar()->showMessage(QStringLiteral("Loading assets..."));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Loading assets..."));
     m_load_running = true;
     auto keys = m_decryption_keys;
     m_load_watcher->setFuture(QtConcurrent::run([paths = std::move(paths), progress, keys = std::move(keys)]() mutable {
@@ -171,7 +174,7 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
             if (canonical_error) {
                 ++result.rejected_count;
                 progress->rejected_count.fetch_add(1, std::memory_order_relaxed);
-                result.log_messages.push_back(QStringLiteral("Rejected path: ") + to_qstring_local(file_path));
+                result.log_messages.push_back(QCoreApplication::translate("MainWindow.Background", "Rejected path: ") + to_qstring_local(file_path));
                 return;
             }
 
@@ -181,7 +184,7 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
                 ++result.rejected_count;
                 progress->rejected_count.fetch_add(1, std::memory_order_relaxed);
                 result.log_messages.push_back(
-                    QStringLiteral("Discarded invalid file: ") + to_qstring_local(file_path) +
+                    QCoreApplication::translate("MainWindow.Background", "Discarded invalid file: ") + to_qstring_local(file_path) +
                     QStringLiteral(" (") + utf8_to_qstring(reason) + QStringLiteral(")")
                 );
                 return;
@@ -202,7 +205,7 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
                      it.increment(ec)) {
                     if (ec) {
                         result.log_messages.push_back(
-                            QStringLiteral("Skipped directory entry under ") + to_qstring_local(path) +
+                            QCoreApplication::translate("MainWindow.Background", "Skipped directory entry under ") + to_qstring_local(path) +
                             QStringLiteral(": ") + QString::fromStdString(ec.message())
                         );
                         ec.clear();
@@ -216,7 +219,7 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
             } else if (std::filesystem::is_regular_file(path, ec)) {
                 process_file(path);
             } else {
-                result.log_messages.push_back(QStringLiteral("Rejected path: ") + to_qstring_local(path));
+                result.log_messages.push_back(QCoreApplication::translate("MainWindow.Background", "Rejected path: ") + to_qstring_local(path));
             }
         }
 
@@ -227,11 +230,11 @@ void MainWindow::start_loading_paths(std::vector<std::filesystem::path> paths) {
 
 void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, ExtractionMode mode, std::optional<int> mux_audio_choice) {
     if (targets.empty()) {
-        statusBar()->showMessage(QStringLiteral("Nothing selected to extract"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Nothing selected to extract"), 3000);
         return;
     }
     if (m_extract_running) {
-        statusBar()->showMessage(QStringLiteral("Extraction is already running"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Extraction is already running"), 3000);
         return;
     }
 
@@ -243,12 +246,12 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
         auto loaded = materialize_document_summary(target.document, reason, m_decryption_keys);
         if (!loaded) {
             statusBar()->showMessage(
-                QStringLiteral("Extraction blocked: could not load document details for %1")
+                QCoreApplication::translate("MainWindow.Background", "Extraction blocked: could not load document details for %1")
                     .arg(utf8_to_qstring(target.document.display_name)),
                 5000
             );
             append_log(
-                QStringLiteral("Extraction blocked: ") +
+                QCoreApplication::translate("MainWindow.Background", "Extraction blocked: ") +
                 utf8_to_qstring(target.document.display_name) +
                 QStringLiteral(" (") + utf8_to_qstring(reason) + QStringLiteral(")")
             );
@@ -257,14 +260,14 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
         target.document = std::move(*loaded);
     }
 
-    const auto output_dir_text = QFileDialog::getExistingDirectory(this, QStringLiteral("Choose extraction folder"));
+    const auto output_dir_text = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("MainWindow.Background", "Choose extraction folder"));
     if (output_dir_text.isEmpty()) {
         return;
     }
     const auto plan = extraction_plan_text_local(targets, mode, output_dir_text, m_allow_mux_extract_outputs);
     const auto answer = QMessageBox::question(
         this,
-        mode == ExtractionMode::Raw ? QStringLiteral("Raw Extraction Plan") : QStringLiteral("Extraction Plan"),
+        mode == ExtractionMode::Raw ? QCoreApplication::translate("MainWindow.Background", "Raw Extraction Plan") : QCoreApplication::translate("MainWindow.Background", "Extraction Plan"),
         plan,
         QMessageBox::Ok | QMessageBox::Cancel,
         QMessageBox::Ok
@@ -277,15 +280,15 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
     progress->target_count.store(targets.size(), std::memory_order_relaxed);
     m_extract_progress = progress;
     m_extract_stop_source = std::stop_source{};
-    m_loading_status_label->setText(QStringLiteral("0/%1 targets · 0 extracted · 0 failed").arg(targets.size()));
+    m_loading_status_label->setText(QCoreApplication::translate("MainWindow.Background", "0/%1 targets · 0 extracted · 0 failed").arg(targets.size()));
     m_loading_status_label->show();
     m_loading_bar->show();
     if (m_cancel_extraction_button != nullptr) {
-        m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+        m_cancel_extraction_button->setText(QCoreApplication::translate("MainWindow.Background", "Cancel"));
         m_cancel_extraction_button->setEnabled(true);
         m_cancel_extraction_button->show();
     }
-    statusBar()->showMessage(mode == ExtractionMode::Raw ? QStringLiteral("Raw extraction running...") : QStringLiteral("Extraction running..."));
+    statusBar()->showMessage(mode == ExtractionMode::Raw ? QCoreApplication::translate("MainWindow.Background", "Raw extraction running...") : QCoreApplication::translate("MainWindow.Background", "Extraction running..."));
     m_extract_running = true;
     const auto keys = m_decryption_keys;
     ExtractionOptions options;
@@ -298,9 +301,9 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
     const auto output_dir = path_from_qstring(output_dir_text);
     const auto live_log_path = log_path();
     append_log(
-        (mode == ExtractionMode::Raw ? QStringLiteral("Raw extraction started: ") : QStringLiteral("Extraction started: ")) +
+        (mode == ExtractionMode::Raw ? QCoreApplication::translate("MainWindow.Background", "Raw extraction started: ") : QCoreApplication::translate("MainWindow.Background", "Extraction started: ")) +
         output_dir_text +
-        QStringLiteral(" (%1 selected targets)").arg(targets.size())
+        QCoreApplication::translate("MainWindow.Background", " (%1 selected targets)").arg(targets.size())
     );
     m_extract_watcher->setFuture(QtConcurrent::run(
         [targets = std::move(targets), output_dir, mode, keys, options, progress, live_log_path]() mutable {
@@ -343,14 +346,14 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
             QFile report_file(path_to_qstring(report_path));
             if (report_file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 QTextStream stream(&report_file);
-                stream << "CriStudio extraction report\n";
+                stream << QCoreApplication::translate("MainWindow.Background", "CriStudio extraction report\n");
                 stream << "Time: " << QDateTime::currentDateTimeUtc().toString(Qt::ISODate) << "\n";
                 stream << "Mode: " << (mode == ExtractionMode::Raw ? "raw" : "decoded") << "\n";
                 stream << "Output: " << path_to_qstring(output_dir) << "\n";
                 stream << "Status: " << (combined.canceled ? "canceled" : "completed") << "\n";
                 stream << "Summary: " << combined.extracted << " extracted, " << combined.failed << " failed, " << combined.total << " total\n\n";
 
-                stream << "Failures and warnings\n";
+                stream << QCoreApplication::translate("MainWindow.Background", "Failures and warnings\n");
                 bool wrote_failure = false;
                 for (const auto& message : combined.messages) {
                     if (!extraction_message_is_failure_local(message)) {
@@ -360,21 +363,21 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
                     wrote_failure = true;
                 }
                 if (!wrote_failure) {
-                    stream << "- none\n";
+                    stream << QCoreApplication::translate("MainWindow.Background", "- none\n");
                 }
 
                 stream << "\nOutputs\n";
                 if (combined.output_paths.empty()) {
-                    stream << "- none\n";
+                    stream << QCoreApplication::translate("MainWindow.Background", "- none\n");
                 } else {
                     for (const auto& path : combined.output_paths) {
                         stream << "- " << path_to_qstring(path) << "\n";
                     }
                 }
 
-                stream << "\nFull log\n";
+                stream << QCoreApplication::translate("MainWindow.Background", "\nFull log\n");
                 if (combined.messages.empty()) {
-                    stream << "- none\n";
+                    stream << QCoreApplication::translate("MainWindow.Background", "- none\n");
                 } else {
                     for (const auto& message : combined.messages) {
                         stream << "- " << utf8_to_qstring(message) << "\n";
@@ -384,17 +387,17 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
                 report_file.flush();
                 combined.diagnostic_path = report_path;
             } else {
-                combined.messages.push_back("Could not write extraction report: " + qt_to_utf8_local(report_file.errorString()));
+                combined.messages.push_back(cristudio::i18n::translate_utf8("MainWindow.Background", "Could not write extraction report: ") + qt_to_utf8_local(report_file.errorString()));
             }
             write_live_log(
-                QStringLiteral("Extraction %1: %2 extracted, %3 failed, %4 total")
+                QCoreApplication::translate("MainWindow.Background", "Extraction %1: %2 extracted, %3 failed, %4 total")
                     .arg(combined.canceled ? QStringLiteral("canceled") : QStringLiteral("finished"))
                     .arg(combined.extracted)
                     .arg(combined.failed)
                     .arg(combined.total)
             );
             if (combined.diagnostic_path.has_value()) {
-                write_live_log(QStringLiteral("Extraction report: ") + path_to_qstring(*combined.diagnostic_path));
+                write_live_log(QCoreApplication::translate("MainWindow.Background", "Extraction report: ") + path_to_qstring(*combined.diagnostic_path));
             }
             return combined;
         }
@@ -408,11 +411,11 @@ void MainWindow::cancel_extraction() {
     }
     m_extract_stop_source.request_stop();
     if (m_cancel_extraction_button != nullptr) {
-        m_cancel_extraction_button->setText(QStringLiteral("Canceling..."));
+        m_cancel_extraction_button->setText(QCoreApplication::translate("MainWindow.Background", "Canceling..."));
         m_cancel_extraction_button->setEnabled(false);
     }
-    statusBar()->showMessage(QStringLiteral("Canceling extraction..."));
-    append_log(QStringLiteral("Extraction cancellation requested"));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Canceling extraction..."));
+    append_log(QCoreApplication::translate("MainWindow.Background", "Extraction cancellation requested"));
     update_extraction_indicator();
 }
 
@@ -437,7 +440,7 @@ void MainWindow::update_loading_indicator() {
     const auto valid = m_load_progress->valid_count.load(std::memory_order_relaxed);
     const auto rejected = m_load_progress->rejected_count.load(std::memory_order_relaxed);
     m_loading_status_label->setText(
-        QStringLiteral("%1 checked · %2 valid · %3 rejected").arg(checked).arg(valid).arg(rejected)
+        QCoreApplication::translate("MainWindow.Background", "%1 checked · %2 valid · %3 rejected").arg(checked).arg(valid).arg(rejected)
     );
 }
 
@@ -451,10 +454,10 @@ void MainWindow::update_extraction_indicator() {
     const auto extracted = m_extract_progress->extracted_count.load(std::memory_order_relaxed);
     const auto failed = m_extract_progress->failed_count.load(std::memory_order_relaxed);
     const auto state = m_extract_stop_source.stop_requested()
-        ? QStringLiteral(" · canceling")
+        ? QCoreApplication::translate("MainWindow.Background", " · canceling")
         : QString{};
     m_loading_status_label->setText(
-        QStringLiteral("%1/%2 targets · %3 extracted · %4 failed%5")
+        QCoreApplication::translate("MainWindow.Background", "%1/%2 targets · %3 extracted · %4 failed%5")
             .arg(processed)
             .arg(total)
             .arg(extracted)
@@ -469,7 +472,7 @@ void MainWindow::consume_load_result() {
     update_loading_indicator();
     if (m_drop_active_load_result) {
         m_drop_active_load_result = false;
-        append_log(QStringLiteral("Discarded completed load after clear"));
+        append_log(QCoreApplication::translate("MainWindow.Background", "Discarded completed load after clear"));
         if (!m_queued_load_paths.empty()) {
             auto queued = std::move(m_queued_load_paths);
             m_queued_load_paths.clear();
@@ -481,7 +484,7 @@ void MainWindow::consume_load_result() {
             m_loading_status_label->hide();
         }
         m_load_progress.reset();
-        statusBar()->showMessage(QStringLiteral("Cleared loaded files"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.Background", "Cleared loaded files"), 3000);
         return;
     }
 
@@ -494,9 +497,9 @@ void MainWindow::consume_load_result() {
         if (m_file_model->index_of_path(canonical) >= 0) {
             continue;
         }
-        const auto format = utf8_to_qstring(document.format);
+        const auto format = utf8_to_qstring(localized_document_format(document));
         m_file_model->add_document(std::move(document), canonical);
-        append_log(QStringLiteral("Loaded: ") + canonical + QStringLiteral(" as ") + format);
+        append_log(QCoreApplication::translate("MainWindow.Background", "Loaded: ") + canonical + QCoreApplication::translate("MainWindow.Background", " as ") + format);
         ++added;
     }
 
@@ -513,7 +516,7 @@ void MainWindow::consume_load_result() {
     }
     m_load_progress.reset();
     statusBar()->showMessage(
-        QStringLiteral("%1 files loaded from %2 valid, %3 rejected, %4 checked")
+        QCoreApplication::translate("MainWindow.Background", "%1 files loaded from %2 valid, %3 rejected, %4 checked")
             .arg(added)
             .arg(result.loaded.size())
             .arg(result.rejected_count)
@@ -567,7 +570,7 @@ void MainWindow::consume_materialize_result() {
     const auto row = m_file_model == nullptr ? -1 : m_file_model->index_of_path(result.canonical_path);
     if (result.request_id == m_materialize_request_id && row >= 0 && result.document.has_value()) {
         m_file_model->replace_document(row, std::move(*result.document));
-        append_log(QStringLiteral("Loaded details: ") + result.canonical_path);
+        append_log(QCoreApplication::translate("MainWindow.Background", "Loaded details: ") + result.canonical_path);
 
         if (m_file_view != nullptr && m_file_proxy != nullptr && m_file_view->currentIndex().isValid()) {
             const auto current_source = m_file_proxy->mapToSource(m_file_view->currentIndex());
@@ -576,7 +579,7 @@ void MainWindow::consume_materialize_result() {
             }
         }
     } else if (result.request_id == m_materialize_request_id && row >= 0) {
-        const auto message = QStringLiteral("Could not load document details: %1").arg(utf8_to_qstring(result.rejection_reason));
+        const auto message = QCoreApplication::translate("MainWindow.Background", "Could not load document details: %1").arg(utf8_to_qstring(result.rejection_reason));
         append_log(message + QStringLiteral(" (") + result.canonical_path + QStringLiteral(")"));
         if (m_file_view != nullptr && m_file_proxy != nullptr && m_file_view->currentIndex().isValid()) {
             const auto current_source = m_file_proxy->mapToSource(m_file_view->currentIndex());
@@ -605,31 +608,31 @@ void MainWindow::consume_extract_result() {
         }
     }
     if (report.diagnostic_path.has_value()) {
-        append_log(QStringLiteral("Extraction report: ") + path_to_qstring(*report.diagnostic_path));
+        append_log(QCoreApplication::translate("MainWindow.Background", "Extraction report: ") + path_to_qstring(*report.diagnostic_path));
     }
 
     m_loading_bar->hide();
     if (m_cancel_extraction_button != nullptr) {
         m_cancel_extraction_button->hide();
         m_cancel_extraction_button->setEnabled(true);
-        m_cancel_extraction_button->setText(QStringLiteral("Cancel"));
+        m_cancel_extraction_button->setText(QCoreApplication::translate("MainWindow.Background", "Cancel"));
     }
     if (m_loading_status_label != nullptr) {
         m_loading_status_label->hide();
     }
     m_extract_progress.reset();
     const auto summary = report.diagnostic_path.has_value()
-            ? QStringLiteral("%1 extracted, %2 failed, %3 total · report: %4")
+            ? QCoreApplication::translate("MainWindow.Background", "%1 extracted, %2 failed, %3 total · report: %4")
                 .arg(report.extracted)
                 .arg(report.failed)
                 .arg(report.total)
                 .arg(path_to_qstring(*report.diagnostic_path))
-            : QStringLiteral("%1 extracted, %2 failed, %3 total")
+            : QCoreApplication::translate("MainWindow.Background", "%1 extracted, %2 failed, %3 total")
             .arg(report.extracted)
             .arg(report.failed)
             .arg(report.total);
     statusBar()->showMessage(
-        report.canceled ? QStringLiteral("Extraction canceled · %1").arg(summary) : summary,
+        report.canceled ? QCoreApplication::translate("MainWindow.Background", "Extraction canceled · %1").arg(summary) : summary,
         7000
     );
 }

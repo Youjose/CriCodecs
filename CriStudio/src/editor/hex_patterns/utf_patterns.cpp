@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "editor/hex_patterns/hex_patterns_internal.hpp"
 
 #include "io_endian.hpp"
@@ -152,10 +153,11 @@ void add_utf_vldata_patterns(
                 continue;
             }
             QString label;
+            // UTF table and column identifiers used for structural matching; never translate.
             if (table_name == "AAX" && column.name == "data") {
-                label = QStringLiteral("AAX segment %1 ADX payload").arg(row);
+                label = QCoreApplication::translate("Editor.UtfPatterns", "AAX segment %1 ADX payload").arg(row);
             } else {
-                label = QStringLiteral("UTF row %1 %2 VLData")
+                label = QCoreApplication::translate("Editor.UtfPatterns", "UTF row %1 %2 VLData")
                     .arg(row)
                     .arg(QString::fromStdString(column.name));
             }
@@ -192,27 +194,27 @@ void add_utf_patterns_at(
         return;
     }
     add(out, base_offset, table_total, std::move(label), tone(0), total_size);
-    add(out, base_offset, 0x20, QStringLiteral("UTF header"), tone(0), total_size);
-    add_field(out, base_offset + 0x00, 4, QStringLiteral("UTF magic"), ascii_value(prefix, base, 4), 0, total_size);
-    add_field(out, base_offset + 0x04, 4, QStringLiteral("table size"), hex_value(table_size), 1, total_size);
-    add_field(out, base_offset + 0x08, 2, QStringLiteral("version"), QString::number(version), 2, total_size);
-    add_field(out, base_offset + 0x0A, 2, QStringLiteral("rows offset"), hex_value(rows_offset), 3, total_size);
-    add_field(out, base_offset + 0x0C, 4, QStringLiteral("strings offset"), hex_value(strings_offset), 4, total_size);
-    add_field(out, base_offset + 0x10, 4, QStringLiteral("data offset"), hex_value(data_offset), 5, total_size);
-    add_field(out, base_offset + 0x18, 2, QStringLiteral("columns"), QString::number(cricodecs::io::read_be<uint16_t>(prefix.data() + base + 0x18)), 6, total_size);
-    add_field(out, base_offset + 0x1A, 2, QStringLiteral("row width"), QString::number(row_width), 7, total_size);
-    add_field(out, base_offset + 0x1C, 4, QStringLiteral("rows"), QString::number(num_rows), 8, total_size);
+    add(out, base_offset, 0x20, QCoreApplication::translate("Editor.UtfPatterns", "UTF header"), tone(0), total_size);
+    add_field(out, base_offset + 0x00, 4, QCoreApplication::translate("Editor.UtfPatterns", "UTF magic"), ascii_value(prefix, base, 4), 0, total_size);
+    add_field(out, base_offset + 0x04, 4, QCoreApplication::translate("Editor.UtfPatterns", "table size"), hex_value(table_size), 1, total_size);
+    add_field(out, base_offset + 0x08, 2, QCoreApplication::translate("Editor.UtfPatterns", "version"), QString::number(version), 2, total_size);
+    add_field(out, base_offset + 0x0A, 2, QCoreApplication::translate("Editor.UtfPatterns", "rows offset"), hex_value(rows_offset), 3, total_size);
+    add_field(out, base_offset + 0x0C, 4, QCoreApplication::translate("Editor.UtfPatterns", "strings offset"), hex_value(strings_offset), 4, total_size);
+    add_field(out, base_offset + 0x10, 4, QCoreApplication::translate("Editor.UtfPatterns", "data offset"), hex_value(data_offset), 5, total_size);
+    add_field(out, base_offset + 0x18, 2, QCoreApplication::translate("Editor.UtfPatterns", "columns"), QString::number(cricodecs::io::read_be<uint16_t>(prefix.data() + base + 0x18)), 6, total_size);
+    add_field(out, base_offset + 0x1A, 2, QCoreApplication::translate("Editor.UtfPatterns", "row width"), QString::number(row_width), 7, total_size);
+    add_field(out, base_offset + 0x1C, 4, QCoreApplication::translate("Editor.UtfPatterns", "rows"), QString::number(num_rows), 8, total_size);
     if (rows_offset > 0x20) {
-        add(out, base_offset + 0x20, rows_offset - 0x20, QStringLiteral("UTF schema"), tone(1), total_size);
+        add(out, base_offset + 0x20, rows_offset - 0x20, QCoreApplication::translate("Editor.UtfPatterns", "UTF schema"), tone(1), total_size);
     }
     if (strings_offset > rows_offset) {
-        add(out, base_offset + rows_offset, strings_offset - rows_offset, QStringLiteral("UTF rows"), tone(2), total_size);
+        add(out, base_offset + rows_offset, strings_offset - rows_offset, QCoreApplication::translate("Editor.UtfPatterns", "UTF rows"), tone(2), total_size);
     }
     if (data_offset > strings_offset) {
-        add(out, base_offset + strings_offset, data_offset - strings_offset, QStringLiteral("UTF strings"), tone(3), total_size);
+        add(out, base_offset + strings_offset, data_offset - strings_offset, QCoreApplication::translate("Editor.UtfPatterns", "UTF strings"), tone(3), total_size);
     }
     if (data_offset < table_total) {
-        add(out, base_offset + data_offset, table_total - data_offset, QStringLiteral("UTF data"), tone(4), total_size);
+        add(out, base_offset + data_offset, table_total - data_offset, QCoreApplication::translate("Editor.UtfPatterns", "UTF data"), tone(4), total_size);
     }
     add_utf_vldata_patterns(
         out,
@@ -230,7 +232,7 @@ void add_utf_patterns_at(
 }
 
 void add_utf_patterns(std::vector<HexPatternRange>& out, uint64_t total_size, std::span<const uint8_t> prefix) {
-    add_utf_patterns_at(out, total_size, prefix, 0, QStringLiteral("UTF table"));
+    add_utf_patterns_at(out, total_size, prefix, 0, QCoreApplication::translate("Editor.UtfPatterns", "UTF table"));
 }
 
 } // namespace cristudio::hexpatterns

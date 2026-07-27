@@ -1,3 +1,5 @@
+#include "shared/i18n.hpp"
+#include <QCoreApplication>
 #include "editor/transform_editor_helpers.hpp"
 
 #include "modules/aax/aax_edit.hpp"
@@ -49,63 +51,63 @@ std::expected<std::vector<uint8_t>, QString> transform_payload_preview_bytes(
 ) {
     if (selection.payload_kind == 1 && view.aax != nullptr) {
         if (selection.index < 0) {
-            return std::unexpected(QStringLiteral("AAX segment preview failed: index out of range"));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "AAX segment preview failed: index out of range"));
         }
         auto data = view.aax->segment_data(static_cast<uint32_t>(selection.index));
         if (!data) {
-            return std::unexpected(QStringLiteral("AAX segment preview failed: %1").arg(utf8_to_qstring(data.error())));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "AAX segment preview failed: %1").arg(utf8_to_qstring(data.error())));
         }
         return std::vector<uint8_t>(data->begin(), data->end());
     }
 
     if (selection.payload_kind == 2 && view.aix != nullptr) {
         if (selection.index < 0 || selection.layer < 0) {
-            return std::unexpected(QStringLiteral("AIX payload preview failed: index out of range"));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "AIX payload preview failed: index out of range"));
         }
         auto data = view.aix->segment_bytes(static_cast<size_t>(selection.index), static_cast<size_t>(selection.layer));
         if (!data) {
-            return std::unexpected(QStringLiteral("AIX payload preview failed: %1").arg(utf8_to_qstring(data.error())));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "AIX payload preview failed: %1").arg(utf8_to_qstring(data.error())));
         }
         return std::move(*data);
     }
 
     if (selection.payload_kind == 4 && view.sfd != nullptr) {
         if (selection.index < 0) {
-            return std::unexpected(QStringLiteral("SFD stream preview failed: index out of range"));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "SFD stream preview failed: index out of range"));
         }
         auto data = view.sfd->extract_stream(static_cast<uint32_t>(selection.index));
         if (!data) {
-            return std::unexpected(QStringLiteral("SFD stream preview failed: %1").arg(utf8_to_qstring(data.error())));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "SFD stream preview failed: %1").arg(utf8_to_qstring(data.error())));
         }
         return std::move(*data);
     }
 
     if (selection.payload_kind == 5 && view.csb != nullptr) {
         if (selection.index < 0) {
-            return std::unexpected(QStringLiteral("CSB stream preview failed: index out of range"));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "CSB stream preview failed: index out of range"));
         }
         auto data = view.csb->stream_data(static_cast<uint32_t>(selection.index));
         if (!data) {
-            return std::unexpected(QStringLiteral("CSB stream preview failed: %1").arg(utf8_to_qstring(data.error())));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "CSB stream preview failed: %1").arg(utf8_to_qstring(data.error())));
         }
         return std::move(*data);
     }
 
     if (selection.payload_kind == 6 && view.acb != nullptr && view.keys != nullptr) {
         if (selection.index < 0) {
-            return std::unexpected(QStringLiteral("ACB waveform preview failed: index out of range"));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "ACB waveform preview failed: index out of range"));
         }
         auto data = view.acb->extract_waveform_data(
             static_cast<uint32_t>(selection.index),
             view.keys->has_cri_key ? view.keys->cri_key : 0
         );
         if (!data) {
-            return std::unexpected(QStringLiteral("ACB waveform preview failed: %1").arg(utf8_to_qstring(data.error())));
+            return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "ACB waveform preview failed: %1").arg(utf8_to_qstring(data.error())));
         }
         return std::move(*data);
     }
 
-    return std::unexpected(QStringLiteral("No binary payload preview"));
+    return std::unexpected(QCoreApplication::translate("Editor.TransformEditorHelpers", "No binary payload preview"));
 }
 
 QString transform_payload_preview_text(
@@ -204,55 +206,55 @@ void append_transform_info_rows(
 
     switch (kind) {
     case TransformKind::AudioEncode:
-        rows.back().value = "WAV source encode job";
-        rows.push_back({"Transform kind", "Audio encode"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "WAV source encode job");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Audio encode")});
         break;
     case TransformKind::MediaBuild:
-        rows.back().value = "USM/SFD source build job";
-        rows.push_back({"Transform kind", "USM/SFD build"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "USM/SFD source build job");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "USM/SFD build")});
         break;
     case TransformKind::Adx:
         if (view.adx == nullptr) return;
-        rows.back().value = "ADX/AHX native decode, decrypt, and rebuild path available";
-        rows.push_back({"Transform kind", "ADX/AHX"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "ADX/AHX native decode, decrypt, and rebuild path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "ADX/AHX")});
         break;
     case TransformKind::Hca:
         if (view.hca == nullptr) return;
-        rows.back().value = "HCA native decode, encrypt, decrypt, and rebuild path available";
-        rows.push_back({"Transform kind", "HCA"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "HCA native decode, encrypt, decrypt, and rebuild path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), "HCA"});
         break;
     case TransformKind::Aax:
         rows.back().value = view.aax != nullptr
-            ? "AAX native save, segment export, and joined ADX export path available"
-            : "AAX source build job";
-        rows.push_back({"Transform kind", view.aax != nullptr ? "AAX" : "AAX build"});
+            ? cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AAX native save, segment export, and joined ADX export path available")
+            : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AAX source build job");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), view.aax != nullptr ? "AAX" : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AAX build")});
         break;
     case TransformKind::Aix:
         rows.back().value = view.aix != nullptr
-            ? "AIX native layered ADX inspection and extraction path available"
-            : "AIX source build job";
-        rows.push_back({"Transform kind", view.aix != nullptr ? "AIX" : "AIX build"});
+            ? cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AIX native layered ADX inspection and extraction path available")
+            : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AIX source build job");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Transform kind"), view.aix != nullptr ? "AIX" : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "AIX build")});
         break;
     case TransformKind::Usm:
         if (view.usm == nullptr) return;
-        rows.back().value = "USM native chunk/stream inspection, demux, and builder-input path available";
-        rows.push_back({"Inspector kind", "USM/SofDec 2"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "USM native chunk/stream inspection, demux, and builder-input path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Inspector kind"), cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "USM/SofDec 2")});
         break;
     case TransformKind::Sfd:
         if (view.sfd == nullptr) return;
-        rows.back().value = "SFD native stream inspection, extraction, save, and builder-input path available";
-        rows.push_back({"Inspector kind", "SFD/SofDec 1"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "SFD native stream inspection, extraction, save, and builder-input path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Inspector kind"), cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "SFD/SofDec 1")});
         break;
     case TransformKind::Csb:
         rows.back().value = view.csb != nullptr
-            ? "CSB native section/stream inspection, extraction, and rebuild path available"
-            : "CSB source build job";
-        rows.push_back({"Inspector kind", view.csb != nullptr ? "CSB" : "CSB folder build"});
+            ? cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "CSB native section/stream inspection, extraction, and rebuild path available")
+            : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "CSB source build job");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Inspector kind"), view.csb != nullptr ? "CSB" : cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "CSB folder build")});
         break;
     case TransformKind::Acb:
         if (view.acb == nullptr) return;
-        rows.back().value = "ACB native cue/waveform inspection and extraction path available";
-        rows.push_back({"Inspector kind", "ACB"});
+        rows.back().value = cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "ACB native cue/waveform inspection and extraction path available");
+        rows.push_back({cristudio::i18n::translate_utf8("Editor.TransformEditorHelpers", "Inspector kind"), "ACB"});
         break;
     case TransformKind::None:
         return;
@@ -272,8 +274,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
                 return {
                     .handled = true,
-                    .log_message = QStringLiteral("ADX/AHX save failed: %1").arg(utf8_to_qstring(built.error())),
-                    .warning_title = QStringLiteral("Build failed"),
+                    .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX/AHX save failed: %1").arg(utf8_to_qstring(built.error())),
+                    .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                     .error = utf8_to_qstring(built.error())
                 };
             }
@@ -281,7 +283,7 @@ TransformBuildResult build_transform_session_bytes(
             return {
                 .handled = true,
                 .bytes = std::move(*built),
-                .log_message = QStringLiteral("Rebuilt ADX/AHX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt ADX/AHX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -291,8 +293,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
                 return {
                     .handled = true,
-                    .log_message = QStringLiteral("HCA save failed: %1").arg(utf8_to_qstring(built.error())),
-                    .warning_title = QStringLiteral("Build failed"),
+                    .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA save failed: %1").arg(utf8_to_qstring(built.error())),
+                    .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                     .error = utf8_to_qstring(built.error())
                 };
             }
@@ -300,7 +302,7 @@ TransformBuildResult build_transform_session_bytes(
             return {
                 .handled = true,
                 .bytes = std::move(*built),
-                .log_message = QStringLiteral("Rebuilt HCA session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt HCA session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -310,8 +312,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("AAX save failed: %1").arg(utf8_to_qstring(built.error())),
-                .warning_title = QStringLiteral("Build failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "AAX save failed: %1").arg(utf8_to_qstring(built.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                 .error = utf8_to_qstring(built.error())
             };
             }
@@ -319,7 +321,7 @@ TransformBuildResult build_transform_session_bytes(
             return {
                 .handled = true,
                 .bytes = std::move(*built),
-                .log_message = QStringLiteral("Rebuilt AAX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt AAX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -329,8 +331,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("AIX rebuild failed: %1").arg(utf8_to_qstring(built.error())),
-                .warning_title = QStringLiteral("Build failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "AIX rebuild failed: %1").arg(utf8_to_qstring(built.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                 .error = utf8_to_qstring(built.error())
             };
             }
@@ -340,15 +342,15 @@ TransformBuildResult build_transform_session_bytes(
             if (auto result = reloaded.load(std::span<const uint8_t>(built->data(), built->size())); result) {
                 *view.aix = std::move(reloaded);
             } else {
-                reload_log = QStringLiteral("AIX rebuild reload failed: %1").arg(utf8_to_qstring(result.error()));
+                reload_log = QCoreApplication::translate("Editor.TransformEditorHelpers", "AIX rebuild reload failed: %1").arg(utf8_to_qstring(result.error()));
             }
             return {
                 .handled = true,
                 .bytes = std::move(*built),
                 .log_message = reload_log.isEmpty()
-                    ? QStringLiteral("Rebuilt AIX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                    ? QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt AIX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
                     : reload_log + QStringLiteral("\n") +
-                        QStringLiteral("Rebuilt AIX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                        QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt AIX session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -356,7 +358,7 @@ TransformBuildResult build_transform_session_bytes(
         if (view.usm != nullptr) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("USM loaded-object rebuild is not exposed by the native API; use Extract or a source-backed build wizard.")
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "USM loaded-object rebuild is not exposed by the native API; use Extract or a source-backed build wizard.")
             };
         }
         break;
@@ -366,8 +368,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("SFD save failed: %1").arg(utf8_to_qstring(built.error())),
-                .warning_title = QStringLiteral("Build failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "SFD save failed: %1").arg(utf8_to_qstring(built.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                 .error = utf8_to_qstring(built.error())
             };
             }
@@ -375,7 +377,7 @@ TransformBuildResult build_transform_session_bytes(
             return {
                 .handled = true,
                 .bytes = std::move(*built),
-                .log_message = QStringLiteral("Rebuilt SFD session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt SFD session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -385,8 +387,8 @@ TransformBuildResult build_transform_session_bytes(
             if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("CSB save failed: %1").arg(utf8_to_qstring(built.error())),
-                .warning_title = QStringLiteral("Build failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "CSB save failed: %1").arg(utf8_to_qstring(built.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "Build failed"),
                 .error = utf8_to_qstring(built.error())
             };
             }
@@ -394,7 +396,7 @@ TransformBuildResult build_transform_session_bytes(
             return {
                 .handled = true,
                 .bytes = std::move(*built),
-                .log_message = QStringLiteral("Rebuilt CSB session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt CSB session bytes: %1 bytes").arg(static_cast<qulonglong>(byte_count))
             };
         }
         break;
@@ -402,7 +404,7 @@ TransformBuildResult build_transform_session_bytes(
         if (view.acb != nullptr) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("ACB mutable authoring is not exposed by the native API; keeping source bytes.")
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "ACB mutable authoring is not exposed by the native API; keeping source bytes.")
             };
         }
         break;
@@ -429,8 +431,8 @@ TransformBuildResult edit_transform_options(
             return {
                 .handled = true,
                 .warning_title = view.adx->is_ahx()
-                    ? QStringLiteral("AHX rebuild failed")
-                    : QStringLiteral("ADX rebuild failed"),
+                    ? QCoreApplication::translate("Editor.TransformEditorHelpers", "AHX rebuild failed")
+                    : QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX rebuild failed"),
                 .error = config.error()
             };
         }
@@ -442,10 +444,10 @@ TransformBuildResult edit_transform_options(
         if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("ADX rebuild options failed: %1").arg(utf8_to_qstring(built.error())),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX rebuild options failed: %1").arg(utf8_to_qstring(built.error())),
                 .warning_title = view.adx->is_ahx()
-                    ? QStringLiteral("AHX rebuild failed")
-                    : QStringLiteral("ADX rebuild failed"),
+                    ? QCoreApplication::translate("Editor.TransformEditorHelpers", "AHX rebuild failed")
+                    : QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX rebuild failed"),
                 .error = utf8_to_qstring(built.error())
             };
         }
@@ -454,8 +456,8 @@ TransformBuildResult edit_transform_options(
         if (!reloaded) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("ADX rebuilt bytes failed reload: %1").arg(utf8_to_qstring(reloaded.error())),
-                .warning_title = QStringLiteral("ADX reload failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX rebuilt bytes failed reload: %1").arg(utf8_to_qstring(reloaded.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "ADX reload failed"),
                 .error = utf8_to_qstring(reloaded.error())
             };
         }
@@ -464,7 +466,7 @@ TransformBuildResult edit_transform_options(
         return {
             .handled = true,
             .bytes = std::move(*built),
-            .log_message = QStringLiteral("Rebuilt ADX/AHX session with updated options.")
+            .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt ADX/AHX session with updated options.")
         };
     }
 
@@ -473,7 +475,7 @@ TransformBuildResult edit_transform_options(
         if (!config) {
             return {
                 .handled = true,
-                .warning_title = QStringLiteral("HCA rebuild failed"),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA rebuild failed"),
                 .error = config.error()
             };
         }
@@ -485,8 +487,8 @@ TransformBuildResult edit_transform_options(
         if (!built) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("HCA rebuild options failed: %1").arg(utf8_to_qstring(built.error())),
-                .warning_title = QStringLiteral("HCA rebuild failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA rebuild options failed: %1").arg(utf8_to_qstring(built.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA rebuild failed"),
                 .error = utf8_to_qstring(built.error())
             };
         }
@@ -495,8 +497,8 @@ TransformBuildResult edit_transform_options(
         if (!reloaded) {
             return {
                 .handled = true,
-                .log_message = QStringLiteral("HCA rebuilt bytes failed reload: %1").arg(utf8_to_qstring(reloaded.error())),
-                .warning_title = QStringLiteral("HCA reload failed"),
+                .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA rebuilt bytes failed reload: %1").arg(utf8_to_qstring(reloaded.error())),
+                .warning_title = QCoreApplication::translate("Editor.TransformEditorHelpers", "HCA reload failed"),
                 .error = utf8_to_qstring(reloaded.error())
             };
         }
@@ -505,7 +507,7 @@ TransformBuildResult edit_transform_options(
         return {
             .handled = true,
             .bytes = std::move(*built),
-            .log_message = QStringLiteral("Rebuilt HCA session with updated options.")
+            .log_message = QCoreApplication::translate("Editor.TransformEditorHelpers", "Rebuilt HCA session with updated options.")
         };
     }
 

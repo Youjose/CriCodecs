@@ -5,6 +5,7 @@
 #include "modules/ui_value_helpers.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -112,11 +113,11 @@ QString preset_name(cricodecs::cpk::CpkPreset preset) {
     switch (preset) {
     case cricodecs::cpk::CpkPreset::Custom: return QStringLiteral("Custom");
     case cricodecs::cpk::CpkPreset::Id: return QStringLiteral("ID");
-    case cricodecs::cpk::CpkPreset::Filename: return QStringLiteral("Filename");
-    case cricodecs::cpk::CpkPreset::FilenameId: return QStringLiteral("Filename + ID");
-    case cricodecs::cpk::CpkPreset::FilenameGroup: return QStringLiteral("Filename + Group");
-    case cricodecs::cpk::CpkPreset::IdGroup: return QStringLiteral("ID + Group");
-    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QStringLiteral("Filename + ID + Group");
+    case cricodecs::cpk::CpkPreset::Filename: return QCoreApplication::translate("Cpk.CpkEditUi", "Filename");
+    case cricodecs::cpk::CpkPreset::FilenameId: return QCoreApplication::translate("Cpk.CpkEditUi", "Filename + ID");
+    case cricodecs::cpk::CpkPreset::FilenameGroup: return QCoreApplication::translate("Cpk.CpkEditUi", "Filename + Group");
+    case cricodecs::cpk::CpkPreset::IdGroup: return QCoreApplication::translate("Cpk.CpkEditUi", "ID + Group");
+    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QCoreApplication::translate("Cpk.CpkEditUi", "Filename + ID + Group");
     }
     return QStringLiteral("Custom");
 }
@@ -140,9 +141,9 @@ std::optional<bool> optional_bool_from_index(int index) {
 
 QComboBox* make_chunk_combo(const std::optional<bool>& value, QWidget* parent) {
     auto* combo = new QComboBox(parent);
-    combo->addItem(QStringLiteral("Auto from preset"));
-    combo->addItem(QStringLiteral("Force off"));
-    combo->addItem(QStringLiteral("Force on"));
+    combo->addItem(QCoreApplication::translate("Cpk.CpkEditUi", "Auto from preset"));
+    combo->addItem(QCoreApplication::translate("Cpk.CpkEditUi", "Force off"));
+    combo->addItem(QCoreApplication::translate("Cpk.CpkEditUi", "Force on"));
     combo->setCurrentIndex(optional_bool_index(value));
     return combo;
 }
@@ -176,23 +177,23 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::cpk::Cp
     table->clear();
     table->setColumnCount(17);
     table->setHorizontalHeaderLabels({
-        QStringLiteral("Index"),
-        QStringLiteral("Full Path"),
-        QStringLiteral("Dirname"),
-        QStringLiteral("Dirname Raw"),
-        QStringLiteral("Filename"),
-        QStringLiteral("Filename Raw"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Index"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Full Path"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Dirname"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Dirname Raw"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Filename"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Filename Raw"),
         QStringLiteral("ID"),
-        QStringLiteral("TOC Index"),
-        QStringLiteral("Offset"),
-        QStringLiteral("File Size"),
-        QStringLiteral("Extract Size"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "TOC Index"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Offset"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "File Size"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Extract Size"),
         QStringLiteral("Compressed"),
-        QStringLiteral("Compress On Save"),
-        QStringLiteral("Group"),
-        QStringLiteral("Attribute"),
-        QStringLiteral("User String"),
-        QStringLiteral("Update Date")
+        QCoreApplication::translate("Cpk.CpkEditUi", "Compress On Save"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Group"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Attribute"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "User String"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Update Date")
     });
     table->setRowCount(static_cast<int>(cpk.file_count()));
     for (size_t index = 0; index < cpk.files().size(); ++index) {
@@ -215,7 +216,7 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::cpk::Cp
             (compress_item->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
         compress_item->setCheckState(entry.request_compress ? Qt::Checked : Qt::Unchecked);
         compress_item->setTextAlignment(Qt::AlignCenter);
-        compress_item->setToolTip(QStringLiteral("Compress this entry with CRILAYLA on save when compression reduces its size."));
+        compress_item->setToolTip(QCoreApplication::translate("Cpk.CpkEditUi", "Compress this entry with CRILAYLA on save when compression reduces its size."));
         table->setItem(row, 12, compress_item);
         set_table_item(table, row, 13, utf8_to_qstring(entry.group), true);
         set_table_item(table, row, 14, utf8_to_qstring(entry.attribute), true);
@@ -231,7 +232,7 @@ std::expected<std::optional<EntryProperties>, QString> choose_entry_properties(
     const cricodecs::cpk::CpkEntry& entry
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("CPK entry properties"));
+    dialog.setWindowTitle(QCoreApplication::translate("Cpk.CpkEditUi", "CPK entry properties"));
     dialog.setMinimumWidth(520);
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
@@ -241,30 +242,30 @@ std::expected<std::optional<EntryProperties>, QString> choose_entry_properties(
     auto* dirname_edit = new QLineEdit(utf8_to_qstring(entry.dirname), &dialog);
     auto* filename_edit = new QLineEdit(utf8_to_qstring(entry.filename), &dialog);
     auto* id_edit = make_unsigned_integer_edit(
-        entry.id, 0, std::numeric_limits<uint32_t>::max(), &dialog, QStringLiteral("CPK entry ID"));
+        entry.id, 0, std::numeric_limits<uint32_t>::max(), &dialog, QCoreApplication::translate("Cpk.CpkEditUi", "CPK entry ID"));
     ToggleSwitch* compress_switch = nullptr;
     auto* compression_row = switch_row(
         compress_switch,
-        QStringLiteral("Compress this entry on save"),
-        QStringLiteral("Use CRILAYLA when it makes this entry smaller."),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Compress this entry on save"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Use CRILAYLA when it makes this entry smaller."),
         &dialog);
-    compress_switch->setAccessibleName(QStringLiteral("Compress this CPK entry on save"));
+    compress_switch->setAccessibleName(QCoreApplication::translate("Cpk.CpkEditUi", "Compress this CPK entry on save"));
     compress_switch->setChecked(entry.request_compress);
     auto* group_edit = new QLineEdit(utf8_to_qstring(entry.group), &dialog);
     auto* attribute_edit = new QLineEdit(utf8_to_qstring(entry.attribute), &dialog);
     auto* user_string_edit = new QLineEdit(utf8_to_qstring(entry.user_string), &dialog);
     auto* update_date_edit = make_unsigned_integer_edit(
-        entry.update_date_time, 0, std::numeric_limits<uint64_t>::max(), &dialog, QStringLiteral("Update date value"));
+        entry.update_date_time, 0, std::numeric_limits<uint64_t>::max(), &dialog, QCoreApplication::translate("Cpk.CpkEditUi", "Update date value"));
 
-    form->addRow(QStringLiteral("Full path"), path_edit);
-    form->addRow(QStringLiteral("DirName"), dirname_edit);
-    form->addRow(QStringLiteral("FileName"), filename_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Full path"), path_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "DirName"), dirname_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "FileName"), filename_edit);
     form->addRow(QStringLiteral("ID"), id_edit);
-    form->addRow(QStringLiteral("Compression"), compression_row);
-    form->addRow(QStringLiteral("Group"), group_edit);
-    form->addRow(QStringLiteral("Attribute"), attribute_edit);
-    form->addRow(QStringLiteral("User string"), user_string_edit);
-    form->addRow(QStringLiteral("Update date"), update_date_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Compression"), compression_row);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Group"), group_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Attribute"), attribute_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "User string"), user_string_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Update date"), update_date_edit);
     layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -281,7 +282,7 @@ std::expected<std::optional<EntryProperties>, QString> choose_entry_properties(
         return std::unexpected(id.error());
     }
     const auto update_date = unsigned_integer_value(
-        update_date_edit, 0, std::numeric_limits<uint64_t>::max(), QStringLiteral("Update date"));
+        update_date_edit, 0, std::numeric_limits<uint64_t>::max(), QCoreApplication::translate("Cpk.CpkEditUi", "Update date"));
     if (!update_date) {
         return std::unexpected(update_date.error());
     }
@@ -289,7 +290,7 @@ std::expected<std::optional<EntryProperties>, QString> choose_entry_properties(
     auto dirname = dirname_edit->text().trimmed();
     auto filename = filename_edit->text().trimmed();
     if (filename.isEmpty() || filename.contains(QLatin1Char('/')) || filename.contains(QLatin1Char('\\'))) {
-        return std::unexpected(QStringLiteral("FileName must be a non-empty leaf name without path separators."));
+        return std::unexpected(QCoreApplication::translate("Cpk.CpkEditUi", "FileName must be a non-empty leaf name without path separators."));
     }
     auto full_path = path_edit->text().trimmed();
     if (dirname != utf8_to_qstring(entry.dirname) || filename != utf8_to_qstring(entry.filename)) {
@@ -320,7 +321,7 @@ std::optional<BuildOptionsSelection> choose_build_options(
 ) {
     auto options = cpk.options();
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("CPK options"));
+    dialog.setWindowTitle(QCoreApplication::translate("Cpk.CpkEditUi", "CPK options"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -347,18 +348,18 @@ std::optional<BuildOptionsSelection> choose_build_options(
     auto* align_spin = new QSpinBox(&dialog);
     align_spin->setRange(1, std::numeric_limits<uint16_t>::max());
     align_spin->setValue(options.align);
-    align_spin->setSuffix(QStringLiteral(" bytes"));
+    align_spin->setSuffix(QCoreApplication::translate("Cpk.CpkEditUi", " bytes"));
 
-    auto* crc_check = new QCheckBox(QStringLiteral("Emit standard CPK CRC tables and row CRCs"), &dialog);
+    auto* crc_check = new QCheckBox(QCoreApplication::translate("Cpk.CpkEditUi", "Emit standard CPK CRC tables and row CRCs"), &dialog);
     crc_check->setChecked(options.enable_crc);
 
     ToggleSwitch* obfuscate_switch = nullptr;
     auto* obfuscate_row = switch_row(
         obfuscate_switch,
-        QStringLiteral("Encrypt CPK UTF tables on save"),
-        QStringLiteral("Apply the standard CPK UTF XOR transform to archive metadata."),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Encrypt CPK UTF tables on save"),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Apply the standard CPK UTF XOR transform to archive metadata."),
         &dialog);
-    obfuscate_switch->setAccessibleName(QStringLiteral("Encrypt CPK UTF tables on save"));
+    obfuscate_switch->setAccessibleName(QCoreApplication::translate("Cpk.CpkEditUi", "Encrypt CPK UTF tables on save"));
     obfuscate_switch->setChecked(obfuscate_utf);
 
     auto* toc_combo = make_chunk_combo(options.enable_toc, &dialog);
@@ -368,7 +369,7 @@ std::optional<BuildOptionsSelection> choose_build_options(
 
     auto* encoding_combo = new QComboBox(&dialog);
     encoding_combo->setEditable(true);
-    encoding_combo->addItem(QStringLiteral("Auto (system)"), QString{});
+    encoding_combo->addItem(QCoreApplication::translate("Cpk.CpkEditUi", "Auto (system)"), QString{});
     for (const auto& encoding : {
         QStringLiteral("UTF-8"), QStringLiteral("GBK"), QStringLiteral("CP936"),
         QStringLiteral("CP932"), QStringLiteral("Shift-JIS"), QStringLiteral("SJIS")}) {
@@ -388,22 +389,22 @@ std::optional<BuildOptionsSelection> choose_build_options(
     auto* comment_edit = new QLineEdit(utf8_to_qstring(options.comment), &dialog);
     auto* local_dir_edit = new QLineEdit(utf8_to_qstring(options.etoc_local_dir), &dialog);
 
-    form->addRow(QStringLiteral("Declared preset"), preset_combo);
-    form->addRow(QStringLiteral("TOC chunk"), toc_combo);
-    form->addRow(QStringLiteral("ITOC chunk"), itoc_combo);
-    form->addRow(QStringLiteral("GTOC chunk"), gtoc_combo);
-    form->addRow(QStringLiteral("ETOC chunk"), etoc_combo);
-    form->addRow(QStringLiteral("Alignment"), align_spin);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Declared preset"), preset_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "TOC chunk"), toc_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "ITOC chunk"), itoc_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "GTOC chunk"), gtoc_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "ETOC chunk"), etoc_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Alignment"), align_spin);
     form->addRow(QStringLiteral("CRC"), crc_check);
-    form->addRow(QStringLiteral("UTF metadata"), obfuscate_row);
-    form->addRow(QStringLiteral("Text encoding"), encoding_combo);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "UTF metadata"), obfuscate_row);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Text encoding"), encoding_combo);
     form->addRow(QStringLiteral("TVER"), tver_edit);
-    form->addRow(QStringLiteral("Comment"), comment_edit);
-    form->addRow(QStringLiteral("ETOC LocalDir"), local_dir_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "Comment"), comment_edit);
+    form->addRow(QCoreApplication::translate("Cpk.CpkEditUi", "ETOC LocalDir"), local_dir_edit);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("Chunk controls use native CpkOptions overrides. Compression requests use CRILAYLA only when the result is smaller than the original entry."),
+        QCoreApplication::translate("Cpk.CpkEditUi", "Chunk controls use native CpkOptions overrides. Compression requests use CRILAYLA only when the result is smaller than the original entry."),
         &dialog
     );
     note->setWordWrap(true);

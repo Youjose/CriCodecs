@@ -2,6 +2,7 @@
 
 #include "io_reader.hpp"
 
+#include <QCoreApplication>
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
@@ -641,21 +642,21 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_sbt_patter
         }
         return std::nullopt;
     };
-    if (auto out = field(0x00, 4, QStringLiteral("cue %1.language_id = %2").arg(cue_index).arg(cue.language_id), lazy_usm_color(cue_index + 1))) return out;
-    if (auto out = field(0x04, 4, QStringLiteral("cue %1.time_unit = %2").arg(cue_index).arg(cue.time_unit), lazy_usm_color(cue_index + 2))) return out;
-    if (auto out = field(0x08, 4, QStringLiteral("cue %1.start_time = %2").arg(cue_index).arg(cue.start_time), lazy_usm_color(cue_index + 3))) return out;
-    if (auto out = field(0x0C, 4, QStringLiteral("cue %1.duration = %2").arg(cue_index).arg(cue.duration), lazy_usm_color(cue_index + 4))) return out;
-    if (auto out = field(0x10, 4, QStringLiteral("cue %1.text_size = %2").arg(cue_index).arg(cue.text_size), lazy_usm_color(cue_index + 5))) return out;
+    if (auto out = field(0x00, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.language_id = %2").arg(cue_index).arg(cue.language_id), lazy_usm_color(cue_index + 1))) return out;
+    if (auto out = field(0x04, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.time_unit = %2").arg(cue_index).arg(cue.time_unit), lazy_usm_color(cue_index + 2))) return out;
+    if (auto out = field(0x08, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.start_time = %2").arg(cue_index).arg(cue.start_time), lazy_usm_color(cue_index + 3))) return out;
+    if (auto out = field(0x0C, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.duration = %2").arg(cue_index).arg(cue.duration), lazy_usm_color(cue_index + 4))) return out;
+    if (auto out = field(0x10, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.text_size = %2").arg(cue_index).arg(cue.text_size), lazy_usm_color(cue_index + 5))) return out;
 
     const auto text_offset = cue.offset + header_size;
     const auto content_size = static_cast<uint64_t>(cue.text_size - cue.terminator_size);
     if (position >= text_offset && position < text_offset + content_size) {
-        return ActivePattern{text_offset, content_size, QStringLiteral("cue %1.text UTF-8").arg(cue_index), lazy_usm_color(cue_index + 6)};
+        return ActivePattern{text_offset, content_size, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.text UTF-8").arg(cue_index), lazy_usm_color(cue_index + 6)};
     }
     if (cue.terminator_size != 0 && position >= text_offset + content_size) {
-        return ActivePattern{text_offset + content_size, cue.terminator_size, QStringLiteral("cue %1.text terminator").arg(cue_index), lazy_usm_color(cue_index + 7)};
+        return ActivePattern{text_offset + content_size, cue.terminator_size, QCoreApplication::translate("Editor.HexPreviewWidget", "cue %1.text terminator").arg(cue_index), lazy_usm_color(cue_index + 7)};
     }
-    return ActivePattern{cue.offset, record_size, QStringLiteral("SBT cue %1").arg(cue_index), lazy_usm_color(cue_index)};
+    return ActivePattern{cue.offset, record_size, QCoreApplication::translate("Editor.HexPreviewWidget", "SBT cue %1").arg(cue_index), lazy_usm_color(cue_index)};
 }
 
 void HexPreviewWidget::ensure_lazy_chunks_until(uint64_t target_end) const {
@@ -733,18 +734,18 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_chunk_patt
     }
     const auto rel = position - chunk.offset;
     if (rel < 4) {
-        return ActivePattern{chunk.offset, 4, QStringLiteral("%1 chunk %2.id = %3").arg(is_lazy_aix_format(m_lazy_format) ? QStringLiteral("AIX") : QStringLiteral("RIFF")).arg(chunk_index).arg(chunk.id), lazy_usm_color(chunk_index + 1)};
+        return ActivePattern{chunk.offset, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "%1 chunk %2.id = %3").arg(is_lazy_aix_format(m_lazy_format) ? QStringLiteral("AIX") : QStringLiteral("RIFF")).arg(chunk_index).arg(chunk.id), lazy_usm_color(chunk_index + 1)};
     }
     if (rel < 8) {
-        return ActivePattern{chunk.offset + 4, 4, QStringLiteral("chunk %1.payload_size = %2").arg(chunk_index).arg(chunk.payload_size), lazy_usm_color(chunk_index + 2)};
+        return ActivePattern{chunk.offset + 4, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk %1.payload_size = %2").arg(chunk_index).arg(chunk.payload_size), lazy_usm_color(chunk_index + 2)};
     }
     if (is_lazy_aix_format(m_lazy_format) && chunk.id == QStringLiteral("AIXP") && rel < 0x10) {
-        if (rel < 9) return ActivePattern{chunk.offset + 8, 1, QStringLiteral("chunk %1.layer_index = %2").arg(chunk_index).arg(chunk.header[8]), lazy_usm_color(chunk_index + 3)};
-        if (rel < 10) return ActivePattern{chunk.offset + 9, 1, QStringLiteral("chunk %1.layer_count = %2").arg(chunk_index).arg(chunk.header[9]), lazy_usm_color(chunk_index + 4)};
-        if (rel < 12) return ActivePattern{chunk.offset + 10, 2, QStringLiteral("chunk %1.data_size = %2").arg(chunk_index).arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 10)), lazy_usm_color(chunk_index + 5)};
-        return ActivePattern{chunk.offset + 12, 4, QStringLiteral("chunk %1.sequence = %2").arg(chunk_index).arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 12)), lazy_usm_color(chunk_index + 6)};
+        if (rel < 9) return ActivePattern{chunk.offset + 8, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk %1.layer_index = %2").arg(chunk_index).arg(chunk.header[8]), lazy_usm_color(chunk_index + 3)};
+        if (rel < 10) return ActivePattern{chunk.offset + 9, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk %1.layer_count = %2").arg(chunk_index).arg(chunk.header[9]), lazy_usm_color(chunk_index + 4)};
+        if (rel < 12) return ActivePattern{chunk.offset + 10, 2, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk %1.data_size = %2").arg(chunk_index).arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 10)), lazy_usm_color(chunk_index + 5)};
+        return ActivePattern{chunk.offset + 12, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk %1.sequence = %2").arg(chunk_index).arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 12)), lazy_usm_color(chunk_index + 6)};
     }
-    return ActivePattern{chunk.offset + 8, chunk.size - 8, QStringLiteral("%1 %2 payload").arg(chunk.id).arg(chunk_index), lazy_usm_color(chunk_index)};
+    return ActivePattern{chunk.offset + 8, chunk.size - 8, QCoreApplication::translate("Editor.HexPreviewWidget", "%1 %2 payload").arg(chunk.id).arg(chunk_index), lazy_usm_color(chunk_index)};
 }
 
 std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_cvm_pattern_at(size_t index) const {
@@ -773,12 +774,12 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_cvm_patter
         return std::nullopt;
     }
     if (position == m_lazy_cvm_pvd_offset) {
-        return ActivePattern{m_lazy_cvm_pvd_offset, 1, QStringLiteral("ISO PVD type = 1"), lazy_usm_color(1)};
+        return ActivePattern{m_lazy_cvm_pvd_offset, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "ISO PVD type = 1"), lazy_usm_color(1)};
     }
     if (position < m_lazy_cvm_pvd_offset + 6) {
-        return ActivePattern{m_lazy_cvm_pvd_offset + 1, 5, QStringLiteral("ISO PVD identifier = CD001"), lazy_usm_color(2)};
+        return ActivePattern{m_lazy_cvm_pvd_offset + 1, 5, QCoreApplication::translate("Editor.HexPreviewWidget", "ISO PVD identifier = CD001"), lazy_usm_color(2)};
     }
-    return ActivePattern{m_lazy_cvm_pvd_offset, sector_size, QStringLiteral("ISO9660 primary volume descriptor"), lazy_usm_color(0)};
+    return ActivePattern{m_lazy_cvm_pvd_offset, sector_size, QCoreApplication::translate("Editor.HexPreviewWidget", "ISO9660 primary volume descriptor"), lazy_usm_color(0)};
 }
 
 std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_pattern_at(size_t index) const {
@@ -810,49 +811,49 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
             }
             return std::nullopt;
         };
-        if (auto out = field(0x00, 4, QStringLiteral("chunk.magic = %1").arg(chunk.magic), lazy_usm_color(chunk.offset + 10))) {
+        if (auto out = field(0x00, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.magic = %1").arg(chunk.magic), lazy_usm_color(chunk.offset + 10))) {
             return out;
         }
-        if (auto out = field(0x04, 4, QStringLiteral("chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11))) {
+        if (auto out = field(0x04, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11))) {
             return out;
         }
-        if (auto out = field(0x08, 1, QStringLiteral("chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12))) {
+        if (auto out = field(0x08, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12))) {
             return out;
         }
-        if (auto out = field(0x09, 1, QStringLiteral("chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13))) {
+        if (auto out = field(0x09, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13))) {
             return out;
         }
-        if (auto out = field(0x0A, 2, QStringLiteral("chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14))) {
+        if (auto out = field(0x0A, 2, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14))) {
             return out;
         }
-        if (auto out = field(0x0C, 1, QStringLiteral("chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15))) {
+        if (auto out = field(0x0C, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15))) {
             return out;
         }
-        if (auto out = field(0x0D, 1, QStringLiteral("chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16))) {
+        if (auto out = field(0x0D, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16))) {
             return out;
         }
-        if (auto out = field(0x0E, 1, QStringLiteral("chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17))) {
+        if (auto out = field(0x0E, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17))) {
             return out;
         }
-        if (auto out = field(0x0F, 1, QStringLiteral("chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18))) {
+        if (auto out = field(0x0F, 1, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18))) {
             return out;
         }
-        if (auto out = field(0x10, 4, QStringLiteral("chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19))) {
+        if (auto out = field(0x10, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19))) {
             return out;
         }
-        if (auto out = field(0x14, 4, QStringLiteral("chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20))) {
+        if (auto out = field(0x14, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20))) {
             return out;
         }
-        if (auto out = field(0x18, 4, QStringLiteral("chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21))) {
+        if (auto out = field(0x18, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21))) {
             return out;
         }
-        if (auto out = field(0x1C, 4, QStringLiteral("chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22))) {
+        if (auto out = field(0x1C, 4, QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22))) {
             return out;
         }
         return ActivePattern{
             .offset = chunk.offset,
             .size = 0x20,
-            .label = QStringLiteral("USM %1 header, channel %2, payload type 0x%3")
+            .label = QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 header, channel %2, payload type 0x%3")
                 .arg(chunk.magic)
                 .arg(chunk.channel)
                 .arg(chunk.payload_type, 2, 16, QLatin1Char('0')).toUpper(),
@@ -863,14 +864,14 @@ std::optional<HexPreviewWidget::ActivePattern> HexPreviewWidget::lazy_usm_patter
         return ActivePattern{
             .offset = payload_offset,
             .size = chunk.chunk_size - chunk.header_offset,
-            .label = QStringLiteral("USM %1 payload").arg(chunk.magic),
+            .label = QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 payload").arg(chunk.magic),
             .color = lazy_usm_color(chunk.offset + 2)
         };
     }
     return ActivePattern{
         .offset = chunk.offset,
         .size = packed_size,
-        .label = QStringLiteral("USM chunk %1, size %2").arg(chunk.magic).arg(chunk.chunk_size),
+        .label = QCoreApplication::translate("Editor.HexPreviewWidget", "USM chunk %1, size %2").arg(chunk.magic).arg(chunk.chunk_size),
         .color = lazy_usm_color(chunk.offset)
     };
 }
@@ -910,50 +911,50 @@ void HexPreviewWidget::add_lazy_usm_patterns_for_row(
             break;
         }
         consider(chunk.offset, packed_size,
-            QStringLiteral("USM chunk %1, size %2").arg(chunk.magic).arg(chunk.chunk_size),
+            QCoreApplication::translate("Editor.HexPreviewWidget", "USM chunk %1, size %2").arg(chunk.magic).arg(chunk.chunk_size),
             lazy_usm_color(chunk.offset));
         consider(chunk.offset, 0x20,
-            QStringLiteral("USM %1 header, channel %2, payload type 0x%3")
+            QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 header, channel %2, payload type 0x%3")
                 .arg(chunk.magic)
                 .arg(chunk.channel)
                 .arg(chunk.payload_type, 2, 16, QLatin1Char('0')).toUpper(),
             lazy_usm_color(chunk.offset + 1));
         consider(chunk.offset + 0x00, 4,
-            QStringLiteral("chunk.magic = %1").arg(chunk.magic), lazy_usm_color(chunk.offset + 10));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.magic = %1").arg(chunk.magic), lazy_usm_color(chunk.offset + 10));
         consider(chunk.offset + 0x04, 4,
-            QStringLiteral("chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.size = %1").arg(chunk.chunk_size), lazy_usm_color(chunk.offset + 11));
         consider(chunk.offset + 0x08, 1,
-            QStringLiteral("chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk08 = %1").arg(hex_byte(chunk.header[0x08])), lazy_usm_color(chunk.offset + 12));
         consider(chunk.offset + 0x09, 1,
-            QStringLiteral("chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.offset = %1").arg(chunk.header_offset), lazy_usm_color(chunk.offset + 13));
         consider(chunk.offset + 0x0A, 2,
-            QStringLiteral("chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.padding = %1").arg(cricodecs::io::read_be<uint16_t>(chunk.header.data() + 0x0A)), lazy_usm_color(chunk.offset + 14));
         consider(chunk.offset + 0x0C, 1,
-            QStringLiteral("chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.channel = %1").arg(chunk.channel), lazy_usm_color(chunk.offset + 15));
         consider(chunk.offset + 0x0D, 1,
-            QStringLiteral("chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0d = %1").arg(hex_byte(chunk.header[0x0D])), lazy_usm_color(chunk.offset + 16));
         consider(chunk.offset + 0x0E, 1,
-            QStringLiteral("chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk0e = %1").arg(hex_byte(chunk.header[0x0E])), lazy_usm_color(chunk.offset + 17));
         consider(chunk.offset + 0x0F, 1,
-            QStringLiteral("chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.payload_type = %1").arg(hex_byte(chunk.payload_type)), lazy_usm_color(chunk.offset + 18));
         consider(chunk.offset + 0x10, 4,
-            QStringLiteral("chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_time = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x10)), lazy_usm_color(chunk.offset + 19));
         consider(chunk.offset + 0x14, 4,
-            QStringLiteral("chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.frame_rate = %1").arg(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x14)), lazy_usm_color(chunk.offset + 20));
         consider(chunk.offset + 0x18, 4,
-            QStringLiteral("chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk18 = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x18))), lazy_usm_color(chunk.offset + 21));
         consider(chunk.offset + 0x1C, 4,
-            QStringLiteral("chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22));
+            QCoreApplication::translate("Editor.HexPreviewWidget", "chunk.unk1c = %1").arg(hex_word(cricodecs::io::read_be<uint32_t>(chunk.header.data() + 0x1C))), lazy_usm_color(chunk.offset + 22));
         if (chunk.chunk_size > chunk.header_offset) {
             consider(chunk.offset + 0x08u + chunk.header_offset, chunk.chunk_size - chunk.header_offset,
-                QStringLiteral("USM %1 payload").arg(chunk.magic),
+                QCoreApplication::translate("Editor.HexPreviewWidget", "USM %1 payload").arg(chunk.magic),
                 lazy_usm_color(chunk.offset + 2));
         }
     }
 }
 
 QString HexPreviewWidget::pattern_status_text(const ActivePattern& pattern, size_t index) const {
-    return QStringLiteral("%1  @ 0x%2  +0x%3  size %4")
+    return QCoreApplication::translate("Editor.HexPreviewWidget", "%1  @ 0x%2  +0x%3  size %4")
         .arg(pattern.label)
         .arg(static_cast<qulonglong>(pattern.offset), 8, 16, QLatin1Char('0'))
         .arg(static_cast<qulonglong>(index - pattern.offset), 0, 16)
@@ -1109,7 +1110,7 @@ void HexPreviewWidget::show_go_to_offset_dialog() {
     }
 
     QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("Go to Offset"));
+    dialog.setWindowTitle(QCoreApplication::translate("Editor.HexPreviewWidget", "Go to Offset"));
     auto* root = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout;
 
@@ -1131,8 +1132,8 @@ void HexPreviewWidget::show_go_to_offset_dialog() {
         button->setProperty("baseValue", item.second);
         button->setCheckable(true);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setToolTip(QStringLiteral("Parse this offset as %1.").arg(item.first));
-        button->setAccessibleName(QStringLiteral("Use %1 offset input").arg(item.first));
+        button->setToolTip(QCoreApplication::translate("Editor.HexPreviewWidget", "Parse this offset as %1.").arg(item.first));
+        button->setAccessibleName(QCoreApplication::translate("Editor.HexPreviewWidget", "Use %1 offset input").arg(item.first));
         base_layout->addWidget(button, 0);
         QObject::connect(button, &QToolButton::clicked, &dialog, [base_selector, input, &current_base, value = item.second] {
             const auto previous = current_base;
@@ -1149,31 +1150,31 @@ void HexPreviewWidget::show_go_to_offset_dialog() {
     sync_offset_base_buttons(base_selector, current_base);
     row_layout->addWidget(input, 1);
     row_layout->addWidget(base_selector, 0);
-    form->addRow(QStringLiteral("Offset"), row);
+    form->addRow(QCoreApplication::translate("Editor.HexPreviewWidget", "Offset"), row);
     root->addLayout(form);
 
     auto* limit = new QLabel(
-        QStringLiteral("Range 0 to %1").arg(offset_text(static_cast<uint64_t>(size - 1), 16)),
+        QCoreApplication::translate("Editor.HexPreviewWidget", "Range 0 to %1").arg(offset_text(static_cast<uint64_t>(size - 1), 16)),
         &dialog
     );
     root->addWidget(limit);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Jump"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Editor.HexPreviewWidget", "Jump"));
     root->addWidget(buttons);
 
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [this, &dialog, input, &current_base, size] {
         const auto parsed = parse_offset_text(input->text(), current_base);
         if (!parsed) {
-            QMessageBox::warning(&dialog, QStringLiteral("Invalid offset"), QStringLiteral("Enter a valid offset."));
+            QMessageBox::warning(&dialog, QCoreApplication::translate("Editor.HexPreviewWidget", "Invalid offset"), QCoreApplication::translate("Editor.HexPreviewWidget", "Enter a valid offset."));
             return;
         }
         if (*parsed >= size) {
             QMessageBox::warning(
                 &dialog,
-                QStringLiteral("Invalid offset"),
-                QStringLiteral("Offset is past end of data.")
+                QCoreApplication::translate("Editor.HexPreviewWidget", "Invalid offset"),
+                QCoreApplication::translate("Editor.HexPreviewWidget", "Offset is past end of data.")
             );
             return;
         }
@@ -1191,16 +1192,16 @@ void HexPreviewWidget::contextMenuEvent(QContextMenuEvent* event) {
     const auto alternate_lane = primary_lane == Lane::Text ? Lane::Hex : Lane::Text;
 
     QMenu menu(this);
-    const auto copy_primary = menu.addAction(QStringLiteral("Copy"));
+    const auto copy_primary = menu.addAction(QCoreApplication::translate("Editor.HexPreviewWidget", "Copy"));
     copy_primary->setShortcut(QKeySequence::Copy);
-    const auto copy_alternate = menu.addAction(primary_lane == Lane::Text ? QStringLiteral("Copy hex") : QStringLiteral("Copy text"));
+    const auto copy_alternate = menu.addAction(primary_lane == Lane::Text ? QCoreApplication::translate("Editor.HexPreviewWidget", "Copy hex") : QCoreApplication::translate("Editor.HexPreviewWidget", "Copy text"));
     copy_alternate->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_C));
-    const auto copy_offset = menu.addAction(QStringLiteral("Copy offset"));
+    const auto copy_offset = menu.addAction(QCoreApplication::translate("Editor.HexPreviewWidget", "Copy offset"));
     copy_offset->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
-    const auto go_to_offset = menu.addAction(QStringLiteral("Go to offset..."));
+    const auto go_to_offset = menu.addAction(QCoreApplication::translate("Editor.HexPreviewWidget", "Go to offset..."));
     go_to_offset->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     menu.addSeparator();
-    const auto show_patterns = menu.addAction(QStringLiteral("Show patterns"));
+    const auto show_patterns = menu.addAction(QCoreApplication::translate("Editor.HexPreviewWidget", "Show patterns"));
     show_patterns->setCheckable(true);
     show_patterns->setChecked(m_patterns_enabled);
     show_patterns->setEnabled(has_pattern_source());
@@ -1579,7 +1580,7 @@ void HexPreviewWidget::paintEvent(QPaintEvent*) {
         painter.setPen(muted);
         const auto footer_text = !m_pattern_status.isEmpty()
             ? m_pattern_status
-            : QStringLiteral("showing %1 of %2 bytes")
+            : QCoreApplication::translate("Editor.HexPreviewWidget", "showing %1 of %2 bytes")
                 .arg(static_cast<qulonglong>(bytes_size))
                 .arg(static_cast<qulonglong>(m_total_size));
         painter.drawText(margin, footer_y + metrics.ascent() + 2, footer_text);

@@ -4,6 +4,7 @@
 #include "ui_helpers.hpp"
 #include "../path_text.hpp"
 
+#include <QCoreApplication>
 #include <QAudioOutput>
 #include <QCheckBox>
 #include <QComboBox>
@@ -52,15 +53,15 @@ void MainWindow::start_document_audio_preview(const LoadedDocument& document) {
     }
 
     const auto request_id = m_preview_request_id;
-    show_pending_media_preview(QStringLiteral("Loading audio preview..."));
-    append_log(QStringLiteral("Audio preview started [%1]: %2")
+    show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewAudio", "Loading audio preview..."));
+    append_log(QCoreApplication::translate("MainWindow.PreviewAudio", "Audio preview started [%1]: %2")
         .arg(request_id)
         .arg(path_to_qstring(document.path)));
 
     m_preview_running = true;
     auto keys = m_decryption_keys;
     m_preview_watcher->setFuture(QtConcurrent::run([document, request_id, keys = std::move(keys)] {
-        const auto stage = QStringLiteral("extracting and decoding the audio stream");
+        const auto stage = QCoreApplication::translate("MainWindow.PreviewAudio", "extracting and decoding the audio stream");
         try {
             PreviewResult result;
             result.request_id = request_id;
@@ -75,7 +76,7 @@ void MainWindow::start_document_audio_preview(const LoadedDocument& document) {
             PreviewResult result;
             result.request_id = request_id;
             result.document = document;
-            result.message = QStringLiteral("Audio preview failed while %1: %2 [%3]")
+            result.message = QCoreApplication::translate("MainWindow.PreviewAudio", "Audio preview failed while %1: %2 [%3]")
                 .arg(
                     stage,
                     QString::fromLocal8Bit(error.what()),
@@ -86,7 +87,7 @@ void MainWindow::start_document_audio_preview(const LoadedDocument& document) {
             PreviewResult result;
             result.request_id = request_id;
             result.document = document;
-            result.message = QStringLiteral("Audio preview failed while %1 with an unknown exception").arg(stage);
+            result.message = QCoreApplication::translate("MainWindow.PreviewAudio", "Audio preview failed while %1 with an unknown exception").arg(stage);
             return result;
         }
     }));
@@ -95,7 +96,7 @@ void MainWindow::start_document_audio_preview(const LoadedDocument& document) {
 void MainWindow::configure_audio_preview(const AudioPreview& audio) {
     reset_audio_preview();
     if (!ensure_media_backend()) {
-        show_unavailable_media_preview(QStringLiteral("Audio preview backend is unavailable"));
+        show_unavailable_media_preview(QCoreApplication::translate("MainWindow.PreviewAudio", "Audio preview backend is unavailable"));
         return;
     }
     if (m_video_widget != nullptr) {
@@ -113,7 +114,7 @@ void MainWindow::configure_audio_preview(const AudioPreview& audio) {
     } else if (!audio.wav_bytes.empty()) {
         m_audio_temp_dir = std::make_unique<QTemporaryDir>();
         if (!m_audio_temp_dir->isValid()) {
-            m_audio_status_label->setText(QStringLiteral("Could not create temporary playback directory"));
+            m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "Could not create temporary playback directory"));
             fade_widget_in(m_audio_panel);
             return;
         }
@@ -121,7 +122,7 @@ void MainWindow::configure_audio_preview(const AudioPreview& audio) {
         const auto output_path = m_audio_temp_dir->filePath(QStringLiteral("preview.wav"));
         QFile output(output_path);
         if (!output.open(QIODevice::WriteOnly)) {
-            m_audio_status_label->setText(QStringLiteral("Could not write temporary WAV preview"));
+            m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "Could not write temporary WAV preview"));
             fade_widget_in(m_audio_panel);
             return;
         }
@@ -131,7 +132,7 @@ void MainWindow::configure_audio_preview(const AudioPreview& audio) {
     }
 
     if (m_audio_source_path.isEmpty()) {
-        m_audio_status_label->setText(QStringLiteral("Audio preview is unavailable"));
+        m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "Audio preview is unavailable"));
         fade_widget_in(m_audio_panel);
         return;
     }
@@ -152,7 +153,7 @@ void MainWindow::configure_audio_preview(const AudioPreview& audio) {
         m_audio_volume_slider->setEnabled(true);
     }
     m_audio_player->setSource(QUrl::fromLocalFile(m_audio_source_path));
-    m_audio_status_label->setText(QStringLiteral("%1 - %2 ch, %3 Hz")
+    m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "%1 - %2 ch, %3 Hz")
         .arg(utf8_to_qstring(audio.format))
         .arg(audio.channels)
         .arg(audio.sample_rate));
@@ -193,7 +194,7 @@ void MainWindow::reset_audio_preview() {
     m_video_preview_active = false;
     if (m_audio_play_button != nullptr) {
         m_audio_play_button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-        m_audio_play_button->setText(QStringLiteral("Play"));
+        m_audio_play_button->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "Play"));
         m_audio_play_button->setEnabled(false);
     }
     if (m_audio_progress != nullptr) {
@@ -212,7 +213,7 @@ void MainWindow::reset_audio_preview() {
         m_audio_volume_slider->setEnabled(false);
     }
     if (m_audio_status_label != nullptr) {
-        m_audio_status_label->setText(QStringLiteral("No playable audio selected"));
+        m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewAudio", "No playable audio selected"));
     }
     if (m_audio_loop_toggle != nullptr) {
         QSignalBlocker blocker(m_audio_loop_toggle);
@@ -289,7 +290,7 @@ void MainWindow::update_loop_controls(const AudioPreview& audio) {
         if (const auto bracket = name.indexOf(QStringLiteral(" [")); bracket > 0) {
             name = name.left(bracket);
         }
-        const auto label = QStringLiteral("%1    %2 - %3    samples %4 - %5")
+        const auto label = QCoreApplication::translate("MainWindow.PreviewAudio", "%1    %2 - %3    samples %4 - %5")
             .arg(name)
             .arg(time_text(to_ms(loop.start_sample)))
             .arg(time_text(to_ms(loop.end_sample)))
@@ -298,7 +299,7 @@ void MainWindow::update_loop_controls(const AudioPreview& audio) {
         auto* item = new QListWidgetItem(label, m_audio_loop_list);
         item->setData(Qt::UserRole, static_cast<int>(i));
         item->setSizeHint(QSize(0, 30));
-        item->setToolTip(QStringLiteral("%1: samples %2 - %3, time %4 - %5")
+        item->setToolTip(QCoreApplication::translate("MainWindow.PreviewAudio", "%1: samples %2 - %3, time %4 - %5")
             .arg(name)
             .arg(loop.start_sample)
             .arg(loop.end_sample)

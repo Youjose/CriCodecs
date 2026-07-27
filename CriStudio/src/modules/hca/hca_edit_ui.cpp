@@ -3,6 +3,7 @@
 #include "modules/hca/hca_common.hpp"
 #include "modules/ui_value_helpers.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -60,48 +61,48 @@ EncodeOptionsControls create_encode_options_controls(
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     controls.version = new QComboBox(parent);
-    add_version_item(*controls.version, QStringLiteral("2.00 comp"), cricodecs::hca::HCA_VERSION_V200);
-    add_version_item(*controls.version, QStringLiteral("3.00 comp"), cricodecs::hca::HCA_VERSION_V300);
-    add_version_item(*controls.version, QStringLiteral("1.02 dec"), cricodecs::hca::HCA_VERSION_V102);
-    add_version_item(*controls.version, QStringLiteral("1.03 dec"), cricodecs::hca::HCA_VERSION_V103);
-    form->addRow(QStringLiteral("Version"), controls.version);
+    add_version_item(*controls.version, QCoreApplication::translate("Hca.HcaEditUi", "2.00 comp"), cricodecs::hca::HCA_VERSION_V200);
+    add_version_item(*controls.version, QCoreApplication::translate("Hca.HcaEditUi", "3.00 comp"), cricodecs::hca::HCA_VERSION_V300);
+    add_version_item(*controls.version, QCoreApplication::translate("Hca.HcaEditUi", "1.02 dec"), cricodecs::hca::HCA_VERSION_V102);
+    add_version_item(*controls.version, QCoreApplication::translate("Hca.HcaEditUi", "1.03 dec"), cricodecs::hca::HCA_VERSION_V103);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Version"), controls.version);
 
     controls.quality = new QComboBox(parent);
-    controls.quality->addItem(QStringLiteral("Highest"), static_cast<int>(cricodecs::hca::HcaQuality::Highest));
-    controls.quality->addItem(QStringLiteral("High"), static_cast<int>(cricodecs::hca::HcaQuality::High));
-    controls.quality->addItem(QStringLiteral("Middle"), static_cast<int>(cricodecs::hca::HcaQuality::Middle));
-    controls.quality->addItem(QStringLiteral("Low"), static_cast<int>(cricodecs::hca::HcaQuality::Low));
-    controls.quality->addItem(QStringLiteral("Lowest"), static_cast<int>(cricodecs::hca::HcaQuality::Lowest));
+    controls.quality->addItem(QCoreApplication::translate("Hca.HcaEditUi", "Highest"), static_cast<int>(cricodecs::hca::HcaQuality::Highest));
+    controls.quality->addItem(QCoreApplication::translate("Hca.HcaEditUi", "High"), static_cast<int>(cricodecs::hca::HcaQuality::High));
+    controls.quality->addItem(QCoreApplication::translate("Hca.HcaEditUi", "Middle"), static_cast<int>(cricodecs::hca::HcaQuality::Middle));
+    controls.quality->addItem(QCoreApplication::translate("Hca.HcaEditUi", "Low"), static_cast<int>(cricodecs::hca::HcaQuality::Low));
+    controls.quality->addItem(QCoreApplication::translate("Hca.HcaEditUi", "Lowest"), static_cast<int>(cricodecs::hca::HcaQuality::Lowest));
     controls.quality->setCurrentIndex(1);
-    form->addRow(QStringLiteral("Quality"), controls.quality);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Quality"), controls.quality);
 
     controls.bitrate = new QSpinBox(parent);
     controls.bitrate->setRange(0, std::numeric_limits<int>::max());
-    controls.bitrate->setSpecialValueText(QStringLiteral("auto"));
-    controls.bitrate->setSuffix(QStringLiteral(" bps"));
-    form->addRow(QStringLiteral("Bitrate"), controls.bitrate);
+    controls.bitrate->setSpecialValueText(QCoreApplication::translate("Hca.HcaEditUi", "auto"));
+    controls.bitrate->setSuffix(QCoreApplication::translate("Hca.HcaEditUi", " bps"));
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Bitrate"), controls.bitrate);
 
-    controls.ms_stereo = new QCheckBox(QStringLiteral("Use M/S stereo where supported"), parent);
-    form->addRow(QStringLiteral("Stereo"), controls.ms_stereo);
+    controls.ms_stereo = new QCheckBox(QCoreApplication::translate("Hca.HcaEditUi", "Use M/S stereo where supported"), parent);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Stereo"), controls.ms_stereo);
 
     controls.encrypt = new QCheckBox(encryption_label, parent);
-    form->addRow(QStringLiteral("Encryption"), controls.encrypt);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Encryption"), controls.encrypt);
 
-    controls.loop_enabled = new QCheckBox(QStringLiteral("Write HCA loop chunk"), parent);
-    form->addRow(QStringLiteral("Loop"), controls.loop_enabled);
+    controls.loop_enabled = new QCheckBox(QCoreApplication::translate("Hca.HcaEditUi", "Write HCA loop chunk"), parent);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Loop"), controls.loop_enabled);
 
     controls.loop_start = make_unsigned_integer_edit(
-        0, 0, std::numeric_limits<uint32_t>::max(), parent, QStringLiteral("Loop start in samples"));
-    form->addRow(QStringLiteral("Loop start (samples)"), controls.loop_start);
+        0, 0, std::numeric_limits<uint32_t>::max(), parent, QCoreApplication::translate("Hca.HcaEditUi", "Loop start in samples"));
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Loop start (samples)"), controls.loop_start);
 
     controls.loop_end = make_unsigned_integer_edit(
-        0, 0, std::numeric_limits<uint32_t>::max(), parent, QStringLiteral("Loop end in samples"));
+        0, 0, std::numeric_limits<uint32_t>::max(), parent, QCoreApplication::translate("Hca.HcaEditUi", "Loop end in samples"));
     if (!loop_end_special_text.isEmpty()) {
-        controls.loop_end->setToolTip(QStringLiteral("0 means %1. Range: 0 to %2 samples.")
+        controls.loop_end->setToolTip(QCoreApplication::translate("Hca.HcaEditUi", "0 means %1. Range: 0 to %2 samples.")
             .arg(loop_end_special_text)
             .arg(std::numeric_limits<uint32_t>::max()));
     }
-    form->addRow(QStringLiteral("Loop end (samples)"), controls.loop_end);
+    form->addRow(QCoreApplication::translate("Hca.HcaEditUi", "Loop end (samples)"), controls.loop_end);
 
     QObject::connect(controls.loop_enabled, &QCheckBox::toggled, controls.group, [controls] {
         sync_loop_controls(controls);
@@ -167,55 +168,55 @@ bool encryption_checked(const EncodeOptionsControls& controls) {
 std::vector<TransformDetailRow> detail_rows(const cricodecs::hca::Hca& hca) {
     std::vector<TransformDetailRow> rows;
     const auto& header = hca.header();
-    rows.push_back({QStringLiteral("Version"), QStringLiteral("0x%1").arg(header.file.version, 4, 16, QLatin1Char('0')).toUpper()});
-    rows.push_back({QStringLiteral("Header size"), QString::number(header.file.header_size)});
-    rows.push_back({QStringLiteral("Channels"), QString::number(header.fmt.channel_count)});
-    rows.push_back({QStringLiteral("Sample rate"), QString::number(header.fmt.sample_rate)});
-    rows.push_back({QStringLiteral("Frame count"), QString::number(header.fmt.frame_count)});
-    rows.push_back({QStringLiteral("Sample count"), QString::number(header.sample_count())});
-    rows.push_back({QStringLiteral("Encoder delay"), QString::number(header.fmt.encoder_delay)});
-    rows.push_back({QStringLiteral("Encoder padding"), QString::number(header.fmt.encoder_padding)});
-    rows.push_back({QStringLiteral("Codec type"), QString::fromStdString(codec_type_name(header.codec.type()))});
-    rows.push_back({QStringLiteral("Frame size"), QString::number(header.codec.frame_size)});
-    rows.push_back({QStringLiteral("Resolution"), QStringLiteral("%1-%2").arg(header.codec.min_resolution).arg(header.codec.max_resolution)});
-    rows.push_back({QStringLiteral("Track count"), QString::number(header.codec.track_count)});
-    rows.push_back({QStringLiteral("Channel config"), QString::number(header.codec.channel_config)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Version"), QStringLiteral("0x%1").arg(header.file.version, 4, 16, QLatin1Char('0')).toUpper()});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Header size"), QString::number(header.file.header_size)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Channels"), QString::number(header.fmt.channel_count)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Sample rate"), QString::number(header.fmt.sample_rate)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Frame count"), QString::number(header.fmt.frame_count)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Sample count"), QString::number(header.sample_count())});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Encoder delay"), QString::number(header.fmt.encoder_delay)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Encoder padding"), QString::number(header.fmt.encoder_padding)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Codec type"), QString::fromStdString(codec_type_name(header.codec.type()))});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Frame size"), QString::number(header.codec.frame_size)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Resolution"), QStringLiteral("%1-%2").arg(header.codec.min_resolution).arg(header.codec.max_resolution)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Track count"), QString::number(header.codec.track_count)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Channel config"), QString::number(header.codec.channel_config)});
     rows.push_back({
-        QStringLiteral("Bands"),
-        QStringLiteral("total %1, base %2, stereo %3, hfr %4 x %5")
+        QCoreApplication::translate("Hca.HcaEditUi", "Bands"),
+        QCoreApplication::translate("Hca.HcaEditUi", "total %1, base %2, stereo %3, hfr %4 x %5")
             .arg(header.codec.total_band_count)
             .arg(header.codec.base_band_count)
             .arg(header.codec.stereo_band_count)
             .arg(header.codec.bands_per_hfr_group)
             .arg(header.codec.hfr_group_count)
     });
-    rows.push_back({QStringLiteral("MS stereo"), header.codec.uses_ms_stereo() ? QStringLiteral("yes") : QStringLiteral("no")});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "MS stereo"), header.codec.uses_ms_stereo() ? QCoreApplication::translate("Hca.HcaEditUi", "yes") : QCoreApplication::translate("Hca.HcaEditUi", "no")});
     rows.push_back({
         QStringLiteral("VBR"),
         header.vbr.enabled()
-            ? QStringLiteral("max frame %1, noise %2").arg(header.vbr.max_frame_size).arg(header.vbr.noise_level)
-            : QStringLiteral("no")
+            ? QCoreApplication::translate("Hca.HcaEditUi", "max frame %1, noise %2").arg(header.vbr.max_frame_size).arg(header.vbr.noise_level)
+            : QCoreApplication::translate("Hca.HcaEditUi", "no")
     });
     rows.push_back({
         QStringLiteral("ATH"),
-        QStringLiteral("type %1, curve %2").arg(header.ath.type).arg(header.ath.uses_curve() ? QStringLiteral("yes") : QStringLiteral("no"))
+        QCoreApplication::translate("Hca.HcaEditUi", "type %1, curve %2").arg(header.ath.type).arg(header.ath.uses_curve() ? QCoreApplication::translate("Hca.HcaEditUi", "yes") : QCoreApplication::translate("Hca.HcaEditUi", "no"))
     });
     rows.push_back({
-        QStringLiteral("Cipher"),
-        QStringLiteral("type %1, encrypted %2").arg(header.cipher.type).arg(header.cipher.encrypted() ? QStringLiteral("yes") : QStringLiteral("no"))
+        QCoreApplication::translate("Hca.HcaEditUi", "Cipher"),
+        QCoreApplication::translate("Hca.HcaEditUi", "type %1, encrypted %2").arg(header.cipher.type).arg(header.cipher.encrypted() ? QCoreApplication::translate("Hca.HcaEditUi", "yes") : QCoreApplication::translate("Hca.HcaEditUi", "no"))
     });
     rows.push_back({
-        QStringLiteral("Loop"),
+        QCoreApplication::translate("Hca.HcaEditUi", "Loop"),
         header.loop.enabled()
-            ? QStringLiteral("frames %1-%2, delay %3, padding %4")
+            ? QCoreApplication::translate("Hca.HcaEditUi", "frames %1-%2, delay %3, padding %4")
                 .arg(header.loop.start_frame)
                 .arg(header.loop.end_frame)
                 .arg(header.loop.start_delay)
                 .arg(header.loop.end_padding)
-            : QStringLiteral("no")
+            : QCoreApplication::translate("Hca.HcaEditUi", "no")
     });
-    rows.push_back({QStringLiteral("RVA volume"), QString::number(header.rva.volume, 'g', 9)});
-    rows.push_back({QStringLiteral("Comment length"), QString::number(header.comment.length)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "RVA volume"), QString::number(header.rva.volume, 'g', 9)});
+    rows.push_back({QCoreApplication::translate("Hca.HcaEditUi", "Comment length"), QString::number(header.comment.length)});
     return rows;
 }
 
@@ -225,25 +226,25 @@ std::expected<std::optional<cricodecs::hca::HcaEncodeConfig>, QString> choose_re
     const DecryptionKeys& keys
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("HCA rebuild options"));
+    dialog.setWindowTitle(QCoreApplication::translate("Hca.HcaEditUi", "HCA rebuild options"));
     auto* layout = new QVBoxLayout(&dialog);
 
     const auto& header = hca.header();
     auto hca_options = create_encode_options_controls(
         &dialog,
-        QStringLiteral("HCA Options"),
-        QStringLiteral("Encrypt with configured CRI key"),
-        QStringLiteral("source end")
+        QCoreApplication::translate("Hca.HcaEditUi", "HCA Options"),
+        QCoreApplication::translate("Hca.HcaEditUi", "Encrypt with configured CRI key"),
+        QCoreApplication::translate("Hca.HcaEditUi", "source end")
     );
     set_encode_options_from_hca(hca_options, hca, keys.has_cri_key);
     layout->addWidget(hca_options.group);
 
-    auto* note = dim_label(QStringLiteral("Rebuild decodes the current HCA with the session key, then re-encodes PCM with these options."), &dialog);
+    auto* note = dim_label(QCoreApplication::translate("Hca.HcaEditUi", "Rebuild decodes the current HCA with the session key, then re-encodes PCM with these options."), &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Rebuild Session"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Hca.HcaEditUi", "Rebuild Session"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);

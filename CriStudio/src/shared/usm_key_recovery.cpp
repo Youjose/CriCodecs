@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/usm_key_recovery.hpp"
 
 #include "shared/embedded_entry_extractor.hpp"
@@ -42,7 +43,7 @@ void append_guess(
         return;
     }
     if (guess->candidates.empty()) {
-        report.errors.push_back(std::move(label) + ": recovery returned no candidates");
+        report.errors.push_back(std::move(label) + cristudio::i18n::translate_utf8("Shared.UsmKeyRecovery", ": recovery returned no candidates"));
         return;
     }
     for (const auto& candidate : guess->candidates) {
@@ -108,7 +109,7 @@ UsmRecoverySource make_usm_recovery_source(const LoadedDocument& document) {
         .kind = UsmRecoverySource::Kind::Document,
         .path = document.path,
         .name = document.display_name,
-        .format = document.format,
+        .format = std::string(document_format_id(document)),
         .loader_tag = document.loader_tag,
     };
 }
@@ -168,7 +169,7 @@ std::expected<UsmKeyRecoveryReport, std::string> recover_usm_keys(
     }
 
     if (report.usm_count == 0u) {
-        return std::unexpected("No USM containers were found in the selected files or entries.");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.UsmKeyRecovery", "No USM containers were found in the selected files or entries."));
     }
     return report;
 }

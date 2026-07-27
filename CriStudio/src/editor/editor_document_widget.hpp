@@ -15,5 +15,6 @@ struct EditorOpenRequest;
 [[nodiscard]] bool editor_document_is_dirty(QWidget* widget);
 [[nodiscard]] bool editor_document_has_background_work(QWidget* widget);
 [[nodiscard]] bool editor_document_confirm_close(QWidget* widget, QWidget* parent);
+void retranslate_editor_document(QWidget* widget);
 
 } // namespace cristudio

@@ -20,7 +20,24 @@ struct EditorOpenRequest {
         Scratch
     };
 
+    enum class ScratchKind {
+        None,
+        Utf,
+        Afs,
+        Awb,
+        Acx,
+        Cpk,
+        AudioEncode,
+        MediaBuild,
+        AaxBuild,
+        AixBuild,
+        CsbBuild,
+        CvmScript,
+        CvmDirectory
+    };
+
     SourceKind source_kind = SourceKind::Path;
+    ScratchKind scratch_kind = ScratchKind::None;
     std::string display_name;
     std::string detected_format;
     std::filesystem::path source_path;
@@ -60,6 +77,7 @@ public:
 
     [[nodiscard]] bool has_background_work() const;
     [[nodiscard]] bool has_dirty_documents() const;
+    void retranslate();
 
 private:
     void close_tab(int index);

@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "../main_window.hpp"
 
 #include "preview_helpers.hpp"
@@ -5,6 +6,7 @@
 #include "../path_text.hpp"
 #include "../shared/document_preview_router.hpp"
 
+#include <QCoreApplication>
 #include <QAudioOutput>
 #include <QDir>
 #include <QFile>
@@ -53,14 +55,14 @@ void MainWindow::start_document_video_preview(const LoadedDocument& document) {
     show_preview_document(document);
 
     const auto request_id = m_preview_request_id;
-    show_pending_media_preview(QStringLiteral("Loading video preview..."));
-    append_log(QStringLiteral("Video preview started [%1]: %2")
+    show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewVideo", "Loading video preview..."));
+    append_log(QCoreApplication::translate("MainWindow.PreviewVideo", "Video preview started [%1]: %2")
         .arg(request_id)
         .arg(path_to_qstring(document.path)));
 
     m_preview_running = true;
     m_preview_watcher->setFuture(QtConcurrent::run([document, request_id] {
-        const auto stage = QStringLiteral("validating the video stream with ffmpeg");
+        const auto stage = QCoreApplication::translate("MainWindow.PreviewVideo", "validating the video stream with ffmpeg");
         try {
             PreviewResult result;
             result.request_id = request_id;
@@ -75,7 +77,7 @@ void MainWindow::start_document_video_preview(const LoadedDocument& document) {
             PreviewResult result;
             result.request_id = request_id;
             result.document = document;
-            result.message = QStringLiteral("Video preview failed while %1: %2 [%3]")
+            result.message = QCoreApplication::translate("MainWindow.PreviewVideo", "Video preview failed while %1: %2 [%3]")
                 .arg(
                     stage,
                     QString::fromLocal8Bit(error.what()),
@@ -86,7 +88,7 @@ void MainWindow::start_document_video_preview(const LoadedDocument& document) {
             PreviewResult result;
             result.request_id = request_id;
             result.document = document;
-            result.message = QStringLiteral("Video preview failed while %1 with an unknown exception").arg(stage);
+            result.message = QCoreApplication::translate("MainWindow.PreviewVideo", "Video preview failed while %1 with an unknown exception").arg(stage);
             return result;
         }
     }));
@@ -157,7 +159,7 @@ void prepare_video_preview_for_playback(VideoPreview& video) {
                 ffmpeg_process.exitCode() == 0 &&
                 QFileInfo::exists(remuxed_path)) {
                 playback_path = remuxed_path;
-                video.format += " - timestamped preview";
+                video.format += cristudio::i18n::translate_utf8("MainWindow.PreviewVideo", " - timestamped preview");
             } else {
                 validation_error = QString::fromLocal8Bit(ffmpeg_process.readAllStandardError()).trimmed();
             }
@@ -189,7 +191,7 @@ void MainWindow::configure_video_preview(const VideoPreview& video) {
     reset_audio_preview();
     m_video_temp_dir = video.temporary_directory;
     if (!ensure_media_backend()) {
-        show_unavailable_media_preview(QStringLiteral("Video preview backend is unavailable"));
+        show_unavailable_media_preview(QCoreApplication::translate("MainWindow.PreviewVideo", "Video preview backend is unavailable"));
         return;
     }
     if (m_video_widget == nullptr) {
@@ -207,7 +209,7 @@ void MainWindow::configure_video_preview(const VideoPreview& video) {
     } else if (!video.video_bytes.empty()) {
         m_audio_temp_dir = std::make_unique<QTemporaryDir>();
         if (!m_audio_temp_dir->isValid()) {
-            m_audio_status_label->setText(QStringLiteral("Could not create temporary video preview directory"));
+            m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewVideo", "Could not create temporary video preview directory"));
             fade_widget_in(m_audio_panel);
             return;
         }
@@ -218,7 +220,7 @@ void MainWindow::configure_video_preview(const VideoPreview& video) {
         const auto output_path = m_audio_temp_dir->filePath(QStringLiteral("preview") + suffix);
         QFile output(output_path);
         if (!output.open(QIODevice::WriteOnly)) {
-            m_audio_status_label->setText(QStringLiteral("Could not write temporary video preview"));
+            m_audio_status_label->setText(QCoreApplication::translate("MainWindow.PreviewVideo", "Could not write temporary video preview"));
             fade_widget_in(m_audio_panel);
             return;
         }
@@ -226,13 +228,13 @@ void MainWindow::configure_video_preview(const VideoPreview& video) {
         output.close();
         m_audio_source_path = output_path;
         if (video.remux_for_playback) {
-            playback_note += QStringLiteral(" - raw stream preview");
+            playback_note += QCoreApplication::translate("MainWindow.PreviewVideo", " - raw stream preview");
         }
     }
 
     if (m_audio_source_path.isEmpty()) {
         m_audio_status_label->setText(video.note.empty()
-            ? QStringLiteral("Video preview is unavailable")
+            ? QCoreApplication::translate("MainWindow.PreviewVideo", "Video preview is unavailable")
             : utf8_to_qstring(video.note));
         fade_widget_in(m_audio_panel);
         return;

@@ -1,9 +1,11 @@
+#include "shared/i18n.hpp"
 #include "shared/ffmpeg_audio_preview.hpp"
 
 #include "main_window/preview_helpers.hpp"
 #include "path_text.hpp"
 #include "wav_container.hpp"
 
+#include <QCoreApplication>
 #include <QByteArray>
 #include <QFile>
 #include <QElapsedTimer>
@@ -83,13 +85,13 @@ std::expected<void, std::string> write_preview_input(
     size_t offset = 0;
     while (offset < bytes.size()) {
         if (stop_token.stop_requested()) {
-            return std::unexpected("preview canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "preview canceled"));
         }
         const auto size = std::min(write_chunk_size, bytes.size() - offset);
         if (output.write(
                 reinterpret_cast<const char*>(bytes.data() + offset),
                 static_cast<qint64>(size)) != static_cast<qint64>(size)) {
-            return std::unexpected("media preview could not stage the ffmpeg input");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview could not stage the ffmpeg input"));
         }
         offset += size;
     }
@@ -103,19 +105,19 @@ std::expected<QByteArray, std::string> run_ffmpeg(
     std::string_view operation
 ) {
     if (stop_token.stop_requested()) {
-        return std::unexpected("preview canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "preview canceled"));
     }
 
     const auto ffmpeg = find_ffmpeg_executable();
     if (ffmpeg.isEmpty()) {
-        return std::unexpected(std::string(operation) + " requires ffmpeg");
+        return std::unexpected(std::string(operation) + cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", " requires ffmpeg"));
     }
 
     QProcess process;
     process.start(ffmpeg, arguments);
     if (!process.waitForStarted(ffmpeg_start_timeout_ms)) {
         return std::unexpected(
-            std::string(operation) + " could not start ffmpeg: " +
+            std::string(operation) + cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", " could not start ffmpeg: ") +
             process.errorString().toStdString()
         );
     }
@@ -127,13 +129,13 @@ std::expected<QByteArray, std::string> run_ffmpeg(
         if (stop_token.stop_requested()) {
             process.kill();
             process.waitForFinished(3000);
-            return std::unexpected("preview canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "preview canceled"));
         }
         const auto remaining = timeout_ms - static_cast<int>(elapsed.elapsed());
         if (remaining <= 0) {
             process.kill();
             process.waitForFinished(3000);
-            return std::unexpected(std::string(operation) + " timed out");
+            return std::unexpected(std::string(operation) + cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", " timed out"));
         }
         process.waitForFinished(std::min(remaining, 100));
         stderr_bytes += process.readAllStandardError();
@@ -145,7 +147,7 @@ std::expected<QByteArray, std::string> run_ffmpeg(
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         const auto detail = QString::fromLocal8Bit(stderr_bytes).trimmed();
         return std::unexpected(
-            std::string(operation) + " failed" +
+            std::string(operation) + cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", " failed") +
             (detail.isEmpty() ? std::string{} : ": " + detail.toStdString())
         );
     }
@@ -167,7 +169,7 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_path(
         QStringLiteral("-frames:a"), QStringLiteral("1"),
         QStringLiteral("-f"), QStringLiteral("null"),
         QStringLiteral("-"),
-    }, ffmpeg_probe_timeout_ms, stop_token, "media preview probe");
+    }, ffmpeg_probe_timeout_ms, stop_token, cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe"));
     if (!result) {
         return std::unexpected(result.error());
     }
@@ -175,22 +177,22 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_path(
     FfmpegMediaProbe probe;
     const auto lines = QString::fromLocal8Bit(*result).split(QLatin1Char('\n'));
     for (const auto& line : lines) {
-        if (!line.contains(QStringLiteral("Stream #"))) {
+        if (!line.contains(QCoreApplication::translate("Shared.FfmpegAudioPreview", "Stream #"))) {
             continue;
         }
         probe.has_audio = probe.has_audio || line.contains(QStringLiteral("Audio:"));
         probe.has_video = probe.has_video || line.contains(QStringLiteral("Video:"));
     }
     if (!probe.has_audio && !probe.has_video) {
-        return std::unexpected("media preview probe found no playable audio or video stream");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe found no playable audio or video stream"));
     }
 
     if (probe.has_video && probe.has_audio) {
-        probe.format = "FFmpeg video with audio";
+        probe.format = cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "FFmpeg video with audio");
     } else if (probe.has_video) {
-        probe.format = "FFmpeg video";
+        probe.format = cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "FFmpeg video");
     } else {
-        probe.format = "FFmpeg audio";
+        probe.format = cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "FFmpeg audio");
     }
     return probe;
 }
@@ -210,18 +212,18 @@ std::expected<AudioPreview, std::string> decode_ffmpeg_audio(
         QStringLiteral("-map"), QStringLiteral("0:a:0"),
         QStringLiteral("-vn"),
         output_path,
-    }, ffmpeg_decode_timeout_ms, stop_token, "audio preview ffmpeg decode");
+    }, ffmpeg_decode_timeout_ms, stop_token, cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview ffmpeg decode"));
     if (!decoded) {
         return std::unexpected(decoded.error());
     }
 
     QFile output(output_path);
     if (!output.open(QIODevice::ReadOnly)) {
-        return std::unexpected("audio preview could not read the ffmpeg WAV output");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview could not read the ffmpeg WAV output"));
     }
     const auto wav = output.readAll();
     if (wav.isEmpty()) {
-        return std::unexpected("audio preview ffmpeg decode produced an empty WAV output");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview ffmpeg decode produced an empty WAV output"));
     }
 
     std::vector<uint8_t> wav_bytes(
@@ -229,7 +231,7 @@ std::expected<AudioPreview, std::string> decode_ffmpeg_audio(
         reinterpret_cast<const uint8_t*>(wav.constData()) + wav.size());
     cricodecs::wav::WavContainer container;
     if (auto loaded = container.load(wav_bytes); !loaded) {
-        return std::unexpected("audio preview could not parse ffmpeg WAV output: " + loaded.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview could not parse ffmpeg WAV output: ") + loaded.error());
     }
 
     AudioPreview preview;
@@ -238,7 +240,7 @@ std::expected<AudioPreview, std::string> decode_ffmpeg_audio(
     preview.channels = static_cast<uint16_t>(container.channels());
     preview.sample_count = container.sample_count();
     preview.format = std::move(format);
-    preview.note = "Decoded with ffmpeg";
+    preview.note = cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "Decoded with ffmpeg");
     return preview;
 }
 
@@ -249,18 +251,18 @@ std::expected<AudioPreview, std::string> ffmpeg_audio_preview_from_staged_bytes(
     std::stop_token stop_token
 ) {
     if (bytes.size() > static_cast<size_t>((std::numeric_limits<qint64>::max)())) {
-        return std::unexpected("audio preview input is too large for ffmpeg");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview input is too large for ffmpeg"));
     }
 
     QTemporaryDir directory;
     if (!directory.isValid()) {
-        return std::unexpected("audio preview could not create a temporary ffmpeg directory");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview could not create a temporary ffmpeg directory"));
     }
     const auto input_path = directory.filePath(QStringLiteral("input") + input_suffix);
     const auto output_path = directory.filePath(QStringLiteral("preview.wav"));
     QFile input(input_path);
     if (!input.open(QIODevice::WriteOnly)) {
-        return std::unexpected("audio preview could not stage the ffmpeg input");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview could not stage the ffmpeg input"));
     }
     auto written = write_preview_input(input, bytes, stop_token);
     input.close();
@@ -300,7 +302,7 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_file(
 ) {
     QFile input(path_to_qstring(path));
     if (!input.open(QIODevice::ReadOnly)) {
-        return std::unexpected("media preview probe could not read the input");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe could not read the input"));
     }
     const auto prefix = input.read(static_cast<qint64>(media_prefilter_size));
     const auto prefix_bytes = std::span<const uint8_t>(
@@ -308,7 +310,7 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_file(
         static_cast<size_t>(prefix.size())
     );
     if (is_obviously_non_media(prefix_bytes)) {
-        return std::unexpected("media preview probe rejected obvious non-media content");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected obvious non-media content"));
     }
     return probe_ffmpeg_media_path(path_to_qstring(path), stop_token);
 }
@@ -318,20 +320,20 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_bytes(
     std::stop_token stop_token
 ) {
     if (bytes.size() > static_cast<size_t>((std::numeric_limits<qint64>::max)())) {
-        return std::unexpected("media preview input is too large for ffmpeg");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview input is too large for ffmpeg"));
     }
     if (is_obviously_non_media(bytes.first(std::min(bytes.size(), media_prefilter_size)))) {
-        return std::unexpected("media preview probe rejected obvious non-media content");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected obvious non-media content"));
     }
 
     QTemporaryDir directory;
     if (!directory.isValid()) {
-        return std::unexpected("media preview could not create a temporary ffmpeg directory");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview could not create a temporary ffmpeg directory"));
     }
     const auto input_path = directory.filePath(QStringLiteral("input.bin"));
     QFile input(input_path);
     if (!input.open(QIODevice::WriteOnly)) {
-        return std::unexpected("media preview could not stage the ffmpeg input");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview could not stage the ffmpeg input"));
     }
     auto written = write_preview_input(input, bytes, stop_token);
     input.close();
@@ -347,10 +349,10 @@ std::expected<AudioPreview, std::string> ffmpeg_audio_preview_from_bytes(
     std::stop_token stop_token
 ) {
     if (stop_token.stop_requested()) {
-        return std::unexpected("extraction canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "extraction canceled"));
     }
     if (!is_ffmpeg_audio_codec(codec)) {
-        return std::unexpected("audio preview does not use ffmpeg for " +
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview does not use ffmpeg for ") +
             std::string(cricodecs::awb::entry_codec_name(codec)));
     }
 
@@ -370,7 +372,7 @@ std::expected<AudioPreview, std::string> ffmpeg_audio_preview_from_bytes(
     return ffmpeg_audio_preview_from_staged_bytes(
         bytes,
         QStringLiteral(".bin"),
-        "FFmpeg audio",
+        cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "FFmpeg audio"),
         stop_token
     );
 }
@@ -381,12 +383,12 @@ std::expected<AudioPreview, std::string> ffmpeg_audio_preview_from_file(
 ) {
     QTemporaryDir directory;
     if (!directory.isValid()) {
-        return std::unexpected("audio preview could not create a temporary ffmpeg directory");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "audio preview could not create a temporary ffmpeg directory"));
     }
     return decode_ffmpeg_audio(
         path_to_qstring(path),
         directory.filePath(QStringLiteral("preview.wav")),
-        "FFmpeg audio",
+        cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "FFmpeg audio"),
         stop_token
     );
 }

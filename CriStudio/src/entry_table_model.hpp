@@ -43,6 +43,7 @@ public:
         std::string flat_path
     );
     void clear();
+    void retranslate();
     [[nodiscard]] const EntrySummary* summary_at(const QModelIndex& index) const;
     [[nodiscard]] bool has_custom_columns() const;
     void set_flat_mode(bool enabled);

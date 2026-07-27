@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "editor/editor_document_widget.hpp"
 
 #include "editor_workspace.hpp"
@@ -70,6 +71,7 @@
 #include "usm_container.hpp"
 #include "wav_container.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QAudioOutput>
@@ -81,6 +83,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -149,6 +152,36 @@
 
 namespace cristudio {
 namespace {
+
+QString scratch_title(EditorOpenRequest::ScratchKind kind) {
+    switch (kind) {
+    case EditorOpenRequest::ScratchKind::Utf:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "New UTF Table");
+    case EditorOpenRequest::ScratchKind::Afs:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "New AFS Archive");
+    case EditorOpenRequest::ScratchKind::Awb:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "New AWB/AFS2 Archive");
+    case EditorOpenRequest::ScratchKind::Acx:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "New ACX Archive");
+    case EditorOpenRequest::ScratchKind::Cpk:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "New CPK Archive");
+    case EditorOpenRequest::ScratchKind::AudioEncode:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "Encode Audio");
+    case EditorOpenRequest::ScratchKind::MediaBuild:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "Build Movie");
+    case EditorOpenRequest::ScratchKind::AaxBuild:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "Build AAX");
+    case EditorOpenRequest::ScratchKind::AixBuild:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "Build AIX");
+    case EditorOpenRequest::ScratchKind::CsbBuild:
+        return QCoreApplication::translate("Editor.EditorDocumentWidget", "Build CSB");
+    case EditorOpenRequest::ScratchKind::CvmScript:
+    case EditorOpenRequest::ScratchKind::CvmDirectory:
+    case EditorOpenRequest::ScratchKind::None:
+        return {};
+    }
+    return {};
+}
 
 using modules::utf::utf_flag_from_name;
 using modules::utf::parse_hex_bytes;
@@ -232,6 +265,64 @@ public:
     [[nodiscard]] bool is_dirty() const noexcept { return m_dirty; }
     [[nodiscard]] bool has_background_work() const noexcept { return m_save_running; }
 
+    void retranslate() {
+        retranslate_editor_document_ui(m_ui);
+        const bool playing = m_editor_media_player != nullptr &&
+            m_editor_media_player->playbackState() == QMediaPlayer::PlayingState;
+        m_ui.mux_play_button->setText(playing
+            ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Pause")
+            : QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
+        m_ui.table_model->retranslate();
+        m_ui.field_model->retranslate();
+        m_ui.transform_model->retranslate();
+
+        if (const auto title = scratch_title(m_request.scratch_kind); !title.isEmpty()) {
+            m_title = title;
+        }
+        m_ui.title_label->setText(m_title);
+        m_ui.subtitle_label->setText(editor_format_label(m_request));
+        populate_info();
+        sync_local_cri_key_ui();
+
+        if (m_archive_kind != ArchiveKind::None) {
+            const auto selected_row = m_ui.archive_table->currentRow();
+            const QSignalBlocker selection_blocker(m_ui.archive_table);
+            refresh_archive_document_ui(
+                m_ui,
+                archive_view(),
+                m_request.keys,
+                std::span<const uint8_t>(m_bytes.data(), m_bytes.size())
+            );
+            if (selected_row >= 0 && selected_row < m_ui.archive_table->rowCount()) {
+                m_ui.archive_table->setCurrentCell(selected_row, 0);
+            }
+        } else if (m_transform_kind != TransformKind::None) {
+            const auto selected_row = m_ui.transform_table->currentIndex().row();
+            const QSignalBlocker selection_blocker(m_ui.transform_table->selectionModel());
+            m_transform_rows = transform_detail_rows(m_transform_kind, transform_view());
+            m_usm_chunk_rows = m_transform_kind == TransformKind::Usm && m_usm
+                ? modules::usm::chunk_detail_rows(*m_usm)
+                : std::vector<modules::TransformDetailRow>{};
+            refresh_visible_transform_rows();
+            refresh_transform_document_ui(
+                m_ui,
+                m_transform_kind,
+                transform_view(),
+                m_visible_transform_rows,
+                m_ui.transform_filter_edit->text(),
+                std::span<const uint8_t>(m_bytes.data(), m_bytes.size())
+            );
+            if (selected_row >= 0 && selected_row < m_ui.transform_model->rowCount()) {
+                m_ui.transform_table->selectRow(selected_row);
+            }
+        } else if (m_has_utf && m_utf) {
+            refresh_utf_view();
+        }
+
+        update_header_actions();
+        refresh_title();
+    }
+
     [[nodiscard]] bool confirm_close(QWidget* parent) {
         if (!m_dirty) {
             return true;
@@ -239,15 +330,15 @@ public:
         if (m_save_running) {
             QMessageBox::information(
                 parent,
-                QStringLiteral("Editor tab is busy"),
-                QStringLiteral("\"%1\" is already saving or building. Close it after the current job finishes.").arg(m_title)
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Editor tab is busy"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "\"%1\" is already saving or building. Close it after the current job finishes.").arg(m_title)
             );
             return false;
         }
         const auto choice = QMessageBox::warning(
             parent,
-            QStringLiteral("Close dirty editor tab"),
-            QStringLiteral("\"%1\" has unsaved editor changes. Save before closing?").arg(m_title),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "Close dirty editor tab"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "\"%1\" has unsaved editor changes. Save before closing?").arg(m_title),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
             QMessageBox::Save
         );
@@ -303,8 +394,8 @@ private:
                 m_dirty = false;
             }
             append_log(saves_document
-                ? QStringLiteral("Saved: %1").arg(path_to_qstring(m_last_save_path))
-                : QStringLiteral("%1 completed: %2").arg(job_label, path_to_qstring(m_last_save_path)));
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Saved: %1").arg(path_to_qstring(m_last_save_path))
+                : QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 completed: %2").arg(job_label, path_to_qstring(m_last_save_path)));
             refresh_title();
             if (saves_document && m_close_after_save) {
                 close_tab();
@@ -312,7 +403,7 @@ private:
         } else {
             m_apply_job_output_path.reset();
             m_close_after_save = false;
-            const auto failure_title = saves_document ? QStringLiteral("Save failed") : job_label + QStringLiteral(" failed");
+            const auto failure_title = saves_document ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Save failed") : job_label + QStringLiteral(" failed");
             append_log(QStringLiteral("%1: %2").arg(failure_title, result.error()));
             QMessageBox::warning(this, failure_title, result.error());
         }
@@ -321,7 +412,7 @@ private:
     bool apply_generated_output(const std::filesystem::path& path) {
         auto bytes = read_file_bytes(path);
         if (!bytes) {
-            append_log(QStringLiteral("Job completed, but loading its output failed: %1").arg(bytes.error()));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Job completed, but loading its output failed: %1").arg(bytes.error()));
             return false;
         }
 
@@ -364,9 +455,11 @@ private:
         std::string reason;
         m_document = load_document_summary(path, reason, m_request.keys);
         if (m_document) {
-            m_request.detected_format = m_document->format;
+            m_request.detected_format = m_document->loader_tag.empty()
+                ? m_document->format
+                : m_document->loader_tag;
         } else if (!reason.empty()) {
-            append_log(QStringLiteral("Generated output summary unavailable: %1")
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Generated output summary unavailable: %1")
                 .arg(utf8_to_qstring(reason)));
         }
         try_load_transform(&path);
@@ -382,7 +475,7 @@ private:
         sync_local_cri_key_ui();
         update_header_actions();
         refresh_title();
-        append_log(QStringLiteral("Loaded generated output into this editor session: %1")
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Loaded generated output into this editor session: %1")
             .arg(path_to_qstring(path)));
 
         if (m_transform_kind == TransformKind::Usm || m_transform_kind == TransformKind::Sfd) {
@@ -462,7 +555,7 @@ private:
         const auto omitted_lines = lines.size() - visible_lines;
         m_ui.payload_table->clear();
         m_ui.payload_table->setColumnCount(2);
-        m_ui.payload_table->setHorizontalHeaderLabels({QStringLiteral("Field"), QStringLiteral("Value")});
+        m_ui.payload_table->setHorizontalHeaderLabels({QCoreApplication::translate("Editor.EditorDocumentWidget", "Field"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Value")});
         m_ui.payload_table->setRowCount(visible_lines + (omitted_lines > 0 ? 1 : 0));
         for (qsizetype row = 0; row < visible_lines; ++row) {
             const auto& line = lines[row];
@@ -482,9 +575,9 @@ private:
             m_ui.payload_table->setItem(static_cast<int>(row), 1, value_item);
         }
         if (omitted_lines > 0) {
-            auto* field_item = new QTableWidgetItem(QStringLiteral("More rows"));
+            auto* field_item = new QTableWidgetItem(QCoreApplication::translate("Editor.EditorDocumentWidget", "More rows"));
             field_item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-            auto* value_item = new QTableWidgetItem(QStringLiteral("%1 additional rows omitted").arg(omitted_lines));
+            auto* value_item = new QTableWidgetItem(QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 additional rows omitted").arg(omitted_lines));
             value_item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
             m_ui.payload_table->setItem(static_cast<int>(visible_lines), 0, field_item);
             m_ui.payload_table->setItem(static_cast<int>(visible_lines), 1, value_item);
@@ -500,7 +593,7 @@ private:
         std::span<const uint8_t> bytes
     ) {
         dismiss_editor_media_preview();
-        set_raw_preview(bytes, bytes.size(), document.format);
+        set_raw_preview(bytes, bytes.size(), std::string(document_format_id(document)));
         if (m_ui.payload_table == nullptr) {
             set_preview_tabs(false, m_raw_preview_available, 1);
             return;
@@ -510,7 +603,7 @@ private:
         m_ui.payload_table->clear();
         if (!document.entries.empty()) {
             const auto columns = document.entry_columns.empty()
-                ? std::vector<std::string>{"Name", "Type", "Size", "Offset", "Detail"}
+                ? std::vector<std::string>{"Name", cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Type"), "Size", "Offset", "Detail"}
                 : document.entry_columns;
             const auto shown = std::min(document.entries.size(), max_rows);
             m_ui.payload_table->setColumnCount(static_cast<int>(columns.size()));
@@ -538,7 +631,7 @@ private:
         } else {
             const auto shown = std::min(document.info.size(), max_rows);
             m_ui.payload_table->setColumnCount(2);
-            m_ui.payload_table->setHorizontalHeaderLabels({QStringLiteral("Field"), QStringLiteral("Value")});
+            m_ui.payload_table->setHorizontalHeaderLabels({QCoreApplication::translate("Editor.EditorDocumentWidget", "Field"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Value")});
             m_ui.payload_table->setRowCount(static_cast<int>(shown));
             for (size_t row = 0; row < shown; ++row) {
                 auto* field = new QTableWidgetItem(utf8_to_qstring(document.info[row].name));
@@ -561,12 +654,12 @@ private:
 
     void preview_usm_stream(int index, const modules::TransformDetailRow& detail) {
         if (!m_usm || index < 0 || index >= static_cast<int>(m_usm->streams().size())) {
-            show_detail_preview(QStringLiteral("USM stream preview failed: index out of range"));
+            show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "USM stream preview failed: index out of range"));
             return;
         }
         auto bytes = m_usm->extract_stream(static_cast<uint32_t>(index));
         if (!bytes) {
-            show_detail_preview(QStringLiteral("USM stream preview failed: %1")
+            show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "USM stream preview failed: %1")
                 .arg(utf8_to_qstring(bytes.error())));
             return;
         }
@@ -761,10 +854,10 @@ private:
             }
             if (m_editor_media_player->playbackState() == QMediaPlayer::PlayingState) {
                 m_editor_media_player->pause();
-                m_ui.mux_play_button->setText(QStringLiteral("Play"));
+                m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
             } else {
                 m_editor_media_player->play();
-                m_ui.mux_play_button->setText(QStringLiteral("Pause"));
+                m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Pause"));
             }
         });
         connect(m_ui.media_seek_slider, &QSlider::sliderPressed, this, [this] {
@@ -845,7 +938,7 @@ private:
             std::string reason;
             m_document = load_document_summary(m_request.source_path, reason, m_request.keys);
             if (!m_document) {
-                append_log(QStringLiteral("Loader rejected source: %1").arg(utf8_to_qstring(reason)));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Loader rejected source: %1").arg(utf8_to_qstring(reason)));
             }
         }
         if (m_request.source_bytes) {
@@ -854,7 +947,7 @@ private:
             try_load_transform(source_path);
             try_load_utf();
             try_load_archive();
-            append_log(QStringLiteral("Opened independent byte-backed session: %1").arg(m_title));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Opened independent byte-backed session: %1").arg(m_title));
             return;
         }
 
@@ -864,14 +957,14 @@ private:
             try_load_utf();
             try_load_archive();
         } else {
-            append_log(QStringLiteral("Byte load failed: %1").arg(bytes.error()));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Byte load failed: %1").arg(bytes.error()));
         }
-        append_log(QStringLiteral("Opened independent path session: %1").arg(path_to_qstring(m_request.source_path)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Opened independent path session: %1").arg(path_to_qstring(m_request.source_path)));
     }
 
     void load_archive_entry_request() {
         if (!m_request.entry) {
-            append_log(QStringLiteral("Archive entry request was missing entry metadata."));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Archive entry request was missing entry metadata."));
             return;
         }
 
@@ -880,16 +973,16 @@ private:
             try_load_transform();
             try_load_utf();
             try_load_archive();
-            append_log(QStringLiteral("Opened independent archive-entry byte session: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Opened independent archive-entry byte session: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
         } else {
             if (auto bytes = load_embedded_entry_bytes(*m_request.entry, m_request.keys)) {
                 m_bytes = std::move(*bytes);
                 try_load_transform();
                 try_load_utf();
                 try_load_archive();
-                append_log(QStringLiteral("Materialized archive entry copy: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Materialized archive entry copy: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
             } else {
-                append_log(QStringLiteral("Entry materialization failed: %1").arg(utf8_to_qstring(bytes.error())));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Entry materialization failed: %1").arg(utf8_to_qstring(bytes.error())));
             }
         }
 
@@ -909,7 +1002,7 @@ private:
             m_document = load_embedded_entry_summary(*m_request.entry, reason, m_request.keys);
         }
         if (!m_document && !reason.empty()) {
-            append_log(QStringLiteral("Embedded summary unavailable: %1").arg(utf8_to_qstring(reason)));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Embedded summary unavailable: %1").arg(utf8_to_qstring(reason)));
         }
     }
 
@@ -947,7 +1040,7 @@ private:
         if (m_transform_kind != TransformKind::None && m_transform_kind != TransformKind::Acb) {
             return;
         }
-        const auto format = editor_format_label(m_request).toLower();
+        const auto format = editor_format_id(m_request).toLower();
         const auto has_utf_magic = m_bytes.size() >= 4 &&
             m_bytes[0] == static_cast<uint8_t>('@') &&
             m_bytes[1] == static_cast<uint8_t>('U') &&
@@ -961,8 +1054,8 @@ private:
             m_utf = loaded->editable_copy();
             m_has_utf = true;
             append_log(m_transform_kind == TransformKind::Acb
-                ? QStringLiteral("ACB root UTF loaded for native-backed table editing. Embedded subtable blobs remain editable as VLData.")
-                : QStringLiteral("UTF object loaded for native-backed editor mutations."));
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "ACB root UTF loaded for native-backed table editing. Embedded subtable blobs remain editable as VLData.")
+                : QCoreApplication::translate("Editor.EditorDocumentWidget", "UTF object loaded for native-backed editor mutations."));
         }
     }
 
@@ -1060,8 +1153,8 @@ private:
         m_ui.cri_key_base->setVisible(!cvm_context && (!adx_context || adx_mode == DecryptionKeys::AdxMode::Type9Number));
         if (adx_context) {
             m_ui.cri_key_edit->setPlaceholderText(adx_mode == DecryptionKeys::AdxMode::Type8String
-                ? QStringLiteral("Type 8 key string")
-                : QStringLiteral("Type 9 key"));
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Type 8 key string")
+                : QCoreApplication::translate("Editor.EditorDocumentWidget", "Type 9 key"));
         }
     }
 
@@ -1075,16 +1168,16 @@ private:
             m_transform_kind == TransformKind::Aax || m_transform_kind == TransformKind::Aix;
         const bool cvm_context = m_archive_kind == ArchiveKind::Cvm;
         m_ui.local_key_label->setText(cvm_context
-            ? QStringLiteral("CVM scramble key")
-            : adx_context ? QStringLiteral("Local ADX/AHX key") : QStringLiteral("Local CRI key"));
+            ? QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM scramble key")
+            : adx_context ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Local ADX/AHX key") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Local CRI key"));
         {
             const QSignalBlocker blocker(m_ui.cvm_scramble_check);
             m_ui.cvm_scramble_panel->setVisible(cvm_context);
             m_ui.cvm_scramble_check->setChecked(cvm_context && !m_cvm_scramble_key.empty());
         }
         if (cvm_context) {
-            m_ui.cri_key_edit->setPlaceholderText(QStringLiteral("Scramble key string"));
-            m_ui.cri_key_edit->setToolTip(QStringLiteral("This key is used only when this editor tab rebuilds the CVM. An empty key writes an unscrambled CVM."));
+            m_ui.cri_key_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Scramble key string"));
+            m_ui.cri_key_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentWidget", "This key is used only when this editor tab rebuilds the CVM. An empty key writes an unscrambled CVM."));
             m_ui.cri_key_edit->setText(utf8_to_qstring(m_cvm_scramble_key));
             m_ui.cri_key_edit->setEnabled(m_ui.cvm_scramble_check->isChecked());
             sync_local_key_mode_controls();
@@ -1098,7 +1191,7 @@ private:
                     m_ui.local_key_type->setCurrentIndex(index);
                 }
             }
-            m_ui.cri_key_edit->setToolTip(QStringLiteral("This ADX/AHX key belongs only to this editor tab."));
+            m_ui.cri_key_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentWidget", "This ADX/AHX key belongs only to this editor tab."));
             m_ui.adx_subkey_spin->setValue(m_request.keys.adx_subkey);
             switch (m_request.keys.adx_mode) {
             case DecryptionKeys::AdxMode::Type8String:
@@ -1121,8 +1214,8 @@ private:
             sync_local_key_mode_controls();
             return;
         }
-        m_ui.cri_key_edit->setPlaceholderText(QStringLiteral("No key"));
-        m_ui.cri_key_edit->setToolTip(QStringLiteral("This key belongs only to this editor tab and does not change the global CRI key."));
+        m_ui.cri_key_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "No key"));
+        m_ui.cri_key_edit->setToolTip(QCoreApplication::translate("Editor.EditorDocumentWidget", "This key belongs only to this editor tab and does not change the global CRI key."));
         if (!m_request.keys.has_cri_key) {
             m_ui.cri_key_edit->clear();
             sync_local_key_mode_controls();
@@ -1159,14 +1252,14 @@ private:
         if (m_archive_kind == ArchiveKind::Cvm) {
             if (m_ui.cvm_scramble_check != nullptr && m_ui.cvm_scramble_check->isChecked()) {
                 if (text.isEmpty()) {
-                    QMessageBox::warning(this, QStringLiteral("Missing scramble key"), QStringLiteral("Enter a CVM scramble key string or disable Scramble on save."));
+                    QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Missing scramble key"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Enter a CVM scramble key string or disable Scramble on save."));
                     return;
                 }
                 m_cvm_scramble_key = qstring_to_utf8(text);
-                append_log(QStringLiteral("Enabled scrambled CVM output for this editor tab."));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Enabled scrambled CVM output for this editor tab."));
             } else {
                 m_cvm_scramble_key.clear();
-                append_log(QStringLiteral("CVM output will be written unscrambled."));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM output will be written unscrambled."));
             }
             m_dirty = true;
             refresh_title();
@@ -1200,8 +1293,8 @@ private:
                     valid = ok && !parts[static_cast<size_t>(index)].isEmpty();
                 }
                 if (!valid) {
-                    QMessageBox::warning(this, QStringLiteral("Invalid ADX/AHX key"),
-                        QStringLiteral("Start, Mult, and Add must each be a hexadecimal 16-bit value."));
+                    QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Invalid ADX/AHX key"),
+                        QCoreApplication::translate("Editor.EditorDocumentWidget", "Start, Mult, and Add must each be a hexadecimal 16-bit value."));
                     return;
                 }
                 m_request.keys.adx_mode = DecryptionKeys::AdxMode::AhxTriplet;
@@ -1210,7 +1303,7 @@ private:
                 m_request.keys.ahx_add = values[2];
             } else if (mode == DecryptionKeys::AdxMode::Type8String) {
                 if (text.isEmpty()) {
-                    QMessageBox::warning(this, QStringLiteral("Invalid ADX key"), QStringLiteral("The type-8 key string is empty."));
+                    QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Invalid ADX key"), QCoreApplication::translate("Editor.EditorDocumentWidget", "The type-8 key string is empty."));
                     return;
                 }
                 m_request.keys.adx_mode = DecryptionKeys::AdxMode::Type8String;
@@ -1224,17 +1317,17 @@ private:
                 bool ok = false;
                 const auto value = numeric.toULongLong(&ok, m_ui.cri_key_base->currentData().toInt());
                 if (!ok || numeric.isEmpty()) {
-                    QMessageBox::warning(this, QStringLiteral("Invalid ADX key"),
-                        QStringLiteral("Enter a valid %1 64-bit type-9 key.")
+                    QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Invalid ADX key"),
+                        QCoreApplication::translate("Editor.EditorDocumentWidget", "Enter a valid %1 64-bit type-9 key.")
                             .arg(m_ui.cri_key_base->currentData().toInt() == 16
-                                ? QStringLiteral("hexadecimal") : QStringLiteral("decimal")));
+                                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "hexadecimal") : QCoreApplication::translate("Editor.EditorDocumentWidget", "decimal")));
                     return;
                 }
                 m_request.keys.adx_mode = DecryptionKeys::AdxMode::Type9Number;
                 m_request.keys.adx_type9_key = value;
                 m_request.keys.adx_subkey = static_cast<uint16_t>(m_ui.adx_subkey_spin->value());
             }
-            append_log(QStringLiteral("Applied an ADX/AHX key locally to this editor tab."));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Applied an ADX/AHX key locally to this editor tab."));
             sync_local_cri_key_ui();
             dismiss_editor_media_preview();
             if ((m_transform_kind == TransformKind::Aax || m_transform_kind == TransformKind::Aix) &&
@@ -1257,18 +1350,18 @@ private:
         if (text.isEmpty()) {
             m_request.keys.has_cri_key = false;
             m_request.keys.cri_key = 0;
-            append_log(QStringLiteral("Cleared the local CRI key for this editor tab."));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Cleared the local CRI key for this editor tab."));
         } else {
             bool ok = false;
             const auto value = text.toULongLong(&ok, base);
             if (!ok) {
-                QMessageBox::warning(this, QStringLiteral("Invalid CRI key"),
-                    QStringLiteral("Enter a valid %1 64-bit key.").arg(base == 16 ? QStringLiteral("hexadecimal") : QStringLiteral("decimal")));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Invalid CRI key"),
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Enter a valid %1 64-bit key.").arg(base == 16 ? QCoreApplication::translate("Editor.EditorDocumentWidget", "hexadecimal") : QCoreApplication::translate("Editor.EditorDocumentWidget", "decimal")));
                 return;
             }
             m_request.keys.has_cri_key = true;
             m_request.keys.cri_key = value;
-            append_log(QStringLiteral("Applied a CRI key locally to this editor tab. The global key was not changed."));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Applied a CRI key locally to this editor tab. The global key was not changed."));
         }
         sync_local_cri_key_ui();
         dismiss_editor_media_preview();
@@ -1314,7 +1407,7 @@ private:
         m_ui.replace_binary_button->setEnabled(false);
 
         if (editing_acb) {
-            m_ui.transform_kind_label->setText(QStringLiteral("ACB root UTF"));
+            m_ui.transform_kind_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "ACB root UTF"));
             for (auto* button : {
                     m_ui.encode_transform_button, m_ui.decode_transform_button, m_ui.decrypt_transform_button,
                     m_ui.encrypt_transform_button, m_ui.rebuild_transform_button, m_ui.transform_options_button,
@@ -1328,7 +1421,7 @@ private:
             m_ui.extract_transform_button->setEnabled(!m_acb_semantic_state_stale);
             m_ui.open_acb_awb_button->setEnabled(!m_acb_semantic_state_stale && m_acb.has_value());
             m_ui.export_acb_awb_button->setEnabled(!m_acb_semantic_state_stale && m_acb.has_value());
-            const auto saved_state_note = QStringLiteral("Save and reopen after editing before using ACB extraction or associated-AWB actions.");
+            const auto saved_state_note = QCoreApplication::translate("Editor.EditorDocumentWidget", "Save and reopen after editing before using ACB extraction or associated-AWB actions.");
             m_ui.extract_transform_button->setToolTip(m_acb_semantic_state_stale ? saved_state_note : QString{});
             m_ui.open_acb_awb_button->setToolTip(m_acb_semantic_state_stale ? saved_state_note : QString{});
             m_ui.export_acb_awb_button->setToolTip(m_acb_semantic_state_stale ? saved_state_note : QString{});
@@ -1451,7 +1544,7 @@ private:
         }
         m_selected_entry = *summary;
         if (!summary->inspector_entries.empty()) {
-            m_ui.field_model->set_entries(summary->inspector_entries, {"Field", "Type", "Value"}, {"field", "type", "value"});
+            m_ui.field_model->set_entries(summary->inspector_entries, {cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Field"), cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Type"), cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Value")}, {"field", "type", "value"});
             m_ui.field_table->show();
             m_ui.field_table->resizeColumnToContents(0);
             m_ui.field_table->resizeColumnToContents(1);
@@ -1508,32 +1601,32 @@ private:
         case ColumnType::UInt32:
         case ColumnType::UInt64:
             m_ui.value_edit->setValidator(m_ui.unsigned_value_validator);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("Unsigned integer"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Unsigned integer"));
             break;
         case ColumnType::SInt8:
         case ColumnType::SInt16:
         case ColumnType::SInt32:
         case ColumnType::SInt64:
             m_ui.value_edit->setValidator(m_ui.signed_value_validator);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("Signed integer"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Signed integer"));
             break;
         case ColumnType::Float:
         case ColumnType::Double:
             m_ui.value_edit->setValidator(m_ui.real_value_validator);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("Floating-point value"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Floating-point value"));
             break;
         case ColumnType::GUID:
             m_ui.value_edit->setValidator(m_ui.guid_value_validator);
             m_ui.value_edit->setMaxLength(32);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("32 hexadecimal digits"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "32 hexadecimal digits"));
             break;
         case ColumnType::String:
             m_ui.value_edit->setValidator(nullptr);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("Text"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Text"));
             break;
         case ColumnType::VLData:
             m_ui.value_edit->setValidator(nullptr);
-            m_ui.value_edit->setPlaceholderText(QStringLiteral("Use Replace Binary From File"));
+            m_ui.value_edit->setPlaceholderText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Use Replace Binary From File"));
             break;
         }
         m_ui.apply_value_button->setEnabled(type != cricodecs::utf::ColumnType::VLData);
@@ -1559,7 +1652,7 @@ private:
                 }
                 show_hex_preview(*data, 0, "UTF");
             } else {
-                show_detail_preview(QStringLiteral("Error: %1").arg(utf8_to_qstring(data.error())));
+                show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "Error: %1").arg(utf8_to_qstring(data.error())));
             }
         } else {
             if (m_ui.payload_table != nullptr) {
@@ -1609,7 +1702,7 @@ private:
         const auto view = archive_view();
         auto bytes = archive_entry_bytes(view, static_cast<uint32_t>(row), m_preview_scratch);
         if (!bytes) {
-            show_detail_preview(QStringLiteral("Error: %1").arg(bytes.error()));
+            show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "Error: %1").arg(bytes.error()));
             return;
         }
         if (bytes->size() >= 4 && (*bytes)[0] == static_cast<uint8_t>('@') &&
@@ -1763,7 +1856,7 @@ private:
         int preferred_layer = -1
     ) {
         std::expected<std::vector<uint8_t>, std::string> bytes =
-            std::unexpected("No editable transform container is loaded");
+            std::unexpected(cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "No editable transform container is loaded"));
         if (m_transform_kind == TransformKind::Aax && m_aax) {
             bytes = m_aax->save();
         } else if (m_transform_kind == TransformKind::Aix && m_aix) {
@@ -1788,7 +1881,7 @@ private:
             m_ui.transform_table->setCurrentIndex(m_ui.transform_model->index(row, 0));
             m_ui.transform_table->selectRow(row);
         }
-        append_log(action + QStringLiteral(" completed."));
+        append_log(action + QCoreApplication::translate("Editor.EditorDocumentWidget", " completed."));
     }
 
     void add_transform_entries() {
@@ -1797,10 +1890,10 @@ private:
         }
         if (m_transform_kind == TransformKind::Aix && m_aix) {
             QMenu menu(this);
-            auto* add_segment = menu.addAction(QStringLiteral("Add Segment..."));
-            add_segment->setToolTip(QStringLiteral("Choose one ADX file per existing layer."));
-            auto* add_layer = menu.addAction(QStringLiteral("Add Layer..."));
-            add_layer->setToolTip(QStringLiteral("Choose one ADX file per existing segment."));
+            auto* add_segment = menu.addAction(QCoreApplication::translate("Editor.EditorDocumentWidget", "Add Segment..."));
+            add_segment->setToolTip(QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose one ADX file per existing layer."));
+            auto* add_layer = menu.addAction(QCoreApplication::translate("Editor.EditorDocumentWidget", "Add Layer..."));
+            add_layer->setToolTip(QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose one ADX file per existing segment."));
             const auto* chosen = menu.exec(m_ui.add_transform_entry_button->mapToGlobal(
                 QPoint(0, m_ui.add_transform_entry_button->height())));
             if (chosen == nullptr) {
@@ -1812,20 +1905,23 @@ private:
             const auto files = QFileDialog::getOpenFileNames(
                 this,
                 adding_segment
-                    ? QStringLiteral("Choose one ADX file per AIX layer")
-                    : QStringLiteral("Choose one ADX file per AIX segment"),
+                    ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose one ADX file per AIX layer")
+                    : QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose one ADX file per AIX segment"),
                 QString{},
-                QStringLiteral("ADX audio (*.adx *.sfa);;All files (*)"));
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "ADX audio (*.adx *.sfa);;All files (*)"));
             if (files.isEmpty()) {
                 return;
             }
             if (static_cast<size_t>(files.size()) != expected_count) {
                 QMessageBox::warning(
                     this,
-                    QStringLiteral("Add failed"),
-                    QStringLiteral("Choose exactly %1 ADX file(s), in %2 order.")
-                        .arg(static_cast<qulonglong>(expected_count))
-                        .arg(adding_segment ? QStringLiteral("layer") : QStringLiteral("segment")));
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Add failed"),
+                    QCoreApplication::translate(
+                        "Editor.EditorDocumentWidget",
+                        "Choose exactly %n ADX file(s), in %1 order.",
+                        nullptr,
+                        static_cast<int>(expected_count))
+                        .arg(adding_segment ? QCoreApplication::translate("Editor.EditorDocumentWidget", "layer") : QCoreApplication::translate("Editor.EditorDocumentWidget", "segment")));
                 return;
             }
 
@@ -1834,13 +1930,13 @@ private:
             for (const auto& file : files) {
                 auto bytes = read_file_bytes(path_from_qstring(file));
                 if (!bytes) {
-                    QMessageBox::warning(this, QStringLiteral("Add failed"), bytes.error());
+                    QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add failed"), bytes.error());
                     return;
                 }
                 payloads.push_back(std::move(*bytes));
             }
 
-            std::expected<void, std::string> result = std::unexpected("AIX add failed");
+            std::expected<void, std::string> result = std::unexpected(cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "AIX add failed"));
             int selection_kind = modules::aix::segment_row_kind;
             int selection_index = 0;
             if (adding_segment) {
@@ -1853,11 +1949,11 @@ private:
                 selection_index = static_cast<int>(m_aix->layers().size()) - 1;
             }
             if (!result) {
-                QMessageBox::warning(this, QStringLiteral("Add failed"), utf8_to_qstring(result.error()));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add failed"), utf8_to_qstring(result.error()));
                 return;
             }
             finish_transform_entry_edit(
-                adding_segment ? QStringLiteral("Add AIX segment") : QStringLiteral("Add AIX layer"),
+                adding_segment ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Add AIX segment") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Add AIX layer"),
                 selection_index,
                 selection_kind);
             return;
@@ -1865,11 +1961,11 @@ private:
 
         const auto files = QFileDialog::getOpenFileNames(
             this,
-            m_transform_kind == TransformKind::Aax ? QStringLiteral("Add AAX segments") : QStringLiteral("Add CSB streams"),
+            m_transform_kind == TransformKind::Aax ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Add AAX segments") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Add CSB streams"),
             QString{},
             m_transform_kind == TransformKind::Aax
-                ? QStringLiteral("ADX/AHX audio (*.adx *.ahx *.sfa);;All files (*)")
-                : QStringLiteral("Supported audio (*.aax *.adx *.ahx *.hca);;All files (*)"));
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "ADX/AHX audio (*.adx *.ahx *.sfa);;All files (*)")
+                : QCoreApplication::translate("Editor.EditorDocumentWidget", "Supported audio (*.aax *.adx *.ahx *.hca);;All files (*)"));
         if (files.isEmpty()) {
             return;
         }
@@ -1877,21 +1973,21 @@ private:
         for (const auto& file : files) {
             auto bytes = read_file_bytes(path_from_qstring(file));
             if (!bytes) {
-                QMessageBox::warning(this, QStringLiteral("Add failed"), bytes.error());
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add failed"), bytes.error());
                 return;
             }
             auto result = m_transform_kind == TransformKind::Aax
                 ? m_aax->add_segment(*bytes)
                 : m_csb->add_file(*bytes, path_from_qstring(QFileInfo(file).fileName()));
             if (!result) {
-                QMessageBox::warning(this, QStringLiteral("Add failed"), utf8_to_qstring(result.error()));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add failed"), utf8_to_qstring(result.error()));
                 return;
             }
             last_index = m_transform_kind == TransformKind::Aax
                 ? static_cast<int>(m_aax->segment_count()) - 1
                 : static_cast<int>(m_csb->stream_count()) - 1;
         }
-        finish_transform_entry_edit(QStringLiteral("Add entries"), last_index);
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Add entries"), last_index);
     }
 
     void replace_transform_entry() {
@@ -1901,21 +1997,21 @@ private:
                 selection->index < 0 || selection->layer < 0) {
                 QMessageBox::information(
                     this,
-                    QStringLiteral("Replace AIX audio"),
-                    QStringLiteral("Select a Layer N segment M ADX payload first."));
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace AIX audio"),
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Select a Layer N segment M ADX payload first."));
                 return;
             }
             const auto file = QFileDialog::getOpenFileName(
                 this,
-                QStringLiteral("Choose replacement ADX audio"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose replacement ADX audio"),
                 QString{},
-                QStringLiteral("ADX audio (*.adx *.sfa);;All files (*)"));
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "ADX audio (*.adx *.sfa);;All files (*)"));
             if (file.isEmpty()) {
                 return;
             }
             auto bytes = read_file_bytes(path_from_qstring(file));
             if (!bytes) {
-                QMessageBox::warning(this, QStringLiteral("Replace failed"), bytes.error());
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace failed"), bytes.error());
                 return;
             }
             auto result = m_aix->replace_layer(
@@ -1923,11 +2019,11 @@ private:
                 static_cast<size_t>(selection->layer),
                 *bytes);
             if (!result) {
-                QMessageBox::warning(this, QStringLiteral("Replace failed"), utf8_to_qstring(result.error()));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace failed"), utf8_to_qstring(result.error()));
                 return;
             }
             finish_transform_entry_edit(
-                QStringLiteral("Replace AIX audio"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace AIX audio"),
                 selection->index,
                 modules::aix::payload_row_kind,
                 selection->layer);
@@ -1936,26 +2032,26 @@ private:
 
         const auto index = selected_editable_transform_index();
         if (!index) {
-            QMessageBox::information(this, QStringLiteral("Replace entry"), QStringLiteral("Select an AAX segment or CSB stream first."));
+            QMessageBox::information(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace entry"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Select an AAX segment or CSB stream first."));
             return;
         }
-        const auto file = QFileDialog::getOpenFileName(this, QStringLiteral("Choose replacement audio"));
+        const auto file = QFileDialog::getOpenFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose replacement audio"));
         if (file.isEmpty()) {
             return;
         }
         auto bytes = read_file_bytes(path_from_qstring(file));
         if (!bytes) {
-            QMessageBox::warning(this, QStringLiteral("Replace failed"), bytes.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace failed"), bytes.error());
             return;
         }
         auto result = m_transform_kind == TransformKind::Aax
             ? m_aax->replace_segment(static_cast<uint32_t>(*index), *bytes)
             : m_csb->replace_file(static_cast<uint32_t>(*index), *bytes);
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Replace failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace failed"), utf8_to_qstring(result.error()));
             return;
         }
-        finish_transform_entry_edit(QStringLiteral("Replace entry"), *index);
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Replace entry"), *index);
     }
 
     void remove_transform_entry() {
@@ -1966,16 +2062,16 @@ private:
                  selection->payload_kind != modules::aix::layer_row_kind)) {
                 QMessageBox::information(
                     this,
-                    QStringLiteral("Remove AIX entry"),
-                    QStringLiteral("Select a Segment or Layer summary row first."));
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove AIX entry"),
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Select a Segment or Layer summary row first."));
                 return;
             }
             const bool removing_segment = selection->payload_kind == modules::aix::segment_row_kind;
             if (QMessageBox::question(
                     this,
-                    QStringLiteral("Remove AIX entry"),
-                    QStringLiteral("Remove AIX %1 %2?")
-                        .arg(removing_segment ? QStringLiteral("segment") : QStringLiteral("layer"))
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove AIX entry"),
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove AIX %1 %2?")
+                        .arg(removing_segment ? QCoreApplication::translate("Editor.EditorDocumentWidget", "segment") : QCoreApplication::translate("Editor.EditorDocumentWidget", "layer"))
                         .arg(selection->index)) != QMessageBox::Yes) {
                 return;
             }
@@ -1983,31 +2079,31 @@ private:
                 ? m_aix->remove_segment(static_cast<size_t>(selection->index))
                 : m_aix->remove_layer(static_cast<size_t>(selection->index));
             if (!result) {
-                QMessageBox::warning(this, QStringLiteral("Remove failed"), utf8_to_qstring(result.error()));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove failed"), utf8_to_qstring(result.error()));
                 return;
             }
             const auto count = removing_segment ? m_aix->segments().size() : m_aix->layers().size();
             finish_transform_entry_edit(
-                QStringLiteral("Remove AIX entry"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove AIX entry"),
                 (std::min)(selection->index, static_cast<int>(count) - 1),
                 selection->payload_kind);
             return;
         }
 
         const auto index = selected_editable_transform_index();
-        if (!index || QMessageBox::question(this, QStringLiteral("Remove entry"),
-                QStringLiteral("Remove the selected entry?")) != QMessageBox::Yes) {
+        if (!index || QMessageBox::question(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove entry"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove the selected entry?")) != QMessageBox::Yes) {
             return;
         }
         auto result = m_transform_kind == TransformKind::Aax
             ? m_aax->remove_segment(static_cast<uint32_t>(*index))
             : m_csb->remove_file(static_cast<uint32_t>(*index));
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Remove failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove failed"), utf8_to_qstring(result.error()));
             return;
         }
         const auto count = m_transform_kind == TransformKind::Aax ? m_aax->segment_count() : m_csb->stream_count();
-        finish_transform_entry_edit(QStringLiteral("Remove entry"),
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove entry"),
             (std::min)(*index, static_cast<int>(count) - 1));
     }
 
@@ -2029,11 +2125,11 @@ private:
                 ? m_aix->move_segment(static_cast<size_t>(selection->index), static_cast<size_t>(destination))
                 : m_aix->move_layer(static_cast<size_t>(selection->index), static_cast<size_t>(destination));
             if (!result) {
-                QMessageBox::warning(this, QStringLiteral("Move failed"), utf8_to_qstring(result.error()));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Move failed"), utf8_to_qstring(result.error()));
                 return;
             }
             finish_transform_entry_edit(
-                QStringLiteral("Move AIX entry"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "Move AIX entry"),
                 destination,
                 selection->payload_kind);
             return;
@@ -2053,10 +2149,10 @@ private:
             ? m_aax->move_segment(static_cast<uint32_t>(*index), static_cast<uint32_t>(destination))
             : m_csb->move_file(static_cast<uint32_t>(*index), static_cast<uint32_t>(destination));
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Move failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Move failed"), utf8_to_qstring(result.error()));
             return;
         }
-        finish_transform_entry_edit(QStringLiteral("Move entry"), destination);
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Move entry"), destination);
     }
 
     void rename_transform_entry() {
@@ -2067,17 +2163,17 @@ private:
         bool accepted = false;
         const auto current = path_to_qstring(m_csb->stream(static_cast<uint32_t>(*index)).suggested_path());
         const auto name = QInputDialog::getText(
-            this, QStringLiteral("Rename CSB stream"), QStringLiteral("Archive path"),
+            this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename CSB stream"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Archive path"),
             QLineEdit::Normal, current, &accepted).trimmed();
         if (!accepted || name.isEmpty()) {
             return;
         }
         auto result = m_csb->rename_file(static_cast<uint32_t>(*index), path_from_qstring(name));
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Rename failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename failed"), utf8_to_qstring(result.error()));
             return;
         }
-        finish_transform_entry_edit(QStringLiteral("Rename entry"), *index);
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename entry"), *index);
     }
 
     void toggle_transform_entry_flag() {
@@ -2091,7 +2187,7 @@ private:
         }
         const auto payload_kind = detail->payload_kind;
         const auto index = detail->index;
-        std::expected<void, std::string> result = std::unexpected("Select an editable entry first");
+        std::expected<void, std::string> result = std::unexpected(cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Select an editable entry first"));
         int selection_kind = payload_kind;
         int selection_index = index;
         if (m_transform_kind == TransformKind::Aax && payload_kind == 1 && index >= 0) {
@@ -2114,10 +2210,10 @@ private:
             }
         }
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Edit flag failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Edit flag failed"), utf8_to_qstring(result.error()));
             return;
         }
-        finish_transform_entry_edit(QStringLiteral("Edit entry flag"), selection_index, selection_kind);
+        finish_transform_entry_edit(QCoreApplication::translate("Editor.EditorDocumentWidget", "Edit entry flag"), selection_index, selection_kind);
     }
 
     void handle_archive_item_changed(QTableWidgetItem* item) {
@@ -2218,8 +2314,8 @@ private:
         m_ui.archive_table->setUpdatesEnabled(updates_enabled);
         mark_archive_changed(
             enabled
-                ? QStringLiteral("Enabled save-time compression for all CPK entries.")
-                : QStringLiteral("Disabled save-time compression for all CPK entries."),
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Enabled save-time compression for all CPK entries.")
+                : QCoreApplication::translate("Editor.EditorDocumentWidget", "Disabled save-time compression for all CPK entries."),
             false);
     }
 
@@ -2274,7 +2370,7 @@ private:
             return;
         }
         const auto row = static_cast<uint32_t>(m_utf_transposed ? 0 : m_ui.utf_grid->currentRow());
-        if (QMessageBox::question(this, QStringLiteral("Remove UTF row"), QStringLiteral("Remove row %1?").arg(row)) != QMessageBox::Yes) {
+        if (QMessageBox::question(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove UTF row"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove row %1?").arg(row)) != QMessageBox::Yes) {
             return;
         }
         apply_utf_edit_result(modules::utf::remove_row(*m_utf, static_cast<int>(row)));
@@ -2285,7 +2381,7 @@ private:
             return;
         }
         bool ok = false;
-        const auto name = QInputDialog::getText(this, QStringLiteral("Add UTF column"), QStringLiteral("Column name"), QLineEdit::Normal, QStringLiteral("Column"), &ok);
+        const auto name = QInputDialog::getText(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add UTF column"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Column name"), QLineEdit::Normal, QCoreApplication::translate("Editor.EditorDocumentWidget", "Column"), &ok);
         if (!ok || name.trimmed().isEmpty()) {
             return;
         }
@@ -2294,7 +2390,7 @@ private:
             QStringLiteral("s32"), QStringLiteral("float"), QStringLiteral("double"), QStringLiteral("guid"),
             QStringLiteral("u8"), QStringLiteral("s8"), QStringLiteral("u16"), QStringLiteral("s16"), QStringLiteral("s64")
         };
-        const auto type_text = QInputDialog::getItem(this, QStringLiteral("Add UTF column"), QStringLiteral("Type"), types, 0, false, &ok);
+        const auto type_text = QInputDialog::getItem(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Add UTF column"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Type"), types, 0, false, &ok);
         if (!ok) {
             return;
         }
@@ -2315,7 +2411,7 @@ private:
             return;
         }
         const auto name = utf8_to_qstring(m_utf->column(static_cast<uint32_t>(column)).name);
-        if (QMessageBox::question(this, QStringLiteral("Remove UTF column"), QStringLiteral("Remove column %1?").arg(name)) != QMessageBox::Yes) {
+        if (QMessageBox::question(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove UTF column"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Remove column %1?").arg(name)) != QMessageBox::Yes) {
             return;
         }
         apply_utf_edit_result(modules::utf::remove_column(*m_utf, column));
@@ -2330,7 +2426,7 @@ private:
             : m_ui.utf_grid->currentColumn());
         bool ok = false;
         const auto current = utf8_to_qstring(m_utf->column(column).name);
-        const auto name = QInputDialog::getText(this, QStringLiteral("Rename UTF column"), QStringLiteral("Column name"), QLineEdit::Normal, current, &ok);
+        const auto name = QInputDialog::getText(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename UTF column"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Column name"), QLineEdit::Normal, current, &ok);
         if (!ok || name.trimmed().isEmpty()) {
             return;
         }
@@ -2341,7 +2437,7 @@ private:
         m_ui.replace_binary_button->setEnabled(false);
         if (!summary.has_source) {
             show_detail_preview(summary.detail.empty()
-                ? QStringLiteral("No binary source is attached to this row.")
+                ? QCoreApplication::translate("Editor.EditorDocumentWidget", "No binary source is attached to this row.")
                 : editor_label(summary.detail));
             return;
         }
@@ -2353,7 +2449,7 @@ private:
                 m_ui.replace_binary_button->setEnabled(true);
                 return;
             }
-            show_detail_preview(QStringLiteral("Error: UTF cell preview failed: %1").arg(bytes.error()));
+            show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "Error: UTF cell preview failed: %1").arg(bytes.error()));
             return;
         }
 
@@ -2369,14 +2465,14 @@ private:
                 }
                 show_hex_preview(summary, *bytes);
             } else {
-                show_detail_preview(QStringLiteral("Error: Binary preview failed: %1").arg(utf8_to_qstring(bytes.error())));
+                show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "Error: Binary preview failed: %1").arg(utf8_to_qstring(bytes.error())));
             }
         }
     }
 
     std::expected<std::vector<uint8_t>, QString> utf_cell_bytes(uint32_t source_index) const {
         if (!m_utf) {
-            return std::unexpected(QStringLiteral("UTF object is not loaded"));
+            return std::unexpected(QCoreApplication::translate("Editor.EditorDocumentWidget", "UTF object is not loaded"));
         }
         auto data = cell_bytes(*m_utf, source_index);
         if (!data) {
@@ -2395,16 +2491,16 @@ private:
             row >= static_cast<int>(m_utf->row_count()) ||
             col >= static_cast<int>(m_utf->column_count()) ||
             m_utf->column(static_cast<uint32_t>(col)).type != cricodecs::utf::ColumnType::VLData) {
-            QMessageBox::information(this, QStringLiteral("No binary cell selected"), QStringLiteral("Select a UTF binary/VLData cell first."));
+            QMessageBox::information(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "No binary cell selected"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Select a UTF binary/VLData cell first."));
             return;
         }
-        const auto path_text = QFileDialog::getOpenFileName(this, QStringLiteral("Choose replacement binary"));
+        const auto path_text = QFileDialog::getOpenFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose replacement binary"));
         if (path_text.isEmpty()) {
             return;
         }
         auto bytes = read_file_bytes(path_from_qstring(path_text));
         if (!bytes) {
-            QMessageBox::warning(this, QStringLiteral("Replacement failed"), bytes.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Replacement failed"), bytes.error());
             return;
         }
 
@@ -2443,7 +2539,7 @@ private:
         }
         const auto current = m_afs->entry(static_cast<uint32_t>(index)).name.value_or(std::string{});
         bool ok = false;
-        const auto name = QInputDialog::getText(this, QStringLiteral("Rename AFS entry"), QStringLiteral("Entry name"), QLineEdit::Normal, utf8_to_qstring(current), &ok);
+        const auto name = QInputDialog::getText(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename AFS entry"), QCoreApplication::translate("Editor.EditorDocumentWidget", "Entry name"), QLineEdit::Normal, utf8_to_qstring(current), &ok);
         if (!ok) {
             return;
         }
@@ -2454,10 +2550,10 @@ private:
             name_text.empty() ? std::nullopt : std::optional<std::string>(name_text)
         );
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Rename failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rename failed"), utf8_to_qstring(result.error()));
             return;
         }
-        mark_archive_changed(QStringLiteral("Renamed AFS entry %1.").arg(index));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Renamed AFS entry %1.").arg(index));
     }
 
     void reserve_afs_file_id() {
@@ -2470,7 +2566,7 @@ private:
             return;
         }
         modules::afs::reserve_file_id(*m_afs, *id);
-        mark_archive_changed(QStringLiteral("Reserved AFS file ID %1.").arg(*id));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Reserved AFS file ID %1.").arg(*id));
         const auto row = static_cast<int>(*id);
         if (row >= 0 && row < m_ui.archive_table->rowCount()) {
             m_ui.archive_table->setCurrentCell(row, 0);
@@ -2495,10 +2591,10 @@ private:
 
         auto result = modules::afs::set_directory_timestamp(*m_afs, static_cast<uint32_t>(index), *selected);
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Timestamp edit failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Timestamp edit failed"), utf8_to_qstring(result.error()));
             return;
         }
-        mark_archive_changed(QStringLiteral("Updated AFS timestamp for file ID %1.").arg(index));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Updated AFS timestamp for file ID %1.").arg(index));
     }
 
     void set_selected_archive_wave_id() {
@@ -2512,10 +2608,10 @@ private:
         }
         auto result = modules::awb::set_wave_id(*m_awb, static_cast<uint32_t>(index), *wave_id);
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Wave ID edit failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Wave ID edit failed"), utf8_to_qstring(result.error()));
             return;
         }
-        mark_archive_changed(QStringLiteral("Set AWB wave ID at index %1 to %2.").arg(index).arg(*wave_id));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Set AWB wave ID at index %1 to %2.").arg(index).arg(*wave_id));
     }
 
     void assign_awb_wave_ids() {
@@ -2529,11 +2625,11 @@ private:
         }
 
         if (auto result = modules::awb::assign_wave_ids(*m_awb, options->start, options->step); !result) {
-            QMessageBox::warning(this, QStringLiteral("Wave ID edit failed"), utf8_to_qstring(result.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Wave ID edit failed"), utf8_to_qstring(result.error()));
             refresh_archive_view();
             return;
         }
-        mark_archive_changed(QStringLiteral("Assigned AWB wave IDs from %1 with step %2.").arg(options->start).arg(options->step));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Assigned AWB wave IDs from %1 with step %2.").arg(options->start).arg(options->step));
     }
 
     void edit_archive_entry_properties() {
@@ -2564,8 +2660,8 @@ private:
             options->source_root
         );
         if (!imported) {
-            QMessageBox::warning(this, QStringLiteral("ALS import failed"), utf8_to_qstring(imported.error()));
-            append_log(QStringLiteral("AFS ALS import failed: %1").arg(utf8_to_qstring(imported.error())));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "ALS import failed"), utf8_to_qstring(imported.error()));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "AFS ALS import failed: %1").arg(utf8_to_qstring(imported.error())));
             return;
         }
 
@@ -2577,10 +2673,10 @@ private:
         if (built) {
             m_bytes = std::move(*built);
         } else {
-            append_log(QStringLiteral("AFS ALS import build preview failed: %1").arg(utf8_to_qstring(built.error())));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "AFS ALS import build preview failed: %1").arg(utf8_to_qstring(built.error())));
             m_bytes.clear();
         }
-        mark_archive_changed(QStringLiteral("Imported AFS file list %1.").arg(path_text));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Imported AFS file list %1.").arg(path_text));
     }
 
     void export_afs_file_id_header() {
@@ -2596,14 +2692,14 @@ private:
         }
         auto exported = modules::afs::export_file_id_header(this, *m_afs, default_archive_name);
         if (!exported) {
-            QMessageBox::warning(this, QStringLiteral("AFS header export failed"), exported.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "AFS header export failed"), exported.error());
             append_log(exported.error());
             return;
         }
         if (!*exported) {
             return;
         }
-        append_log(QStringLiteral("Exported AFS file-ID header to %1.").arg(path_to_qstring(**exported)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Exported AFS file-ID header to %1.").arg(path_to_qstring(**exported)));
     }
 
     void import_cvm_script() {
@@ -2617,15 +2713,15 @@ private:
 
         auto imported = modules::cvm::import_build_script(*script_path);
         if (!imported) {
-            QMessageBox::warning(this, QStringLiteral("CVS import failed"), utf8_to_qstring(imported.error()));
-            append_log(QStringLiteral("CVM CVS import failed: %1").arg(utf8_to_qstring(imported.error())));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "CVS import failed"), utf8_to_qstring(imported.error()));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM CVS import failed: %1").arg(utf8_to_qstring(imported.error())));
             return;
         }
 
         m_bytes = std::move(imported->bytes);
         m_cvm = std::move(imported->container);
         m_archive_kind = ArchiveKind::Cvm;
-        mark_archive_changed(QStringLiteral("Imported CVM build script %1.").arg(path_to_qstring(*script_path)));
+        mark_archive_changed(QCoreApplication::translate("Editor.EditorDocumentWidget", "Imported CVM build script %1.").arg(path_to_qstring(*script_path)));
     }
 
     void export_cvm_script() {
@@ -2639,11 +2735,11 @@ private:
 
         auto result = modules::cvm::export_build_script(*m_cvm, *output_path);
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("CVS export failed"), utf8_to_qstring(result.error()));
-            append_log(QStringLiteral("CVM CVS export failed: %1").arg(utf8_to_qstring(result.error())));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "CVS export failed"), utf8_to_qstring(result.error()));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM CVS export failed: %1").arg(utf8_to_qstring(result.error())));
             return;
         }
-        append_log(QStringLiteral("Exported CVM build script to %1.").arg(path_to_qstring(*output_path)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Exported CVM build script to %1.").arg(path_to_qstring(*output_path)));
     }
 
     void extract_selected_archive_entry(bool raw_mode) {
@@ -2655,7 +2751,7 @@ private:
         const auto default_name = archive_entry_default_name(view, static_cast<uint32_t>(index));
         const auto path_text = QFileDialog::getSaveFileName(
             this,
-            raw_mode ? QStringLiteral("Extract raw archive entry") : QStringLiteral("Extract archive entry"),
+            raw_mode ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Extract raw archive entry") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Extract archive entry"),
             default_name
         );
         if (path_text.isEmpty()) {
@@ -2663,7 +2759,7 @@ private:
         }
         auto bytes = archive_entry_bytes(view, static_cast<uint32_t>(index), m_preview_scratch);
         if (!bytes) {
-            QMessageBox::warning(this, QStringLiteral("Extract failed"), bytes.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Extract failed"), bytes.error());
             return;
         }
         std::vector<uint8_t> raw_bytes;
@@ -2671,8 +2767,8 @@ private:
         if (raw_mode) {
             auto transformed = raw_extract_bytes(*bytes, m_request.keys);
             if (!transformed) {
-                QMessageBox::warning(this, QStringLiteral("Extract raw failed"), utf8_to_qstring(transformed.error()));
-                append_log(QStringLiteral("Raw archive entry extract failed: %1").arg(utf8_to_qstring(transformed.error())));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Extract raw failed"), utf8_to_qstring(transformed.error()));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Raw archive entry extract failed: %1").arg(utf8_to_qstring(transformed.error())));
                 return;
             }
             raw_bytes = std::move(*transformed);
@@ -2680,11 +2776,11 @@ private:
         }
         auto result = write_file_bytes(path_from_qstring(path_text), output_bytes);
         if (!result) {
-            QMessageBox::warning(this, QStringLiteral("Extract failed"), result.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Extract failed"), result.error());
             return;
         }
-        append_log(QStringLiteral("%1 archive entry %2 to %3.")
-            .arg(raw_mode ? QStringLiteral("Extracted raw") : QStringLiteral("Extracted"))
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 archive entry %2 to %3.")
+            .arg(raw_mode ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Extracted raw") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Extracted"))
             .arg(index)
             .arg(path_text));
     }
@@ -2732,7 +2828,7 @@ private:
         m_active_job_saves_document = false;
         m_save_running = true;
         m_ui.progress->show();
-        append_log(QStringLiteral("%1 started: %2").arg(std::move(label)).arg(path_to_qstring(m_last_save_path)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 started: %2").arg(std::move(label)).arg(path_to_qstring(m_last_save_path)));
         m_save_future = std::move(future);
         m_poll_timer.start(50, this);
     }
@@ -2744,7 +2840,7 @@ private:
         layout->setSpacing(6);
         edit->setClearButtonEnabled(true);
         layout->addWidget(edit, 1);
-        auto* browse = new QPushButton(QStringLiteral("Browse"), row);
+        auto* browse = new QPushButton(QCoreApplication::translate("Editor.EditorDocumentWidget", "Browse"), row);
         layout->addWidget(browse, 0);
         connect(browse, &QPushButton::clicked, this, [this, edit, title, save_path, filter] {
             QString selected;
@@ -2774,7 +2870,7 @@ private:
             m_transform_kind == TransformKind::Hca ? modules::audio::EncodeTarget::Hca : modules::audio::EncodeTarget::Adx
         );
         if (!selected) {
-            QMessageBox::warning(this, QStringLiteral("Encode from WAV"), selected.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Encode from WAV"), selected.error());
             return;
         }
         if (!*selected) {
@@ -2785,7 +2881,7 @@ private:
 
         auto log = std::make_shared<BuildJobLog>();
         start_transform_file_job(
-            config.target == modules::audio::EncodeTarget::Hca ? QStringLiteral("HCA encode") : QStringLiteral("ADX/AHX encode"),
+            config.target == modules::audio::EncodeTarget::Hca ? QCoreApplication::translate("Editor.EditorDocumentWidget", "HCA encode") : QCoreApplication::translate("Editor.EditorDocumentWidget", "ADX/AHX encode"),
             config.output_path,
             std::async(std::launch::async, [config, log] {
                 return modules::audio::encode_from_wav(config, [log](QString message) {
@@ -2802,15 +2898,15 @@ private:
         }
         auto awb = modules::acb::prepare_associated_awb_open(this, *m_acb, m_title, m_request.keys, m_request.source_path);
         if (!awb) {
-            QMessageBox::warning(this, QStringLiteral("Open AWB failed"), awb.error());
-            append_log(QStringLiteral("ACB associated AWB open failed: %1").arg(awb.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Open AWB failed"), awb.error());
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "ACB associated AWB open failed: %1").arg(awb.error()));
             return;
         }
 
         EditorOpenRequest request;
         request.source_kind = EditorOpenRequest::SourceKind::Path;
         request.display_name = std::move(awb->display_name);
-        request.detected_format = "AWB/AFS2 archive";
+        request.detected_format = "AWB";
         request.keys = std::move(awb->keys);
         request.source_path = std::move(awb->source_path);
         request.source_archive_path = std::move(awb->source_archive_path);
@@ -2820,7 +2916,7 @@ private:
         auto* document = new EditorDocumentWidget(std::move(request), m_tabs);
         const auto index = m_tabs->addTab(document, document->tab_title());
         m_tabs->setCurrentIndex(index);
-        append_log(QStringLiteral("Opened associated AWB in a new Editor tab."));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Opened associated AWB in a new Editor tab."));
     }
 
     void export_acb_associated_awb() {
@@ -2829,8 +2925,8 @@ private:
         }
         auto export_payload = modules::acb::choose_associated_awb_export(this, *m_acb, m_title);
         if (!export_payload) {
-            QMessageBox::warning(this, QStringLiteral("Export AWB failed"), export_payload.error());
-            append_log(QStringLiteral("ACB associated AWB export failed: %1").arg(export_payload.error()));
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Export AWB failed"), export_payload.error());
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "ACB associated AWB export failed: %1").arg(export_payload.error()));
             return;
         }
         if (!*export_payload) {
@@ -2838,7 +2934,7 @@ private:
         }
         auto payload = std::move(**export_payload);
         start_transform_file_job(
-            QStringLiteral("ACB AWB export"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "ACB AWB export"),
             payload.output_path,
             std::async(std::launch::async, [payload = std::move(payload)]() mutable {
                 return write_file_bytes(payload.output_path, payload.bytes);
@@ -2865,7 +2961,7 @@ private:
             current_usm_bytes
         );
         if (!selected) {
-            QMessageBox::warning(this, QStringLiteral("Build wizard"), selected.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Build wizard"), selected.error());
             return false;
         }
         if (!*selected) {
@@ -2879,7 +2975,7 @@ private:
         auto log = std::make_shared<BuildJobLog>();
         auto output_path = config.output_path;
         start_transform_file_job(
-            config.target == modules::usm::MediaBuildTarget::Sfd ? QStringLiteral("SFD build wizard") : QStringLiteral("USM build wizard"),
+            config.target == modules::usm::MediaBuildTarget::Sfd ? QCoreApplication::translate("Editor.EditorDocumentWidget", "SFD build wizard") : QCoreApplication::translate("Editor.EditorDocumentWidget", "USM build wizard"),
             output_path,
             std::async(std::launch::async, [config = std::move(config), log] () mutable {
                 return modules::usm::build_media_from_sources(std::move(config), [log](QString message) {
@@ -2922,7 +3018,7 @@ private:
         }
         if (m_ui.mux_play_button != nullptr) {
             m_ui.mux_play_button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-            m_ui.mux_play_button->setText(QStringLiteral("Play"));
+            m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
             m_ui.mux_play_button->setEnabled(false);
         }
         m_editor_audio_loops.clear();
@@ -3001,13 +3097,13 @@ private:
                     m_ui.mux_play_button->setIcon(style()->standardIcon(
                         state == QMediaPlayer::PlayingState ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
                     m_ui.mux_play_button->setText(
-                        state == QMediaPlayer::PlayingState ? QStringLiteral("Pause") : QStringLiteral("Play"));
+                        state == QMediaPlayer::PlayingState ? QCoreApplication::translate("Editor.EditorDocumentWidget", "Pause") : QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
                 }
             });
         connect(m_editor_media_player, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error, const QString& message) {
                 if (!message.isEmpty() && m_ui.mux_status_label != nullptr) {
-                    m_ui.mux_status_label->setText(QStringLiteral("Playback error: ") + message);
+                    m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Playback error: ") + message);
                 }
             });
     }
@@ -3040,10 +3136,10 @@ private:
             const auto& loop = m_editor_audio_loops[index];
             auto name = utf8_to_qstring(loop.name);
             if (name.isEmpty()) {
-                name = QStringLiteral("Loop %1").arg(index + 1);
+                name = QCoreApplication::translate("Editor.EditorDocumentWidget", "Loop %1").arg(index + 1);
             }
             auto* item = new QListWidgetItem(
-                QStringLiteral("%1    %2 - %3    samples %4 - %5")
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "%1    %2 - %3    samples %4 - %5")
                     .arg(name)
                     .arg(time_text(to_ms(loop.start_sample)))
                     .arg(time_text(to_ms(loop.end_sample)))
@@ -3101,7 +3197,7 @@ private:
         }
         auto preview = std::move(result.preview);
         if (!preview) {
-            m_ui.mux_status_label->setText(QStringLiteral("Preview unavailable: %1").arg(utf8_to_qstring(preview.error())));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preview unavailable: %1").arg(utf8_to_qstring(preview.error())));
             m_ui.mux_play_button->setEnabled(false);
             return;
         }
@@ -3109,13 +3205,13 @@ private:
         clear_editor_preview_files();
         QTemporaryDir preview_dir(QDir::tempPath() + QStringLiteral("/CriStudio-editor-audio-preview-XXXXXX"));
         if (!preview_dir.isValid()) {
-            m_ui.mux_status_label->setText(QStringLiteral("Could not create a temporary audio preview directory."));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Could not create a temporary audio preview directory."));
             m_ui.mux_play_button->setEnabled(false);
             return;
         }
         const auto wav_path = path_from_qstring(preview_dir.filePath(QStringLiteral("preview.wav")));
         if (auto written = write_file_bytes(wav_path, preview->wav_bytes); !written) {
-            m_ui.mux_status_label->setText(QStringLiteral("Could not stage audio preview: %1").arg(written.error()));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Could not stage audio preview: %1").arg(written.error()));
             m_ui.mux_play_button->setEnabled(false);
             return;
         }
@@ -3130,19 +3226,22 @@ private:
         m_ui.mux_preview_panel->show();
         m_ui.media_controls_panel->show();
         set_preview_tabs(true, m_raw_preview_available, 0);
-        m_ui.mux_status_label->setText(QStringLiteral("%1 - %2 Hz, %3 channel(s)")
+        m_ui.mux_status_label->setText(QCoreApplication::translate(
+            "Editor.EditorDocumentWidget",
+            "%1 - %2 Hz, %n channel(s)",
+            nullptr,
+            static_cast<int>(preview->channels))
             .arg(utf8_to_qstring(preview->format))
-            .arg(preview->sample_rate)
-            .arg(preview->channels));
+            .arg(preview->sample_rate));
         m_ui.mux_play_button->setEnabled(true);
         m_ui.media_seek_slider->setEnabled(true);
-        m_ui.mux_play_button->setText(QStringLiteral("Play"));
+        m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
     }
 
     void present_video_preview(VideoPreview video) {
         if (video.playable_path.empty()) {
-            show_detail_preview(QStringLiteral("Preview unavailable: %1")
-                .arg(utf8_to_qstring(video.note.empty() ? "video preparation failed" : video.note)));
+            show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preview unavailable: %1")
+                .arg(utf8_to_qstring(video.note.empty() ? cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "video preparation failed") : video.note)));
             return;
         }
         clear_editor_preview_files();
@@ -3153,11 +3252,11 @@ private:
         m_ui.payload_table->hide();
         m_ui.mux_preview_panel->show();
         set_editor_video_visible(true);
-        m_ui.mux_status_label->setText(QStringLiteral("%1 video preview ready")
+        m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 video preview ready")
             .arg(utf8_to_qstring(video.format)));
         m_ui.mux_play_button->setEnabled(true);
         m_ui.media_seek_slider->setEnabled(true);
-        m_ui.mux_play_button->setText(QStringLiteral("Play"));
+        m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
         set_preview_tabs(true, m_raw_preview_available, 0);
     }
 
@@ -3167,7 +3266,7 @@ private:
         m_ui.payload_table->hide();
         m_ui.mux_preview_panel->show();
         set_editor_video_visible(false);
-        m_ui.mux_status_label->setText(QStringLiteral("Preparing video preview..."));
+        m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preparing video preview..."));
         m_ui.mux_play_button->setEnabled(false);
         set_preview_tabs(true, m_raw_preview_available, 0);
 
@@ -3215,10 +3314,10 @@ private:
         m_ui.preview_tabs->setCurrentIndex(0);
         m_ui.mux_preview_panel->show();
         set_editor_video_visible(false);
-        m_ui.mux_status_label->setText(QStringLiteral("Preparing audio preview..."));
+        m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preparing audio preview..."));
         m_ui.mux_play_button->setEnabled(false);
         m_ui.payload_table->hide();
-        set_raw_preview(bytes, bytes.size(), document.format);
+        set_raw_preview(bytes, bytes.size(), std::string(document_format_id(document)));
         set_preview_tabs(true, m_raw_preview_available, 0);
 
         if (m_audio_preview_watcher == nullptr) {
@@ -3271,7 +3370,7 @@ private:
         m_ui.preview_tabs->setCurrentIndex(0);
         m_ui.mux_preview_panel->show();
         set_editor_video_visible(false);
-        m_ui.mux_status_label->setText(QStringLiteral("Preparing mux preview..."));
+        m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preparing mux preview..."));
         m_ui.mux_play_button->setEnabled(false);
         if (m_ui.payload_table != nullptr) {
             m_ui.payload_table->hide();
@@ -3280,14 +3379,14 @@ private:
 
         QTemporaryDir preview_dir(QDir::tempPath() + QStringLiteral("/CriStudio-editor-mux-preview-XXXXXX"));
         if (!preview_dir.isValid()) {
-            m_ui.mux_status_label->setText(QStringLiteral("Could not create a temporary preview directory."));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Could not create a temporary preview directory."));
             m_ui.mux_preview_panel->show();
             return;
         }
         const auto suffix = m_transform_kind == TransformKind::Sfd ? QStringLiteral(".sfd") : QStringLiteral(".usm");
         const auto source_path = path_from_qstring(preview_dir.filePath(QStringLiteral("editor-preview") + suffix));
         if (auto saved = write_file_bytes(source_path, m_bytes); !saved) {
-            m_ui.mux_status_label->setText(QStringLiteral("Could not stage editor bytes: %1").arg(saved.error()));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Could not stage editor bytes: %1").arg(saved.error()));
             m_ui.mux_preview_panel->show();
             return;
         }
@@ -3295,7 +3394,7 @@ private:
         std::string reason;
         auto document = load_document_summary(source_path, reason, m_request.keys);
         if (!document) {
-            m_ui.mux_status_label->setText(QStringLiteral("Could not inspect editor mux: %1").arg(utf8_to_qstring(reason)));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Could not inspect editor mux: %1").arg(utf8_to_qstring(reason)));
             m_ui.mux_preview_panel->show();
             return;
         }
@@ -3313,7 +3412,7 @@ private:
                 return;
             }
             if (!result.preview) {
-                m_ui.mux_status_label->setText(QStringLiteral("Preview unavailable: %1")
+                m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Preview unavailable: %1")
                     .arg(utf8_to_qstring(result.preview.error())));
                 m_ui.mux_preview_panel->show();
                 return;
@@ -3322,7 +3421,7 @@ private:
             set_raw_preview(mux.video_bytes, mux.video_bytes.size(), mux.format);
             if (mux.playable_path.empty()) {
                 m_ui.mux_status_label->setText(utf8_to_qstring(
-                    mux.note.empty() ? "Preview preparation failed" : mux.note));
+                    mux.note.empty() ? cristudio::i18n::translate_utf8("Editor.EditorDocumentWidget", "Preview preparation failed") : mux.note));
                 m_ui.mux_preview_panel->show();
                 return;
             }
@@ -3344,7 +3443,7 @@ private:
             m_ui.mux_audio_row->setVisible(m_ui.mux_audio_combo->count() > 0);
             {
                 QSignalBlocker blocker(m_ui.mux_subtitle_combo);
-                m_ui.mux_subtitle_combo->addItem(QStringLiteral("Disabled"), -1);
+                m_ui.mux_subtitle_combo->addItem(QCoreApplication::translate("Editor.EditorDocumentWidget", "Disabled"), -1);
                 for (int index = 0; index < static_cast<int>(mux.subtitle_choices.size()); ++index) {
                     const auto& choice = mux.subtitle_choices[static_cast<size_t>(index)];
                     auto label = utf8_to_qstring(choice.detail.empty() ? choice.name : choice.detail);
@@ -3366,10 +3465,10 @@ private:
             m_editor_media_player->setActiveSubtitleTrack(m_ui.mux_subtitle_combo->currentData().toInt());
             set_editor_video_visible(true);
             set_preview_tabs(true, m_raw_preview_available, 0);
-            m_ui.mux_status_label->setText(QStringLiteral("Editor mux preview ready"));
+            m_ui.mux_status_label->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Editor mux preview ready"));
             m_ui.mux_play_button->setEnabled(true);
             m_ui.media_seek_slider->setEnabled(true);
-            m_ui.mux_play_button->setText(QStringLiteral("Play"));
+            m_ui.mux_play_button->setText(QCoreApplication::translate("Editor.EditorDocumentWidget", "Play"));
             m_ui.mux_preview_panel->show();
             m_ui.preview_tabs->setCurrentIndex(0);
         });
@@ -3402,7 +3501,7 @@ private:
         const bool aix_target = m_transform_kind == TransformKind::Aix;
         auto selected = modules::adx::choose_container_build_config(this, m_title, aix_target);
         if (!selected) {
-            QMessageBox::warning(this, QStringLiteral("ADX container build"), selected.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "ADX container build"), selected.error());
             return;
         }
         if (!*selected) {
@@ -3413,7 +3512,7 @@ private:
         if (auto* config = std::get_if<modules::aix::BuildConfig>(&**selected)) {
             auto output_path = config->output_path;
             start_transform_file_job(
-                QStringLiteral("AIX ADX build"),
+                QCoreApplication::translate("Editor.EditorDocumentWidget", "AIX ADX build"),
                 output_path,
                 std::async(std::launch::async, [config = std::move(*config), log] () mutable {
                     return modules::aix::build_from_adx_segments(std::move(config), [log](QString message) {
@@ -3428,7 +3527,7 @@ private:
         auto config = std::get<modules::aax::BuildConfig>(std::move(**selected));
         auto output_path = config.output_path;
         start_transform_file_job(
-            QStringLiteral("AAX ADX build"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "AAX ADX build"),
             output_path,
             std::async(std::launch::async, [config = std::move(config), log] () mutable {
                 return modules::aax::build_from_adx_segments(std::move(config), [log](QString message) {
@@ -3446,7 +3545,7 @@ private:
 
         auto selected = modules::csb::choose_directory_build_config(this, m_title);
         if (!selected) {
-            QMessageBox::warning(this, QStringLiteral("CSB folder build"), selected.error());
+            QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "CSB folder build"), selected.error());
             return;
         }
         if (!*selected) {
@@ -3457,7 +3556,7 @@ private:
         auto log = std::make_shared<BuildJobLog>();
         auto output_path = config.output_path;
         start_transform_file_job(
-            QStringLiteral("CSB folder build"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "CSB folder build"),
             output_path,
             std::async(std::launch::async, [config = std::move(config), log] () mutable {
                 return modules::csb::build_from_directory(std::move(config), [log](QString message) {
@@ -3497,7 +3596,7 @@ private:
             return;
         }
         const auto default_name = safe_output_name(m_title, QStringLiteral(".wav"));
-        const auto path_text = QFileDialog::getSaveFileName(this, QStringLiteral("Decode transform to WAV"), default_name);
+        const auto path_text = QFileDialog::getSaveFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Decode transform to WAV"), default_name);
         if (path_text.isEmpty()) {
             return;
         }
@@ -3506,7 +3605,7 @@ private:
         const auto keys = m_request.keys;
         auto path = path_from_qstring(path_text);
         start_transform_file_job(
-            QStringLiteral("Decode WAV"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "Decode WAV"),
             path,
             std::async(std::launch::async, [kind, bytes = std::move(bytes), path, keys]() mutable {
                 return transform_decode_to_wav(kind, std::move(bytes), path, keys);
@@ -3519,7 +3618,7 @@ private:
             return;
         }
         const auto default_name = safe_output_name(m_title + QStringLiteral("_decrypted"), transform_default_suffix());
-        const auto path_text = QFileDialog::getSaveFileName(this, QStringLiteral("Decrypt transform"), default_name);
+        const auto path_text = QFileDialog::getSaveFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Decrypt transform"), default_name);
         if (path_text.isEmpty()) {
             return;
         }
@@ -3541,7 +3640,7 @@ private:
             return;
         }
         const auto default_name = safe_output_name(m_title + QStringLiteral("_encrypted"), QStringLiteral(".hca"));
-        const auto path_text = QFileDialog::getSaveFileName(this, QStringLiteral("Encrypt HCA"), default_name);
+        const auto path_text = QFileDialog::getSaveFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Encrypt HCA"), default_name);
         if (path_text.isEmpty()) {
             return;
         }
@@ -3562,7 +3661,7 @@ private:
             return;
         }
         const auto default_name = safe_output_name(m_title + QStringLiteral("_rebuilt"), transform_default_suffix());
-        const auto path_text = QFileDialog::getSaveFileName(this, QStringLiteral("Rebuild transform"), default_name);
+        const auto path_text = QFileDialog::getSaveFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Rebuild transform"), default_name);
         if (path_text.isEmpty()) {
             return;
         }
@@ -3585,7 +3684,7 @@ private:
                                m_transform_kind != TransformKind::Csb && m_transform_kind != TransformKind::Acb)) {
             return;
         }
-        const auto dir_text = QFileDialog::getExistingDirectory(this, QStringLiteral("Choose transform extraction folder"));
+        const auto dir_text = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose transform extraction folder"));
         if (dir_text.isEmpty()) {
             return;
         }
@@ -3593,7 +3692,7 @@ private:
         const auto kind = m_transform_kind;
         auto path = path_from_qstring(dir_text);
         start_transform_file_job(
-            QStringLiteral("Transform extract"),
+            QCoreApplication::translate("Editor.EditorDocumentWidget", "Transform extract"),
             path,
             std::async(std::launch::async, [kind, bytes = std::move(bytes), path]() mutable {
                 return transform_extract_all(kind, std::move(bytes), path);
@@ -3623,22 +3722,22 @@ private:
         if (m_archive_kind == ArchiveKind::Cvm && m_cvm) {
             auto bytes = m_cvm->save(m_cvm_scramble_key);
             if (!bytes) {
-                QMessageBox::warning(this, QStringLiteral("CVM build failed"), utf8_to_qstring(bytes.error()));
-                append_log(QStringLiteral("CVM save failed: %1").arg(utf8_to_qstring(bytes.error())));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM build failed"), utf8_to_qstring(bytes.error()));
+                append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM save failed: %1").arg(utf8_to_qstring(bytes.error())));
                 return true;
             }
             auto reloaded = cricodecs::cvm::CvmContainer::load(
                 std::span<const uint8_t>(bytes->data(), bytes->size()),
                 m_cvm_scramble_key);
             if (!reloaded) {
-                QMessageBox::warning(this, QStringLiteral("CVM build failed"),
-                    QStringLiteral("The rebuilt CVM could not be reopened: %1").arg(utf8_to_qstring(reloaded.error())));
+                QMessageBox::warning(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "CVM build failed"),
+                    QCoreApplication::translate("Editor.EditorDocumentWidget", "The rebuilt CVM could not be reopened: %1").arg(utf8_to_qstring(reloaded.error())));
                 return true;
             }
             m_cvm = std::move(*reloaded);
             m_bytes = std::move(*bytes);
-            append_log(QStringLiteral("Built %1 CVM session bytes: %2 bytes")
-                .arg(m_cvm_scramble_key.empty() ? QStringLiteral("unscrambled") : QStringLiteral("scrambled"))
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Built %1 CVM session bytes: %2 bytes")
+                .arg(m_cvm_scramble_key.empty() ? QCoreApplication::translate("Editor.EditorDocumentWidget", "unscrambled") : QCoreApplication::translate("Editor.EditorDocumentWidget", "scrambled"))
                 .arg(static_cast<qulonglong>(m_bytes.size())));
             return true;
         }
@@ -3662,7 +3761,7 @@ private:
     void build_session_bytes() {
         if (m_has_utf && m_utf) {
             m_bytes = modules::utf::build_session_bytes(*m_utf);
-            append_log(QStringLiteral("Built UTF session bytes: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Built UTF session bytes: %1 bytes").arg(static_cast<qulonglong>(m_bytes.size())));
             refresh_summary();
             return;
         }
@@ -3674,20 +3773,20 @@ private:
             refresh_summary();
             return;
         }
-        append_log(QStringLiteral("Build is not available for this format yet; Save As will write the independent source bytes."));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Build is not available for this format yet; Save As will write the independent source bytes."));
     }
 
     void build_session() {
         if (m_save_running) {
-            append_log(QStringLiteral("Build skipped because another editor job is running."));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Build skipped because another editor job is running."));
             return;
         }
         if (m_ui.progress != nullptr) {
             m_ui.progress->show();
         }
-        append_log(QStringLiteral("Build started."));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Build started."));
         build_session_bytes();
-        append_log(QStringLiteral("Build finished."));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Build finished."));
         if (m_ui.progress != nullptr) {
             m_ui.progress->hide();
         }
@@ -3731,7 +3830,7 @@ private:
         if (m_ui.progress != nullptr) {
             m_ui.progress->show();
         }
-        append_log(QStringLiteral("%1 started: %2").arg(std::move(label)).arg(path_to_qstring(m_last_save_path)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "%1 started: %2").arg(std::move(label)).arg(path_to_qstring(m_last_save_path)));
         m_save_future = std::async(std::launch::async, [path = m_last_save_path, bytes = std::move(bytes)] {
             return write_file_bytes(path, bytes);
         });
@@ -3741,7 +3840,7 @@ private:
     [[nodiscard]] bool save_for_close(QWidget* parent) {
         auto path = m_last_save_file_path;
         if (path.empty()) {
-            const auto path_text = QFileDialog::getSaveFileName(parent, QStringLiteral("Save editor session as"), default_save_name());
+            const auto path_text = QFileDialog::getSaveFileName(parent, QCoreApplication::translate("Editor.EditorDocumentWidget", "Save editor session as"), default_save_name());
             if (path_text.isEmpty()) {
                 return false;
             }
@@ -3750,7 +3849,7 @@ private:
         }
         build_session_bytes();
         m_close_after_save = true;
-        start_save_job(QStringLiteral("Save before close"), std::move(path));
+        start_save_job(QCoreApplication::translate("Editor.EditorDocumentWidget", "Save before close"), std::move(path));
         return false;
     }
 
@@ -3759,13 +3858,13 @@ private:
             return;
         }
         build_session_bytes();
-        const auto path_text = QFileDialog::getSaveFileName(this, QStringLiteral("Save editor session as"), default_save_name());
+        const auto path_text = QFileDialog::getSaveFileName(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Save editor session as"), default_save_name());
         if (path_text.isEmpty()) {
             return;
         }
         m_last_save_file_path = path_from_qstring(path_text);
         m_close_after_save = false;
-        start_save_job(QStringLiteral("Save As"), m_last_save_file_path);
+        start_save_job(QCoreApplication::translate("Editor.EditorDocumentWidget", "Save As"), m_last_save_file_path);
     }
 
     void save() {
@@ -3790,20 +3889,20 @@ private:
             return;
         }
         build_session_bytes();
-        const auto dir_text = QFileDialog::getExistingDirectory(this, QStringLiteral("Choose extraction folder"));
+        const auto dir_text = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("Editor.EditorDocumentWidget", "Choose extraction folder"));
         if (dir_text.isEmpty()) {
             return;
         }
         if (m_archive_kind != ArchiveKind::None) {
             m_last_save_path = path_from_qstring(dir_text);
-            m_active_job_label = QStringLiteral("Archive extract");
+            m_active_job_label = QCoreApplication::translate("Editor.EditorDocumentWidget", "Archive extract");
             m_active_job_saves_document = false;
             auto bytes = m_bytes;
             const auto kind = m_archive_kind;
             m_save_running = true;
             update_header_actions();
             m_ui.progress->show();
-            append_log(QStringLiteral("Archive extract started: %1").arg(dir_text));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Archive extract started: %1").arg(dir_text));
             m_save_future = std::async(std::launch::async, [kind, path = m_last_save_path, bytes = std::move(bytes)]() mutable {
                 return extract_archive_bytes(kind, std::move(bytes), path);
             });
@@ -3814,14 +3913,14 @@ private:
             m_transform_kind == TransformKind::Usm || m_transform_kind == TransformKind::Sfd ||
             m_transform_kind == TransformKind::Csb || m_transform_kind == TransformKind::Acb) {
             m_last_save_path = path_from_qstring(dir_text);
-            m_active_job_label = QStringLiteral("Transform extract");
+            m_active_job_label = QCoreApplication::translate("Editor.EditorDocumentWidget", "Transform extract");
             m_active_job_saves_document = false;
             auto bytes = m_bytes;
             const auto kind = m_transform_kind;
             m_save_running = true;
             update_header_actions();
             m_ui.progress->show();
-            append_log(QStringLiteral("Transform extract started: %1").arg(dir_text));
+            append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Transform extract started: %1").arg(dir_text));
             m_save_future = std::async(std::launch::async, [kind, path = m_last_save_path, bytes = std::move(bytes)]() mutable {
                 return transform_extract_all(kind, std::move(bytes), path);
             });
@@ -3831,13 +3930,13 @@ private:
         const auto suffix = m_has_utf ? QStringLiteral(".utf") : (m_transform_kind != TransformKind::None ? transform_default_suffix() : QStringLiteral(".bin"));
         const auto output_name = safe_output_name(m_title, suffix);
         m_last_save_path = path_from_qstring(dir_text) / path_from_qstring(output_name);
-        m_active_job_label = QStringLiteral("Editor extract");
+        m_active_job_label = QCoreApplication::translate("Editor.EditorDocumentWidget", "Editor extract");
         m_active_job_saves_document = false;
         auto bytes = m_bytes;
         m_save_running = true;
         update_header_actions();
         m_ui.progress->show();
-        append_log(QStringLiteral("Editor extract started: %1").arg(path_to_qstring(m_last_save_path)));
+        append_log(QCoreApplication::translate("Editor.EditorDocumentWidget", "Editor extract started: %1").arg(path_to_qstring(m_last_save_path)));
         m_save_future = std::async(std::launch::async, [path = m_last_save_path, bytes = std::move(bytes)] {
             return write_file_bytes(path, bytes);
         });
@@ -3984,6 +4083,12 @@ bool editor_document_has_background_work(QWidget* widget) {
 bool editor_document_confirm_close(QWidget* widget, QWidget* parent) {
     auto* document = dynamic_cast<EditorDocumentWidget*>(widget);
     return document == nullptr || document->confirm_close(parent);
+}
+
+void retranslate_editor_document(QWidget* widget) {
+    if (auto* document = dynamic_cast<EditorDocumentWidget*>(widget); document != nullptr) {
+        document->retranslate();
+    }
 }
 
 } // namespace cristudio

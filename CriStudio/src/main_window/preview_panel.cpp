@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "../main_window.hpp"
 
 #include "../editor/hex_patterns.hpp"
@@ -6,6 +7,7 @@
 #include "preview_helpers.hpp"
 #include "ui_helpers.hpp"
 
+#include <QCoreApplication>
 #include <QAudioOutput>
 #include <QCheckBox>
 #include <QComboBox>
@@ -99,7 +101,7 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
         if (m_preview_tabs != nullptr) {
             m_preview_tabs->setTabEnabled(1, false);
         }
-        show_pending_media_preview(QStringLiteral("Loading preview..."));
+        show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewPanel", "Loading preview..."));
         return;
     }
 
@@ -144,14 +146,14 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
         m_preview_tabs->setTabEnabled(0, true);
         m_preview_tabs->setTabEnabled(1, false);
     }
-    show_pending_media_preview(QStringLiteral("Loading preview..."));
-    append_log(QStringLiteral("Entry preview started [%1]: %2")
+    show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewPanel", "Loading preview..."));
+    append_log(QCoreApplication::translate("MainWindow.PreviewPanel", "Entry preview started [%1]: %2")
         .arg(request_id)
         .arg(utf8_to_qstring(entry.name)));
     m_preview_running = true;
     auto keys = m_decryption_keys;
     m_preview_watcher->setFuture(QtConcurrent::run([entry, request_id, keys = std::move(keys)] {
-        auto stage = QStringLiteral("extracting and identifying the embedded entry");
+        auto stage = QCoreApplication::translate("MainWindow.PreviewPanel", "extracting and identifying the embedded entry");
         try {
             const auto make_result = [request_id, &stage](EmbeddedPreview preview) {
                 PreviewResult result;
@@ -163,7 +165,7 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
                     result.audio = std::move(*preview.audio);
                 }
                 if (preview.video) {
-                    stage = QStringLiteral("preparing the embedded video for playback");
+                    stage = QCoreApplication::translate("MainWindow.PreviewPanel", "preparing the embedded video for playback");
                     prepare_video_preview_for_playback(*preview.video);
                     result.video = std::move(*preview.video);
                 }
@@ -216,7 +218,7 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
         } catch (const std::exception& error) {
             PreviewResult result;
             result.request_id = request_id;
-            result.message = QStringLiteral("Preview failed while %1: %2 [%3]")
+            result.message = QCoreApplication::translate("MainWindow.PreviewPanel", "Preview failed while %1: %2 [%3]")
                 .arg(
                     stage,
                     QString::fromLocal8Bit(error.what()),
@@ -226,7 +228,7 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
         } catch (...) {
             PreviewResult result;
             result.request_id = request_id;
-            result.message = QStringLiteral("Preview failed while %1 with an unknown exception").arg(stage);
+            result.message = QCoreApplication::translate("MainWindow.PreviewPanel", "Preview failed while %1 with an unknown exception").arg(stage);
             return result;
         }
     }));
@@ -271,21 +273,21 @@ void MainWindow::show_entry_inspector(const EntrySummary& entry) {
     }
 
     m_nested_title->setText(strip_mux_prefix(utf8_to_qstring(entry.name)));
-    m_nested_subtitle->setText(QStringLiteral("UTF row inspector"));
+    m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "UTF row inspector"));
     std::vector<InfoRow> rows;
-    rows.push_back({"Row", entry.name});
-    rows.push_back({"Fields", std::to_string(entry.inspector_entries.size())});
+    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Row"), entry.name});
+    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Fields"), std::to_string(entry.inspector_entries.size())});
     if (!entry.source_path.empty()) {
-        rows.push_back({"Source archive", path_to_utf8(entry.source_path)});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source archive"), path_to_utf8(entry.source_path)});
     }
     if (!entry.source_format.empty()) {
-        rows.push_back({"Source format", entry.source_format});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source format"), entry.source_format});
     }
     populate_info_grid(m_nested_info_grid, rows);
 
     m_nested_entry_model->set_entries(
         entry.inspector_entries,
-        {"Field", "Type", "Value"},
+        {"Field", cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Type"), "Value"},
         {"field", "type", "value"}
     );
     m_nested_entry_view->setRootIsDecorated(false);
@@ -299,11 +301,11 @@ void MainWindow::consume_preview_result() {
         result = m_preview_watcher->future().takeResult();
     } catch (const std::exception& error) {
         result.request_id = m_preview_request_id;
-        result.message = QStringLiteral("Preview failed: %1 [%2]")
+        result.message = QCoreApplication::translate("MainWindow.PreviewPanel", "Preview failed: %1 [%2]")
             .arg(QString::fromLocal8Bit(error.what()), QString::fromLatin1(typeid(error).name()));
     } catch (...) {
         result.request_id = m_preview_request_id;
-        result.message = QStringLiteral("Preview failed with an unknown exception");
+        result.message = QCoreApplication::translate("MainWindow.PreviewPanel", "Preview failed with an unknown exception");
     }
     m_preview_running = false;
 
@@ -348,9 +350,9 @@ void MainWindow::consume_preview_result() {
         (result.mux.has_value() && !result.mux->playable_path.empty()) ||
         result.document.has_value() || !result.hex_dump.isEmpty();
     if (!result.message.isEmpty() && !is_low_signal_loader_message(result.message)) {
-        append_log(QStringLiteral("Preview result [%1]: %2").arg(result.request_id).arg(result.message));
+        append_log(QCoreApplication::translate("MainWindow.PreviewPanel", "Preview result [%1]: %2").arg(result.request_id).arg(result.message));
     } else if (preview_succeeded) {
-        append_log(QStringLiteral("Preview completed [%1]").arg(result.request_id));
+        append_log(QCoreApplication::translate("MainWindow.PreviewPanel", "Preview completed [%1]").arg(result.request_id));
     }
 
     if (m_raw_hex != nullptr) {
@@ -394,7 +396,7 @@ void MainWindow::consume_preview_result() {
     if (result.mux) {
         if (result.document) {
             m_nested_title->setText(archive_basename(utf8_to_qstring(result.document->display_name)));
-            m_nested_subtitle->setText(QStringLiteral("Mux preview"));
+            m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Mux preview"));
             populate_info_grid(m_nested_info_grid, result.document->info);
             update_preview_key_panel(&*result.document);
         }
@@ -404,7 +406,7 @@ void MainWindow::consume_preview_result() {
         }
     } else if (result.document && is_mux_document(*result.document) && !result.message.isEmpty()) {
         m_nested_title->setText(archive_basename(utf8_to_qstring(result.document->display_name)));
-        m_nested_subtitle->setText(QStringLiteral("Mux preview unavailable"));
+        m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Mux preview unavailable"));
         populate_info_grid(m_nested_info_grid, result.document->info);
         update_preview_key_panel(&*result.document);
         reset_audio_preview();
@@ -434,7 +436,7 @@ void MainWindow::consume_preview_result() {
         if (!result.preview_bytes.isEmpty()) {
             QImage image;
             if (image.loadFromData(result.preview_bytes)) {
-                m_nested_subtitle->setText(QStringLiteral("Image preview"));
+                m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Image preview"));
                 set_preview_image(image);
                 m_nested_entry_view->hide();
                 m_nested_image_scroll->show();
@@ -448,7 +450,7 @@ void MainWindow::consume_preview_result() {
         }
 
         m_nested_subtitle->setText(result.message.isEmpty()
-            ? QStringLiteral("Unknown format - hex preview")
+            ? QCoreApplication::translate("MainWindow.PreviewPanel", "Unknown format - hex preview")
             : result.message);
         m_nested_entry_view->hide();
         m_nested_image_scroll->hide();
@@ -458,10 +460,10 @@ void MainWindow::consume_preview_result() {
         }
     } else {
         reset_audio_preview();
-        m_nested_subtitle->setText(QStringLiteral("Preview unavailable"));
+        m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Preview unavailable"));
         show_unavailable_media_preview(
             result.message.isEmpty()
-                ? QStringLiteral("Preview unavailable")
+                ? QCoreApplication::translate("MainWindow.PreviewPanel", "Preview unavailable")
                 : result.message
         );
     }
@@ -475,8 +477,8 @@ void MainWindow::show_document(const LoadedDocument* document) {
         m_current_preview_entry = std::nullopt;
         set_preview_entry_actions_visible(false);
         clear_preview_panel();
-        m_doc_title->setText(QStringLiteral("No file selected"));
-        m_doc_subtitle->setText(QStringLiteral("Open or drop CRI files to inspect them."));
+        m_doc_title->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "No file selected"));
+        m_doc_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Open or drop CRI files to inspect them."));
         populate_info_grid(m_info_grid, {});
         update_document_key_panel(nullptr);
         if (m_doc_mux_preview_button != nullptr) {
@@ -514,10 +516,10 @@ void MainWindow::show_document(const LoadedDocument* document) {
     set_preview_entry_actions_visible(false);
     clear_preview_panel();
     m_doc_title->setText(utf8_to_qstring(document->display_name));
-    m_doc_subtitle->setText(utf8_to_qstring(document->format));
+    m_doc_subtitle->setText(utf8_to_qstring(localized_document_format(*document)));
     if (!document->summary_loaded) {
         std::vector<InfoRow> rows = document->info;
-        rows.push_back({"Details", "Loading in background"});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Details"), cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Loading in background")});
         populate_info_grid(m_info_grid, rows);
         update_document_key_panel(document);
         if (m_doc_mux_preview_button != nullptr) {
@@ -554,7 +556,7 @@ void MainWindow::show_document(const LoadedDocument* document) {
         m_doc_mux_preview_button->setEnabled(!mux || has_ffmpeg());
         m_doc_mux_preview_button->setToolTip(mux && !has_ffmpeg()
             ? ffmpeg_missing_message()
-            : QStringLiteral("Build playable mux preview"));
+            : QCoreApplication::translate("MainWindow.PreviewPanel", "Build playable mux preview"));
     }
     if (m_doc_extract_button != nullptr) {
         m_doc_extract_button->show();
@@ -581,7 +583,7 @@ void MainWindow::show_document(const LoadedDocument* document) {
             } else {
                 m_preview_tabs->setTabEnabled(0, true);
                 m_preview_tabs->setCurrentIndex(0);
-                show_pending_media_preview(QStringLiteral("Raw preview is unavailable for this file."));
+                show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewPanel", "Raw preview is unavailable for this file."));
             }
         } else {
             m_preview_tabs->setCurrentIndex(0);
@@ -605,10 +607,10 @@ void MainWindow::show_document(const LoadedDocument* document) {
     update_entry_path_bar();
     const auto has_entries = !document->entries.empty();
     if (m_doc_extract_button != nullptr) {
-        m_doc_extract_button->setText(has_entries ? QStringLiteral("Extract All") : QStringLiteral("Extract"));
+        m_doc_extract_button->setText(has_entries ? QCoreApplication::translate("MainWindow.PreviewPanel", "Extract All") : QCoreApplication::translate("MainWindow.PreviewPanel", "Extract"));
     }
     if (m_doc_extract_raw_button != nullptr) {
-        m_doc_extract_raw_button->setText(has_entries ? QStringLiteral("All Raw") : QStringLiteral("Raw"));
+        m_doc_extract_raw_button->setText(has_entries ? QCoreApplication::translate("MainWindow.PreviewPanel", "All Raw") : QCoreApplication::translate("MainWindow.PreviewPanel", "Raw"));
     }
     if (m_entry_filter_row != nullptr) {
         m_entry_filter_row->setVisible(has_entries);
@@ -651,7 +653,7 @@ void MainWindow::prepare_document_raw_tab(const LoadedDocument& document) {
     }
     m_document_raw_reader.emplace();
     if (auto result = m_document_raw_reader->open(document.path, cricodecs::io::access_pattern::random); !result) {
-        statusBar()->showMessage(QStringLiteral("Raw preview failed: could not open file"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.PreviewPanel", "Raw preview failed: could not open file"), 3000);
         m_document_raw_reader.reset();
         m_document_raw_path.reset();
         if (m_raw_hex != nullptr) {
@@ -666,7 +668,7 @@ void MainWindow::prepare_document_raw_tab(const LoadedDocument& document) {
 
     if (m_raw_hex != nullptr) {
         m_raw_hex->set_reader(&*m_document_raw_reader);
-        m_raw_hex->set_lazy_format(document.format);
+        m_raw_hex->set_lazy_format(std::string(document_format_id(document)));
         const auto prefix = read_prefix(*m_document_raw_reader);
         auto patterns = infer_document_hex_patterns(document, prefix);
         m_raw_hex->set_patterns(std::move(patterns));
@@ -702,7 +704,7 @@ void MainWindow::populate_document_raw_tab(const LoadedDocument& document, bool 
     m_pending_preview_entry = std::nullopt;
 
     m_nested_title->setText(archive_basename(utf8_to_qstring(document.display_name)));
-    m_nested_subtitle->setText(QStringLiteral("Loaded file raw preview"));
+    m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Loaded file raw preview"));
     populate_info_grid(m_nested_info_grid, document.info);
     update_preview_key_panel(&document);
 
@@ -733,7 +735,7 @@ void MainWindow::show_preview_document(const LoadedDocument& document) {
     }
     toggle_preview_panel();
     m_nested_title->setText(archive_basename(utf8_to_qstring(document.display_name)));
-    const auto format = utf8_to_qstring(document.format);
+    const auto format = utf8_to_qstring(localized_document_format(document));
     m_nested_subtitle->setText(format);
     populate_info_grid(m_nested_info_grid, document.info);
     update_preview_key_panel(&document);
@@ -765,7 +767,7 @@ void MainWindow::show_preview_document(const LoadedDocument& document) {
         m_nested_body->setVisible(is_audio);
         if (is_audio) {
             m_nested_body->setMaximumHeight(96);
-            show_pending_media_preview(QStringLiteral("Loading audio preview..."));
+            show_pending_media_preview(QCoreApplication::translate("MainWindow.PreviewPanel", "Loading audio preview..."));
         }
     }
 }
@@ -777,11 +779,11 @@ void MainWindow::clear_preview_panel() {
     m_document_raw_path.reset();
     set_preview_entry_actions_visible(false);
     if (m_nested_title != nullptr) {
-        m_nested_title->setText(QStringLiteral("Entry preview"));
+        m_nested_title->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Entry preview"));
         m_nested_title->setVisible(m_preview_panel_button != nullptr && m_preview_panel_button->isChecked());
     }
     if (m_nested_subtitle != nullptr) {
-        m_nested_subtitle->setText(QStringLiteral("Select a supported embedded file."));
+        m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Select a supported embedded file."));
         m_nested_subtitle->setVisible(m_preview_panel_button != nullptr && m_preview_panel_button->isChecked());
     }
     if (m_nested_info_grid != nullptr) {
@@ -840,7 +842,7 @@ void MainWindow::show_pending_media_preview(const QString& message) {
         m_audio_play_button->setVisible(true);
         m_audio_play_button->setEnabled(false);
         m_audio_play_button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-        m_audio_play_button->setText(QStringLiteral("Play"));
+        m_audio_play_button->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Play"));
     }
     if (m_audio_progress != nullptr) {
         m_audio_progress->setVisible(true);
@@ -898,7 +900,7 @@ void MainWindow::show_unavailable_media_preview(const QString& message) {
         m_audio_play_button->setVisible(true);
         m_audio_play_button->setEnabled(false);
         m_audio_play_button->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-        m_audio_play_button->setText(QStringLiteral("Play"));
+        m_audio_play_button->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Play"));
     }
     if (m_audio_progress != nullptr) {
         m_audio_progress->setVisible(true);
@@ -1059,22 +1061,22 @@ void MainWindow::refresh_current_preview() {
 
 void MainWindow::populate_entry_preview_metadata(const EntrySummary& entry) {
     std::vector<InfoRow> rows;
-    rows.push_back({"Archive entry", strip_mux_prefix(utf8_to_qstring(entry.name)).toUtf8().toStdString()});
-    rows.push_back({"Type", entry.type.empty() ? "unknown" : entry.type});
+    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Archive entry"), strip_mux_prefix(utf8_to_qstring(entry.name)).toUtf8().toStdString()});
+    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Type"), entry.type.empty() ? cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "unknown") : entry.type});
     if (!entry.size.empty()) {
-        rows.push_back({"Size", entry.size});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Size"), entry.size});
     }
     if (!entry.offset.empty()) {
-        rows.push_back({"Offset", entry.offset});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Offset"), entry.offset});
     }
     if (!entry.detail.empty()) {
-        rows.push_back({"Detail", entry.detail});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Detail"), entry.detail});
     }
     if (entry.has_source) {
-        rows.push_back({"Source archive", path_to_utf8(entry.source_path)});
-        rows.push_back({"Source format", entry.source_format});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source archive"), path_to_utf8(entry.source_path)});
+        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source format"), entry.source_format});
         if (entry.has_nested_source) {
-            rows.push_back({"Nested source", entry.nested_source_format});
+            rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Nested source"), entry.nested_source_format});
         }
     }
     populate_info_grid(m_nested_info_grid, rows);
@@ -1087,7 +1089,7 @@ void MainWindow::populate_info_grid(QGridLayout* grid, const std::vector<InfoRow
     }
 
     if (rows.empty()) {
-        grid->addWidget(make_dim_label(QStringLiteral("No metadata")), 0, 0);
+        grid->addWidget(make_dim_label(QCoreApplication::translate("MainWindow.PreviewPanel", "No metadata")), 0, 0);
         return;
     }
 
@@ -1096,6 +1098,7 @@ void MainWindow::populate_info_grid(QGridLayout* grid, const std::vector<InfoRow
     for (const auto& info : rows) {
         const auto label = utf8_to_qstring(info.name);
         const auto value = utf8_to_qstring(info.value);
+        // Metadata field identifiers used to choose the layout; never translate comparisons.
         const auto full_width = info.name == "Path" || info.name == "Source archive" || info.name == "Archive entry" || value.size() > 70;
         if (full_width) {
             if (slot != 0) {

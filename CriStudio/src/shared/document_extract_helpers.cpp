@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/document_extract_helpers.hpp"
 
 #include "shared/document_helpers.hpp"
@@ -113,20 +114,20 @@ std::expected<void, std::string> write_binary_file(
     std::stop_token stop_token
 ) {
     if (stop_token.stop_requested()) {
-        return std::unexpected("extraction canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "extraction canceled"));
     }
 
     std::error_code filesystem_error;
     if (output_path.has_parent_path()) {
         std::filesystem::create_directories(output_path.parent_path(), filesystem_error);
         if (filesystem_error) {
-            return std::unexpected("could not create output directory: " + filesystem_error.message());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not create output directory: ") + filesystem_error.message());
         }
     }
 
     std::ofstream output(output_path, std::ios::binary);
     if (!output) {
-        return std::unexpected("could not open output file: " + output_path.string());
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not open output file: ") + output_path.string());
     }
     constexpr size_t write_chunk_size = 4u * 1024u * 1024u;
     size_t offset = 0;
@@ -134,7 +135,7 @@ std::expected<void, std::string> write_binary_file(
         if (stop_token.stop_requested()) {
             output.close();
             std::filesystem::remove(output_path, filesystem_error);
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "extraction canceled"));
         }
         const auto size = std::min(write_chunk_size, bytes.size() - offset);
         output.write(
@@ -142,7 +143,7 @@ std::expected<void, std::string> write_binary_file(
             static_cast<std::streamsize>(size)
         );
         if (!output) {
-            return std::unexpected("could not write output file: " + output_path.string());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not write output file: ") + output_path.string());
         }
         offset += size;
     }
@@ -169,16 +170,16 @@ std::expected<std::vector<uint8_t>, std::string> read_binary_file(
     std::stop_token stop_token
 ) {
     if (stop_token.stop_requested()) {
-        return std::unexpected("extraction canceled");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "extraction canceled"));
     }
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        return std::unexpected("could not open input file: " + path.string());
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not open input file: ") + path.string());
     }
     input.seekg(0, std::ios::end);
     const auto size = input.tellg();
     if (size < 0) {
-        return std::unexpected("could not size input file: " + path.string());
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not size input file: ") + path.string());
     }
     input.seekg(0, std::ios::beg);
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
@@ -186,7 +187,7 @@ std::expected<std::vector<uint8_t>, std::string> read_binary_file(
     size_t offset = 0;
     while (offset < bytes.size()) {
         if (stop_token.stop_requested()) {
-            return std::unexpected("extraction canceled");
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "extraction canceled"));
         }
         const auto chunk_size = std::min(read_chunk_size, bytes.size() - offset);
         input.read(
@@ -194,7 +195,7 @@ std::expected<std::vector<uint8_t>, std::string> read_binary_file(
             static_cast<std::streamsize>(chunk_size)
         );
         if (!input) {
-            return std::unexpected("could not read input file: " + path.string());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentExtractHelpers", "could not read input file: ") + path.string());
         }
         offset += chunk_size;
     }

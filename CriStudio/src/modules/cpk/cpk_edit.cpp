@@ -1,3 +1,5 @@
+#include "shared/i18n.hpp"
+#include <QCoreApplication>
 #include "modules/cpk/cpk_edit.hpp"
 
 #include <algorithm>
@@ -13,20 +15,20 @@ QString preset_name(cricodecs::cpk::CpkPreset preset) {
     case cricodecs::cpk::CpkPreset::Custom: return QStringLiteral("Custom");
     case cricodecs::cpk::CpkPreset::Id: return QStringLiteral("ID");
     case cricodecs::cpk::CpkPreset::Filename: return QStringLiteral("Filename");
-    case cricodecs::cpk::CpkPreset::FilenameId: return QStringLiteral("Filename + ID");
-    case cricodecs::cpk::CpkPreset::FilenameGroup: return QStringLiteral("Filename + Group");
-    case cricodecs::cpk::CpkPreset::IdGroup: return QStringLiteral("ID + Group");
-    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QStringLiteral("Filename + ID + Group");
+    case cricodecs::cpk::CpkPreset::FilenameId: return QCoreApplication::translate("Cpk.CpkEdit", "Filename + ID");
+    case cricodecs::cpk::CpkPreset::FilenameGroup: return QCoreApplication::translate("Cpk.CpkEdit", "Filename + Group");
+    case cricodecs::cpk::CpkPreset::IdGroup: return QCoreApplication::translate("Cpk.CpkEdit", "ID + Group");
+    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return QCoreApplication::translate("Cpk.CpkEdit", "Filename + ID + Group");
     }
     return QStringLiteral("Unknown");
 }
 
 QString mode_name(cricodecs::cpk::CpkMode mode) {
     switch (mode) {
-    case cricodecs::cpk::CpkMode::Mode0: return QStringLiteral("Mode 0 / ITOC");
-    case cricodecs::cpk::CpkMode::Mode1: return QStringLiteral("Mode 1 / TOC");
-    case cricodecs::cpk::CpkMode::Mode2: return QStringLiteral("Mode 2 / TOC + ITOC");
-    case cricodecs::cpk::CpkMode::Mode3: return QStringLiteral("Mode 3 / TOC + ITOC + GTOC");
+    case cricodecs::cpk::CpkMode::Mode0: return QCoreApplication::translate("Cpk.CpkEdit", "Mode 0 / ITOC");
+    case cricodecs::cpk::CpkMode::Mode1: return QCoreApplication::translate("Cpk.CpkEdit", "Mode 1 / TOC");
+    case cricodecs::cpk::CpkMode::Mode2: return QCoreApplication::translate("Cpk.CpkEdit", "Mode 2 / TOC + ITOC");
+    case cricodecs::cpk::CpkMode::Mode3: return QCoreApplication::translate("Cpk.CpkEdit", "Mode 3 / TOC + ITOC + GTOC");
     }
     return QStringLiteral("Unknown");
 }
@@ -35,7 +37,7 @@ QString optional_bool_text(const std::optional<bool>& value) {
     if (!value) {
         return QStringLiteral("auto");
     }
-    return *value ? QStringLiteral("force on") : QStringLiteral("force off");
+    return *value ? QCoreApplication::translate("Cpk.CpkEdit", "force on") : QCoreApplication::translate("Cpk.CpkEdit", "force off");
 }
 
 } // namespace
@@ -47,30 +49,30 @@ ScratchArchive create_scratch_archive(cricodecs::cpk::CpkPreset preset) {
         .container = cricodecs::cpk::Cpk::create(options),
         .document = LoadedDocument{
             .display_name = "NewArchive.cpk",
-            .format = "CPK archive (scratch)",
+            .format = cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK archive (scratch)"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch CPK archive"},
+                {"Source", cristudio::i18n::translate_utf8("Cpk.CpkEdit", "Scratch CPK archive")},
                 {"Files", "0"},
                 {"Preset", preset_name(options.preset).toStdString()},
                 {"Alignment", std::to_string(options.align)}
             },
             .entry_columns = {
                 "Index",
-                "Full Path",
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "Full Path"),
                 "Dirname",
                 "Filename",
                 "ID",
-                "TOC Index",
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "TOC Index"),
                 "Offset",
-                "File Size",
-                "Extract Size",
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "File Size"),
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "Extract Size"),
                 "Compressed",
-                "Compress On Save",
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "Compress On Save"),
                 "Group",
                 "Attribute",
-                "User String",
-                "Update Date"
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "User String"),
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "Update Date")
             },
             .entry_column_types = {
                 "integer",
@@ -100,23 +102,23 @@ std::vector<TransformDetailRow> detail_rows(const cricodecs::cpk::Cpk& cpk) {
         {QStringLiteral("Files"), QString::number(cpk.file_count())},
         {QStringLiteral("Mode"), mode_name(cpk.mode())},
         {QStringLiteral("Preset"), preset_name(cpk.preset())},
-        {QStringLiteral("Declared preset"), cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : QStringLiteral("-")},
-        {QStringLiteral("Option preset"), preset_name(options.preset)},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Declared preset"), cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : QStringLiteral("-")},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Option preset"), preset_name(options.preset)},
         {QStringLiteral("Alignment"), QString::number(cpk.alignment())},
-        {QStringLiteral("Content offset"), QString::number(cpk.content_offset())},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Content offset"), QString::number(cpk.content_offset())},
         {QStringLiteral("TOC"), cpk.has_toc() ? QStringLiteral("yes") : QStringLiteral("no")},
         {QStringLiteral("ITOC"), cpk.has_itoc() ? QStringLiteral("yes") : QStringLiteral("no")},
         {QStringLiteral("GTOC"), cpk.has_gtoc() ? QStringLiteral("yes") : QStringLiteral("no")},
         {QStringLiteral("ETOC"), cpk.has_etoc() ? QStringLiteral("yes") : QStringLiteral("no")},
-        {QStringLiteral("Override TOC"), optional_bool_text(options.enable_toc)},
-        {QStringLiteral("Override ITOC"), optional_bool_text(options.enable_itoc)},
-        {QStringLiteral("Override GTOC"), optional_bool_text(options.enable_gtoc)},
-        {QStringLiteral("Override ETOC"), optional_bool_text(options.enable_etoc)},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Override TOC"), optional_bool_text(options.enable_toc)},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Override ITOC"), optional_bool_text(options.enable_itoc)},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Override GTOC"), optional_bool_text(options.enable_gtoc)},
+        {QCoreApplication::translate("Cpk.CpkEdit", "Override ETOC"), optional_bool_text(options.enable_etoc)},
         {QStringLiteral("CRC"), options.enable_crc ? QStringLiteral("yes") : QStringLiteral("no")},
         {QStringLiteral("Encoding"), options.encoding.encoding ? QString::fromStdString(*options.encoding.encoding) : QStringLiteral("auto")},
         {QStringLiteral("Comment"), QString::fromStdString(options.comment)},
         {QStringLiteral("TVER"), QString::fromStdString(options.tver)},
-        {QStringLiteral("ETOC LocalDir"), QString::fromStdString(options.etoc_local_dir)}
+        {QCoreApplication::translate("Cpk.CpkEdit", "ETOC LocalDir"), QString::fromStdString(options.etoc_local_dir)}
     };
 }
 
@@ -137,14 +139,14 @@ std::expected<size_t, std::string> add_files(
         if (!std::filesystem::is_regular_file(file.local_path, error)) {
             if (error) {
                 return std::unexpected(
-                    "CPK add failed: could not inspect input file '" + file.local_path.string() + "': " +
+                    cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK add failed: could not inspect input file '") + file.local_path.string() + "': " +
                     error.message());
             }
             return std::unexpected(
-                "CPK add failed: input is not a regular file: " + file.local_path.string());
+                cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK add failed: input is not a regular file: ") + file.local_path.string());
         }
         if (file.archive_path.empty()) {
-            return std::unexpected("CPK add failed: archive path is empty");
+            return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK add failed: archive path is empty"));
         }
     }
 
@@ -160,23 +162,23 @@ std::expected<size_t, std::string> add_directory(
 ) {
     std::error_code error;
     if (!std::filesystem::is_directory(root, error)) {
-        return std::unexpected("CPK directory add failed: input is not a directory: " + root.string());
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK directory add failed: input is not a directory: ") + root.string());
     }
 
     std::vector<AddFileSource> files;
     std::filesystem::recursive_directory_iterator iterator(root, error);
     const std::filesystem::recursive_directory_iterator end;
     if (error) {
-        return std::unexpected("CPK directory add failed: " + error.message());
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK directory add failed: ") + error.message());
     }
     while (iterator != end) {
         if (!iterator->is_regular_file(error)) {
             if (error) {
-                return std::unexpected("CPK directory add failed: " + error.message());
+                return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK directory add failed: ") + error.message());
             }
             iterator.increment(error);
             if (error) {
-                return std::unexpected("CPK directory add failed: " + error.message());
+                return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK directory add failed: ") + error.message());
             }
             continue;
         }
@@ -187,7 +189,7 @@ std::expected<size_t, std::string> add_directory(
         });
         iterator.increment(error);
         if (error) {
-            return std::unexpected("CPK directory add failed: " + error.message());
+            return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK directory add failed: ") + error.message());
         }
     }
 
@@ -257,7 +259,7 @@ std::expected<void, std::string> set_entry_id(
 ) {
     auto* entry = cpk.try_file(index);
     if (entry == nullptr) {
-        return std::unexpected("CPK entry index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK entry index is out of range"));
     }
     entry->id = id;
     return {};
@@ -282,7 +284,7 @@ std::expected<void, std::string> set_group(
 ) {
     auto* entry = cpk.try_file(index);
     if (entry == nullptr) {
-        return std::unexpected("CPK entry index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK entry index is out of range"));
     }
     entry->group = std::move(value);
     return {};
@@ -295,7 +297,7 @@ std::expected<void, std::string> set_attribute(
 ) {
     auto* entry = cpk.try_file(index);
     if (entry == nullptr) {
-        return std::unexpected("CPK entry index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK entry index is out of range"));
     }
     entry->attribute = std::move(value);
     return {};
@@ -308,7 +310,7 @@ std::expected<void, std::string> set_user_string(
 ) {
     auto* entry = cpk.try_file(index);
     if (entry == nullptr) {
-        return std::unexpected("CPK entry index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK entry index is out of range"));
     }
     entry->user_string = std::move(value);
     return {};
@@ -321,7 +323,7 @@ std::expected<void, std::string> set_update_date_time(
 ) {
     auto* entry = cpk.try_file(index);
     if (entry == nullptr) {
-        return std::unexpected("CPK entry index is out of range");
+        return std::unexpected(cristudio::i18n::translate_utf8("Cpk.CpkEdit", "CPK entry index is out of range"));
     }
     entry->update_date_time = value;
     return {};

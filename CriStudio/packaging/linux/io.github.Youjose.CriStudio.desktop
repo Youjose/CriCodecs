@@ -2,6 +2,10 @@
 Type=Application
 Name=CriStudio
 Comment=Inspect, extract, build, and edit CRI codec and container files
+Comment[es]=Inspeccione, extraiga, genere y edite archivos de códecs y contenedores CRI
+Comment[ja]=CRI コーデックおよびコンテナーファイルの検査、抽出、ビルド、編集
+Comment[zh_CN]=检查、提取、构建和编辑 CRI 编解码器及容器文件
+Comment[zh_TW]=檢查、擷取、建置及編輯 CRI 編解碼器與容器檔案
 Exec=CriStudio
 Icon=io.github.Youjose.CriStudio
 Categories=AudioVideo;AudioVideoEditing;

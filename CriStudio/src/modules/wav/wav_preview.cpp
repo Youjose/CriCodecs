@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/wav/wav_preview.hpp"
 
 #include "shared/audio_preview_helpers.hpp"
@@ -14,14 +15,14 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
 ) {
     cricodecs::wav::WavContainer wav;
     if (auto loaded = wav.load(bytes); !loaded) {
-        return std::unexpected("WAV preview failed: " + loaded.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Wav.WavPreview", "WAV preview failed: ") + loaded.error());
     }
     return make_wav_audio_preview(
         std::vector<uint8_t>(bytes.begin(), bytes.end()),
         wav.sample_rate(),
         static_cast<uint16_t>(wav.channels()),
         wav.sample_count(),
-        "WAV audio",
+        cristudio::i18n::translate_utf8("Wav.WavPreview", "WAV audio"),
         generic_path(source_name),
         audio_loops_from_wav_loops(wav.sampler().loops, wav.sample_count())
     );
@@ -30,7 +31,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
 std::expected<AudioPreview, std::string> audio_preview_from_file(const std::filesystem::path& path) {
     cricodecs::wav::WavContainer wav;
     if (auto loaded = wav.load(path); !loaded) {
-        return std::unexpected("WAV preview failed: " + loaded.error());
+        return std::unexpected(cristudio::i18n::translate_utf8("Wav.WavPreview", "WAV preview failed: ") + loaded.error());
     }
 
     AudioPreview preview;
@@ -38,7 +39,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_file(const std::file
     preview.sample_rate = wav.sample_rate();
     preview.channels = static_cast<uint16_t>(wav.channels());
     preview.sample_count = wav.sample_count();
-    preview.format = "WAV audio";
+    preview.format = cristudio::i18n::translate_utf8("Wav.WavPreview", "WAV audio");
     preview.note = generic_path(path);
     preview.loops = audio_loops_from_wav_loops(wav.sampler().loops, wav.sample_count());
     return preview;

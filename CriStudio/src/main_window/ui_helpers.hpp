@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCoreApplication>
 #include <QIcon>
 #include <QElapsedTimer>
 #include <QPalette>
@@ -118,7 +119,7 @@ void show_key_recovery_result(
     QString summary,
     QString details,
     QString copy_text = {},
-    QString copy_button_text = QStringLiteral("Copy Key"),
+    QString copy_button_text = QCoreApplication::translate("MainWindow.UiHelpers", "Copy Key"),
     std::vector<KeyRecoveryGroup> groups = {}
 );
 void show_key_recovery_error(QWidget* parent, QString title, QString error);

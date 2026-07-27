@@ -1,5 +1,6 @@
 #include "editor/transform_detail_model.hpp"
 
+#include <QCoreApplication>
 #include <QVariant>
 
 #include <utility>
@@ -47,10 +48,10 @@ QVariant TransformDetailModel::headerData(
         return {};
     }
     if (section == 0) {
-        return QStringLiteral("Field");
+        return QCoreApplication::translate("Editor.TransformDetailModel", "Field");
     }
     if (section == 1) {
-        return QStringLiteral("Value");
+        return QCoreApplication::translate("Editor.TransformDetailModel", "Value");
     }
     return {};
 }
@@ -59,6 +60,13 @@ void TransformDetailModel::set_rows(std::vector<modules::TransformDetailRow> row
     beginResetModel();
     m_rows = std::move(rows);
     endResetModel();
+}
+
+void TransformDetailModel::retranslate() {
+    emit headerDataChanged(Qt::Horizontal, 0, 1);
+    if (!m_rows.empty()) {
+        emit dataChanged(index(0, 0), index(static_cast<int>(m_rows.size()) - 1, 1));
+    }
 }
 
 const modules::TransformDetailRow* TransformDetailModel::detail_at(int row) const noexcept {

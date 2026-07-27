@@ -4,6 +4,7 @@
 #include "../shared/document_preview_router.hpp"
 #include "ui_helpers.hpp"
 
+#include <QCoreApplication>
 #include <QAbstractItemView>
 #include <QAbstractItemModel>
 #include <QApplication>
@@ -74,14 +75,15 @@ std::optional<AdxRecoveryKind> adx_recovery_kind(const EntrySummary& entry) {
 
 std::optional<AdxRecoveryKind> adx_recovery_kind(const LoadedDocument& document) {
     for (const auto& row : document.info) {
-        if (QString::fromStdString(row.name).compare(QStringLiteral("AHX routed"), Qt::CaseInsensitive) == 0) {
-            return QString::fromStdString(row.value).compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0
+        if (info_row_id(row) == "AHX routed") {
+            const auto value = info_row_value_id(row);
+            return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
+                           .compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0
                 ? std::optional(AdxRecoveryKind::Ahx)
                 : std::optional(AdxRecoveryKind::Adx);
         }
     }
-    const auto text = QString::fromStdString(
-        document.format + " " + document.loader_tag).toLower();
+    const auto text = QString::fromUtf8(document_format_id(document)).toLower();
     if (text.contains(QStringLiteral("ahx"))) {
         return AdxRecoveryKind::Ahx;
     }
@@ -95,8 +97,10 @@ void append_document_hca_recovery_sources(
     const LoadedDocument& document,
     std::vector<HcaRecoverySource>& sources
 ) {
-    const auto tag = QString::fromStdString(
-        document.loader_tag.empty() ? document.format : document.loader_tag).toLower();
+    const auto tag = QString::fromUtf8(
+        document_format_id(document).data(),
+        static_cast<qsizetype>(document_format_id(document).size())
+    ).toLower();
     if (tag.contains(QStringLiteral("cpk"))) {
         const auto initial_size = sources.size();
         for (const auto& entry : document.entries) {
@@ -117,8 +121,10 @@ void append_document_adx_recovery_sources(
     const LoadedDocument& document,
     std::vector<AdxRecoverySource>& sources
 ) {
-    const auto text = QString::fromStdString(
-        document.loader_tag + " " + document.format).toLower();
+    const auto text = QString::fromUtf8(
+        document_format_id(document).data(),
+        static_cast<qsizetype>(document_format_id(document).size())
+    ).toLower();
     if (text.contains(QStringLiteral("aax")) ||
         text.contains(QStringLiteral("awb")) ||
         text.contains(QStringLiteral("acb")) ||
@@ -221,8 +227,8 @@ void MainWindow::clear_loaded_files() {
     m_entry_model->clear();
     show_document(nullptr);
 
-    m_nested_title->setText(QStringLiteral("Entry preview"));
-    m_nested_subtitle->setText(QStringLiteral("Select a supported embedded file."));
+    m_nested_title->setText(QCoreApplication::translate("MainWindow.BrowserView", "Entry preview"));
+    m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.BrowserView", "Select a supported embedded file."));
     populate_info_grid(m_nested_info_grid, {});
     m_nested_image->clear();
     m_nested_image_scroll->hide();
@@ -238,8 +244,8 @@ void MainWindow::clear_loaded_files() {
     }
     toggle_preview_panel();
 
-    append_log(QStringLiteral("Cleared loaded files"));
-    statusBar()->showMessage(QStringLiteral("Cleared loaded files"), 3000);
+    append_log(QCoreApplication::translate("MainWindow.BrowserView", "Cleared loaded files"));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "Cleared loaded files"), 3000);
     update_file_list_status();
 #if defined(__GLIBC__)
     malloc_trim(0);
@@ -262,7 +268,7 @@ void MainWindow::unload_selected_files() {
         }
     }
     if (source_rows.empty()) {
-        statusBar()->showMessage(QStringLiteral("No loaded files selected"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "No loaded files selected"), 3000);
         return;
     }
 
@@ -271,8 +277,8 @@ void MainWindow::unload_selected_files() {
     m_file_model->remove_rows(std::move(source_rows));
     show_document(nullptr);
     update_file_list_status();
-    append_log(QStringLiteral("Unloaded selected files"));
-    statusBar()->showMessage(QStringLiteral("Unloaded selected files"), 3000);
+    append_log(QCoreApplication::translate("MainWindow.BrowserView", "Unloaded selected files"));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "Unloaded selected files"), 3000);
 }
 
 void MainWindow::open_selected_files_in_editor() {
@@ -295,7 +301,7 @@ void MainWindow::open_selected_files_in_editor() {
         EditorOpenRequest request;
         request.source_kind = EditorOpenRequest::SourceKind::Path;
         request.display_name = document->display_name;
-        request.detected_format = document->format;
+        request.detected_format = document->loader_tag.empty() ? document->format : document->loader_tag;
         request.source_path = document->path;
         request.keys = m_decryption_keys;
         request.document = *document;
@@ -304,13 +310,17 @@ void MainWindow::open_selected_files_in_editor() {
     }
 
     if (opened == 0) {
-        statusBar()->showMessage(QStringLiteral("No loaded files selected for Editor"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "No loaded files selected for Editor"), 3000);
         return;
     }
     if (m_workspace_tabs != nullptr) {
         m_workspace_tabs->setCurrentWidget(m_editor_workspace);
     }
-    append_log(QStringLiteral("Opened %1 loaded file(s) in Editor").arg(opened));
+    append_log(QCoreApplication::translate(
+        "MainWindow.BrowserView",
+        "Opened %n loaded file(s) in Editor",
+        nullptr,
+        static_cast<int>(opened)));
 }
 
 void MainWindow::open_selected_entries_in_editor() {
@@ -347,13 +357,17 @@ void MainWindow::open_selected_entries_in_editor() {
     }
 
     if (opened == 0) {
-        statusBar()->showMessage(QStringLiteral("No extractable archive entries selected for Editor"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "No extractable archive entries selected for Editor"), 3000);
         return;
     }
     if (m_workspace_tabs != nullptr) {
         m_workspace_tabs->setCurrentWidget(m_editor_workspace);
     }
-    append_log(QStringLiteral("Opened %1 archive entry(s) in Editor").arg(opened));
+    append_log(QCoreApplication::translate(
+        "MainWindow.BrowserView",
+        "Opened %n archive entry(s) in Editor",
+        nullptr,
+        static_cast<int>(opened)));
 }
 
 void MainWindow::open_selected_nested_entries_in_editor() {
@@ -389,13 +403,17 @@ void MainWindow::open_selected_nested_entries_in_editor() {
     }
 
     if (opened == 0) {
-        statusBar()->showMessage(QStringLiteral("No extractable preview entries selected for Editor"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.BrowserView", "No extractable preview entries selected for Editor"), 3000);
         return;
     }
     if (m_workspace_tabs != nullptr) {
         m_workspace_tabs->setCurrentWidget(m_editor_workspace);
     }
-    append_log(QStringLiteral("Opened %1 preview entry(s) in Editor").arg(opened));
+    append_log(QCoreApplication::translate(
+        "MainWindow.BrowserView",
+        "Opened %n preview entry(s) in Editor",
+        nullptr,
+        static_cast<int>(opened)));
 }
 
 std::vector<ExtractionTarget> MainWindow::selected_file_targets() const {
@@ -857,7 +875,7 @@ void MainWindow::show_loaded_file_context_menu(const QPoint& position) {
     }
 
     QMenu menu(this);
-    auto* open_editor = menu.addAction(QStringLiteral("Open in Editor"));
+    auto* open_editor = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Open in Editor"));
     const auto source_index = index.isValid() ? m_file_proxy->mapToSource(index) : QModelIndex{};
     const auto* selected_document = source_index.isValid() && m_file_model != nullptr
         ? m_file_model->document_at(source_index.row())
@@ -870,22 +888,22 @@ void MainWindow::show_loaded_file_context_menu(const QPoint& position) {
             return document != nullptr && supports_editor(*document);
         });
     open_editor->setEnabled(can_open_selected);
-    auto* show_in_folder = menu.addAction(QStringLiteral("Show in Folder"));
+    auto* show_in_folder = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Show in Folder"));
     menu.addSeparator();
-    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QStringLiteral("Extract Selected"));
-    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QStringLiteral("Extract Selected Raw"));
-    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover HCA Keys"));
+    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Selected"));
+    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Selected Raw"));
+    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover HCA Keys"));
     recover_hca_keys->setVisible(!selected_file_recovery_sources().empty());
-    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover USM Keys"));
-    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover ADX Keys"));
-    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AHX Keys"));
+    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover USM Keys"));
+    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover ADX Keys"));
+    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AHX Keys"));
     auto aac_sources = selected_file_aac_recovery_sources();
     QAction* recover_aac_keys = nullptr;
     if (!aac_sources.empty()) {
-        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AAC Keys"));
+        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AAC Keys"));
     }
     menu.addSeparator();
-    auto* unload = menu.addAction(make_action_icon(ActionGlyph::Clear), QStringLiteral("Unload"));
+    auto* unload = menu.addAction(make_action_icon(ActionGlyph::Clear), QCoreApplication::translate("MainWindow.BrowserView", "Unload"));
     const auto chosen = menu.exec(m_file_view->viewport()->mapToGlobal(position));
     if (chosen == open_editor) {
         open_selected_files_in_editor();
@@ -900,25 +918,25 @@ void MainWindow::show_loaded_file_context_menu(const QPoint& position) {
         const auto count = sources.size();
         start_hca_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected loaded file(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_usm_keys) {
         auto sources = selected_file_usm_recovery_sources();
         const auto count = sources.size();
         start_usm_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected loaded file(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_adx_keys || chosen == recover_ahx_keys) {
         auto sources = selected_file_adx_recovery_sources();
         const auto count = sources.size();
         start_adx_key_recovery(
             std::move(sources),
             chosen == recover_ahx_keys ? AdxRecoveryKind::Ahx : AdxRecoveryKind::Adx,
-            QStringLiteral("%1 selected loaded file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected loaded file(s)", nullptr, static_cast<int>(count)));
     } else if (recover_aac_keys != nullptr && chosen == recover_aac_keys) {
         const auto count = aac_sources.size();
         start_aac_key_recovery(
             std::move(aac_sources),
-            QStringLiteral("%1 selected ACB/AWB file%2").arg(count).arg(count == 1 ? QString{} : QStringLiteral("s")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected ACB/AWB file(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == unload) {
         unload_selected_files();
     }
@@ -935,8 +953,8 @@ void MainWindow::show_entry_context_menu(const QPoint& position) {
     }
 
     QMenu menu(this);
-    auto* open_editor = menu.addAction(QStringLiteral("Open in Editor"));
-    auto* show_in_folder = menu.addAction(QStringLiteral("Show Source in Folder"));
+    auto* open_editor = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Open in Editor"));
+    auto* show_in_folder = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Show Source in Folder"));
     const auto source_index = index.isValid() ? m_entry_proxy->mapToSource(index) : QModelIndex{};
     const auto* summary = source_index.isValid() ? m_entry_model->summary_at(source_index) : nullptr;
     const auto can_open_selected = std::ranges::any_of(
@@ -949,21 +967,21 @@ void MainWindow::show_entry_context_menu(const QPoint& position) {
     open_editor->setEnabled(can_open_selected);
     show_in_folder->setEnabled(summary != nullptr && !summary->source_path.empty());
     menu.addSeparator();
-    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QStringLiteral("Extract Entry"));
-    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QStringLiteral("Extract Entry Raw"));
-    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover HCA Keys"));
+    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry"));
+    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry Raw"));
+    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover HCA Keys"));
     recover_hca_keys->setVisible(!selected_entry_recovery_sources().empty());
-    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover USM Keys"));
-    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover ADX Keys"));
-    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AHX Keys"));
+    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover USM Keys"));
+    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover ADX Keys"));
+    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AHX Keys"));
     auto aac_sources = selected_entry_aac_recovery_sources();
     QAction* recover_aac_keys = nullptr;
     if (!aac_sources.empty()) {
-        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AAC Keys"));
+        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AAC Keys"));
     }
     menu.addSeparator();
-    auto* copy_cell = menu.addAction(QStringLiteral("Copy Cell"));
-    auto* copy_row = menu.addAction(QStringLiteral("Copy Row"));
+    auto* copy_cell = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Copy Cell"));
+    auto* copy_row = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Copy Row"));
     const auto chosen = menu.exec(m_entry_view->viewport()->mapToGlobal(position));
     if (chosen == open_editor) {
         open_selected_entries_in_editor();
@@ -978,25 +996,25 @@ void MainWindow::show_entry_context_menu(const QPoint& position) {
         const auto count = sources.size();
         start_hca_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_usm_keys) {
         auto sources = selected_entry_usm_recovery_sources();
         const auto count = sources.size();
         start_usm_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_adx_keys || chosen == recover_ahx_keys) {
         auto sources = selected_entry_adx_recovery_sources();
         const auto count = sources.size();
         start_adx_key_recovery(
             std::move(sources),
             chosen == recover_ahx_keys ? AdxRecoveryKind::Ahx : AdxRecoveryKind::Adx,
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (recover_aac_keys != nullptr && chosen == recover_aac_keys) {
         const auto count = aac_sources.size();
         start_aac_key_recovery(
             std::move(aac_sources),
-            QStringLiteral("%1 selected AAC entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected AAC entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == copy_cell && index.isValid()) {
         QApplication::clipboard()->setText(index.data(Qt::DisplayRole).toString());
     } else if (chosen == copy_row && index.isValid()) {
@@ -1015,8 +1033,8 @@ void MainWindow::show_nested_entry_context_menu(const QPoint& position) {
     }
 
     QMenu menu(this);
-    auto* open_editor = menu.addAction(QStringLiteral("Open in Editor"));
-    auto* show_in_folder = menu.addAction(QStringLiteral("Show Source in Folder"));
+    auto* open_editor = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Open in Editor"));
+    auto* show_in_folder = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Show Source in Folder"));
     const auto* summary = index.isValid() ? m_nested_entry_model->summary_at(index) : nullptr;
     const auto can_open_selected = std::ranges::any_of(
         m_nested_entry_view->selectionModel()->selectedRows(),
@@ -1027,21 +1045,21 @@ void MainWindow::show_nested_entry_context_menu(const QPoint& position) {
     open_editor->setEnabled(can_open_selected);
     show_in_folder->setEnabled(summary != nullptr && !summary->source_path.empty());
     menu.addSeparator();
-    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QStringLiteral("Extract Entry"));
-    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QStringLiteral("Extract Entry Raw"));
-    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover HCA Keys"));
+    auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry"));
+    auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry Raw"));
+    auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover HCA Keys"));
     recover_hca_keys->setVisible(!selected_nested_entry_recovery_sources().empty());
-    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover USM Keys"));
-    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover ADX Keys"));
-    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AHX Keys"));
+    auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover USM Keys"));
+    auto* recover_adx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover ADX Keys"));
+    auto* recover_ahx_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AHX Keys"));
     auto aac_sources = selected_nested_entry_aac_recovery_sources();
     QAction* recover_aac_keys = nullptr;
     if (!aac_sources.empty()) {
-        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QStringLiteral("Recover AAC Keys"));
+        recover_aac_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover AAC Keys"));
     }
     menu.addSeparator();
-    auto* copy_cell = menu.addAction(QStringLiteral("Copy Cell"));
-    auto* copy_row = menu.addAction(QStringLiteral("Copy Row"));
+    auto* copy_cell = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Copy Cell"));
+    auto* copy_row = menu.addAction(QCoreApplication::translate("MainWindow.BrowserView", "Copy Row"));
     const auto chosen = menu.exec(m_nested_entry_view->viewport()->mapToGlobal(position));
     if (chosen == open_editor) {
         open_selected_nested_entries_in_editor();
@@ -1056,25 +1074,25 @@ void MainWindow::show_nested_entry_context_menu(const QPoint& position) {
         const auto count = sources.size();
         start_hca_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_usm_keys) {
         auto sources = selected_nested_entry_usm_recovery_sources();
         const auto count = sources.size();
         start_usm_key_recovery(
             std::move(sources),
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == recover_adx_keys || chosen == recover_ahx_keys) {
         auto sources = selected_nested_entry_adx_recovery_sources();
         const auto count = sources.size();
         start_adx_key_recovery(
             std::move(sources),
             chosen == recover_ahx_keys ? AdxRecoveryKind::Ahx : AdxRecoveryKind::Adx,
-            QStringLiteral("%1 selected entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected entry(s)", nullptr, static_cast<int>(count)));
     } else if (recover_aac_keys != nullptr && chosen == recover_aac_keys) {
         const auto count = aac_sources.size();
         start_aac_key_recovery(
             std::move(aac_sources),
-            QStringLiteral("%1 selected AAC entr%2").arg(count).arg(count == 1 ? QStringLiteral("y") : QStringLiteral("ies")));
+            QCoreApplication::translate("MainWindow.BrowserView", "%n selected AAC entry(s)", nullptr, static_cast<int>(count)));
     } else if (chosen == copy_cell && index.isValid()) {
         QApplication::clipboard()->setText(index.data(Qt::DisplayRole).toString());
     } else if (chosen == copy_row && index.isValid()) {
@@ -1120,10 +1138,10 @@ void MainWindow::update_file_list_status() {
         : m_file_view->selectionModel()->selectedRows().size();
 
     auto text = visible == total
-        ? QStringLiteral("%1 loaded").arg(total)
-        : QStringLiteral("%1 of %2 shown").arg(visible).arg(total);
+        ? QCoreApplication::translate("MainWindow.BrowserView", "%1 loaded").arg(total)
+        : QCoreApplication::translate("MainWindow.BrowserView", "%1 of %2 shown").arg(visible).arg(total);
     if (selected > 0) {
-        text += QStringLiteral(" · %1 selected").arg(selected);
+        text += QCoreApplication::translate("MainWindow.BrowserView", " · %1 selected").arg(selected);
     }
     if (selected == 1 && m_file_view->currentIndex().isValid()) {
         const auto source = m_file_proxy->mapToSource(m_file_view->currentIndex());
@@ -1135,7 +1153,7 @@ void MainWindow::update_file_list_status() {
                 std::max(120, m_file_list_status->width() - 150)
             );
             text += QStringLiteral(" · %1 · %2")
-                .arg(QString::fromStdString(document->format), elided_path);
+                .arg(QString::fromStdString(localized_document_format(*document)), elided_path);
             m_file_list_status->setToolTip(path);
         } else {
             m_file_list_status->setToolTip({});
@@ -1156,8 +1174,8 @@ void MainWindow::update_entry_selection_status() {
         : m_entry_view->selectionModel()->selectedRows().size();
     m_entry_selection_status->setText(
         selected == 1
-            ? QStringLiteral("1 selected")
-            : QStringLiteral("%1 selected").arg(selected)
+            ? QCoreApplication::translate("MainWindow.BrowserView", "1 selected")
+            : QCoreApplication::translate("MainWindow.BrowserView", "%1 selected").arg(selected)
     );
 }
 
@@ -1271,9 +1289,9 @@ void MainWindow::set_preview_entry_actions_visible(bool visible) {
             !m_hca_key_recovery_running && !m_usm_key_recovery_running && !m_adx_key_recovery_running && !m_aac_key_recovery_running);
         if (kind) {
             const auto name = *kind == AdxRecoveryKind::Ahx ? QStringLiteral("AHX") : QStringLiteral("ADX");
-            m_preview_recover_adx_key_button->setText(QStringLiteral("Recover %1 Key").arg(name));
+            m_preview_recover_adx_key_button->setText(QCoreApplication::translate("MainWindow.BrowserView", "Recover %1 Key").arg(name));
             m_preview_recover_adx_key_button->setToolTip(
-                QStringLiteral("Recover an effective %1 type-8/type-9 key triplet from this previewed file").arg(name));
+                QCoreApplication::translate("MainWindow.BrowserView", "Recover an effective %1 type-8/type-9 key triplet from this previewed file").arg(name));
         }
     }
     if (m_preview_recover_aac_key_button != nullptr) {

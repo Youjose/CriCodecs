@@ -34,7 +34,7 @@ namespace {
     if (!source.path.empty()) {
         return to_qstring(source.path.filename());
     }
-    return QStringLiteral("Selected entry");
+    return QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Selected entry");
 }
 
 } // namespace
@@ -44,16 +44,16 @@ void MainWindow::start_hca_key_recovery(
     QString target_label
 ) {
     if (sources.empty()) {
-        statusBar()->showMessage(QStringLiteral("No files selected for HCA key recovery"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "No files selected for HCA key recovery"), 3000);
         return;
     }
     if (m_hca_key_recovery_running || m_usm_key_recovery_running ||
         m_adx_key_recovery_running || m_aac_key_recovery_running) {
-        statusBar()->showMessage(QStringLiteral("Key recovery is already running"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Key recovery is already running"), 3000);
         return;
     }
     const auto mode = choose_key_recovery_mode(
-        this, QStringLiteral("HCA key recovery"), sources.size());
+        this, QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery"), sources.size());
     if (!mode) {
         return;
     }
@@ -65,12 +65,12 @@ void MainWindow::start_hca_key_recovery(
     if (sources.size() > 1) {
         begin_key_recovery_progress(
             this,
-            QStringLiteral("HCA key recovery"),
+            QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery"),
             sources.size(),
             [this, request_id] {
                 if (m_hca_key_recovery_running && request_id == m_hca_key_recovery_request_id) {
                     m_hca_key_recovery_stop_source.request_stop();
-                    statusBar()->showMessage(QStringLiteral("Canceling HCA key recovery..."));
+                    statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Canceling HCA key recovery..."));
                 }
             });
     }
@@ -88,7 +88,7 @@ void MainWindow::start_hca_key_recovery(
         m_preview_recover_aac_key_button->setEnabled(false);
     }
 
-    statusBar()->showMessage(QStringLiteral("Recovering HCA keys..."));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Recovering HCA keys..."));
     auto keys = m_decryption_keys;
     m_hca_key_recovery_watcher->setFuture(QtConcurrent::run(
         [sources = std::move(sources), keys = std::move(keys), target_label = std::move(target_label),
@@ -144,11 +144,11 @@ void MainWindow::start_hca_key_recovery(
                         return;
                     }
                     const auto status = progress.stage == cricodecs::hca::KeyRecoveryStage::Collecting
-                        ? QStringLiteral("Scanning %1 of %2 selected files; found %3 encrypted HCA streams.")
+                        ? QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Scanning %1 of %2 selected files; found %3 encrypted HCA streams.")
                               .arg(progress.completed)
                               .arg(progress.total)
                               .arg(progress.source_count)
-                        : QStringLiteral("Recovered %1 of %2 AWB subkey groups; %3 groups produced candidates from %4 HCA streams.")
+                        : QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Recovered %1 of %2 AWB subkey groups; %3 groups produced candidates from %4 HCA streams.")
                               .arg(progress.completed)
                               .arg(progress.total)
                               .arg(progress.resolved_groups)
@@ -243,7 +243,7 @@ void MainWindow::start_hca_key_recovery(
                                             if (!window.isNull()) {
                                                 update_key_recovery_progress(
                                                     window, std::move(groups), completed, total,
-                                                    QStringLiteral("Processed %1 of %2 selected files.")
+                                                    QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Processed %1 of %2 selected files.")
                                                         .arg(completed)
                                                         .arg(total));
                                             }
@@ -295,31 +295,31 @@ void MainWindow::consume_hca_key_recovery_result() {
     if (task.canceled) {
         if (task.requested_sources > 1) {
             update_key_recovery_progress(
-                this, {}, 1, 1, QStringLiteral("HCA key recovery canceled."), true);
+                this, {}, 1, 1, QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery canceled."), true);
         }
-        append_log(QStringLiteral("HCA key recovery canceled"));
-        statusBar()->showMessage(QStringLiteral("HCA key recovery canceled"), 3000);
+        append_log(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery canceled"));
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery canceled"), 3000);
         return;
     }
 
     if (task.recovered.empty()) {
         const auto error = task.errors.empty()
-            ? QStringLiteral("No cipher type-56 HCA streams were found.")
+            ? QCoreApplication::translate("MainWindow.HcaKeyRecovery", "No cipher type-56 HCA streams were found.")
             : task.errors.front();
         if (task.requested_sources > 1) {
             update_key_recovery_progress(
                 this, {}, task.requested_sources, task.requested_sources, error, true);
         } else {
-            show_key_recovery_error(this, QStringLiteral("HCA key recovery"), error);
+            show_key_recovery_error(this, QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery"), error);
         }
-        append_log(QStringLiteral("HCA key recovery failed: ") + error);
-        statusBar()->showMessage(QStringLiteral("HCA key recovery unavailable"), 5000);
+        append_log(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery failed: ") + error);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery unavailable"), 5000);
         return;
     }
 
     std::vector<KeyRecoveryCandidate> candidates;
     candidates.reserve(task.recovered.size() * cricodecs::MaxKeyRecoveryCandidates);
-    QString details = QStringLiteral("Target: %1\n\n").arg(task.target_label);
+    QString details = QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Target: %1\n\n").arg(task.target_label);
     size_t hca_count = 0;
     size_t best_support = 0;
     for (const auto& target : task.recovered) {
@@ -339,25 +339,29 @@ void MainWindow::consume_hca_key_recovery_result() {
             if (candidates.size() == 1) {
                 best_support = recovered.source_count;
             }
-            details += QStringLiteral("%1\nKey: %2\nScore: %3\nSources: %4\nEvidence: %5\nEquivalents: %6\n\n")
+            details += QCoreApplication::translate("MainWindow.HcaKeyRecovery", "%1\nKey: %2\nScore: %3\nSources: %4\nEvidence: %5\nEquivalents: %6\n\n")
                 .arg(target.source, key, score)
                 .arg(recovered.source_count)
                 .arg(recovered.evidence_count)
                 .arg(recovered.equivalent_count);
-            append_log(QStringLiteral("HCA key recovery candidate for %1: %2, score %3, %4 equivalent(s)")
-                .arg(target.source, key, score)
-                .arg(recovered.equivalent_count));
+            append_log(QCoreApplication::translate(
+                "MainWindow.HcaKeyRecovery",
+                "HCA key recovery candidate for %1: %2, score %3, %n equivalent(s)",
+                nullptr,
+                static_cast<int>(recovered.equivalent_count))
+                .arg(target.source, key, score));
         }
         hca_count += target.recovered.hca_count;
     }
     if (!task.errors.empty()) {
-        details += QStringLiteral("Unavailable targets\n");
+        details += QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Unavailable targets\n");
         for (const auto& error : task.errors) {
             details += QStringLiteral("- %1\n").arg(error);
         }
         details += QLatin1Char('\n');
     }
-    details += QStringLiteral(
+    details += QCoreApplication::translate(
+        "MainWindow.HcaKeyRecovery",
         "Candidates were not applied globally. Scores are normalized structural agreement, not probability. "
         "Rows are ranked by score, file support, filename, and key.\n"
         "CRI key recovery returns only the effective low 56 bits; the original upper byte is unrecoverable.");
@@ -369,14 +373,14 @@ void MainWindow::consume_hca_key_recovery_result() {
         keys.push_back(group.key);
     }
     const auto summary = groups.empty()
-        ? QStringLiteral("No positive key candidate was recovered.")
+        ? QCoreApplication::translate("MainWindow.HcaKeyRecovery", "No positive key candidate was recovered.")
         : task.recovered.size() == 1
-        ? QStringLiteral("Recovered key: %1\nScore: %2\nHCA support: %3 of %4 streams")
+        ? QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Recovered key: %1\nScore: %2\nHCA support: %3 of %4 streams")
               .arg(groups.front().key)
               .arg(QString::number(groups.front().mean_score, 'f', 6))
               .arg(best_support)
               .arg(hca_count)
-        : QStringLiteral("Recovered %1 files in %2 exact-key groups.")
+        : QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Recovered %1 files in %2 exact-key groups.")
               .arg(task.recovered.size())
               .arg(groups.size());
     if (task.requested_sources > 1) {
@@ -390,16 +394,16 @@ void MainWindow::consume_hca_key_recovery_result() {
     } else {
         show_key_recovery_result(
             this,
-            QStringLiteral("HCA key recovery"),
+            QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery"),
             summary,
             details,
             keys.join(QLatin1Char('\n')),
-            groups.size() == 1 ? QStringLiteral("Copy Key") : QStringLiteral("Copy Keys"),
+            groups.size() == 1 ? QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Copy Key") : QCoreApplication::translate("MainWindow.HcaKeyRecovery", "Copy Keys"),
             std::move(groups)
         );
     }
     statusBar()->showMessage(
-        QStringLiteral("HCA key recovery completed for %1 file(s), %2 stream(s)")
+        QCoreApplication::translate("MainWindow.HcaKeyRecovery", "HCA key recovery completed. Files: %1. Streams: %2.")
             .arg(task.recovered.size())
             .arg(hca_count),
         5000);

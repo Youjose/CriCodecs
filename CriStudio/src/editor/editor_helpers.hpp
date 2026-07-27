@@ -60,6 +60,7 @@ void push_job_log(const std::shared_ptr<BuildJobLog>& log, QString message);
 [[nodiscard]] QStringList take_job_logs(const std::shared_ptr<BuildJobLog>& log);
 
 [[nodiscard]] QString editor_label(std::string_view text, QString fallback = QStringLiteral("Untitled"));
+[[nodiscard]] QString editor_format_id(const EditorOpenRequest& request);
 [[nodiscard]] QString editor_format_label(const EditorOpenRequest& request);
 [[nodiscard]] QString safe_output_name(QString name, QString fallback_suffix);
 [[nodiscard]] QString ensure_output_suffix(QString text, QString suffix);

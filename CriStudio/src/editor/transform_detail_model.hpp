@@ -23,6 +23,7 @@ public:
     ) const override;
 
     void set_rows(std::vector<modules::TransformDetailRow> rows);
+    void retranslate();
     [[nodiscard]] const modules::TransformDetailRow* detail_at(int row) const noexcept;
     [[nodiscard]] int find_row(int payload_kind, int index, int layer = -1) const noexcept;
 

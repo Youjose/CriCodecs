@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/document_sniffer.hpp"
 
 #include <algorithm>
@@ -250,7 +251,7 @@ bool has_hca_signature(std::span<const uint8_t> bytes) {
 bool has_sfd_signature(std::span<const uint8_t> bytes) {
     constexpr std::string_view pack_start_code("\x00\x00\x01\xBA", 4);
     const auto sniff_bytes = bytes.first(std::min(bytes.size(), file_sniff_prefix_size));
-    return has_magic_at(bytes, 0, "Sofdec Stream") ||
+    return has_magic_at(bytes, 0, cristudio::i18n::translate_utf8("Shared.DocumentSniffer", "Sofdec Stream")) ||
            has_magic_at(bytes, 0, "SofdecStream") ||
            std::search(
                sniff_bytes.begin(),

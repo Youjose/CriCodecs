@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/document_helpers.hpp"
 
 #include "path_text.hpp"
@@ -83,8 +84,8 @@ std::string float_text(float value) {
 }
 
 void add_source_info(LoadedDocument& doc) {
-    doc.info.push_back({"Path", generic_path(doc.path)});
-    doc.info.push_back({"Size", byte_count(doc.file_size)});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Shared.DocumentHelpers", "Path"), generic_path(doc.path)});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Shared.DocumentHelpers", "Size"), byte_count(doc.file_size)});
 }
 
 LoadedDocument base_document(const std::filesystem::path& path, std::string format) {

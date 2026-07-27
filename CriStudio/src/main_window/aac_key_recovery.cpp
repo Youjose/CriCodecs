@@ -30,7 +30,7 @@ namespace {
     if (!source.path.empty()) {
         return to_qstring(source.path.filename());
     }
-    return QStringLiteral("Selected entry");
+    return QCoreApplication::translate("MainWindow.AacKeyRecovery", "Selected entry");
 }
 
 } // namespace
@@ -40,19 +40,19 @@ void MainWindow::start_aac_key_recovery(
     QString target_label
 ) {
     if (sources.empty()) {
-        statusBar()->showMessage(QStringLiteral("No AAC/M4A sources selected for key recovery"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AacKeyRecovery", "No AAC/M4A sources selected for key recovery"), 3000);
         return;
     }
     if (m_aac_key_recovery_running || m_hca_key_recovery_running ||
         m_usm_key_recovery_running || m_adx_key_recovery_running) {
-        statusBar()->showMessage(QStringLiteral("Key recovery is already running"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AacKeyRecovery", "Key recovery is already running"), 3000);
         return;
     }
     const auto mode = choose_key_recovery_mode(
-        this, QStringLiteral("AAC key recovery"), sources.size());
+        this, QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery"), sources.size());
     if (!mode) return;
     if (sources.size() > 1u) {
-        begin_key_recovery_progress(this, QStringLiteral("AAC key recovery"), sources.size());
+        begin_key_recovery_progress(this, QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery"), sources.size());
     }
 
     if (m_preview_recover_key_button != nullptr) m_preview_recover_key_button->setEnabled(false);
@@ -60,7 +60,7 @@ void MainWindow::start_aac_key_recovery(
     if (m_preview_recover_adx_key_button != nullptr) m_preview_recover_adx_key_button->setEnabled(false);
     if (m_preview_recover_aac_key_button != nullptr) m_preview_recover_aac_key_button->setEnabled(false);
 
-    statusBar()->showMessage(QStringLiteral("Recovering AAC key..."));
+    statusBar()->showMessage(QCoreApplication::translate("MainWindow.AacKeyRecovery", "Recovering AAC key..."));
     m_aac_key_recovery_running = true;
     const auto request_id = ++m_aac_key_recovery_request_id;
     m_aac_key_recovery_watcher->setFuture(QtConcurrent::run(
@@ -111,7 +111,7 @@ void MainWindow::start_aac_key_recovery(
                 } else {
                     task.errors.push_back(utf8_to_qstring(recovered.error()));
                 }
-                publish(QStringLiteral("Shared-base recovery completed."));
+                publish(QCoreApplication::translate("MainWindow.AacKeyRecovery", "Shared-base recovery completed."));
             } else {
                 task.recovered.reserve(sources.size());
                 for (const auto& source : sources) {
@@ -122,7 +122,7 @@ void MainWindow::start_aac_key_recovery(
                     } else {
                         task.errors.push_back(label + QStringLiteral(": ") + utf8_to_qstring(recovered.error()));
                     }
-                    publish(QStringLiteral("Processed %1 of %2 selected files.")
+                    publish(QCoreApplication::translate("MainWindow.AacKeyRecovery", "Processed %1 of %2 selected files.")
                         .arg(task.recovered.size() + task.errors.size()).arg(task.requested_sources));
                 }
             }
@@ -144,22 +144,22 @@ void MainWindow::consume_aac_key_recovery_result() {
 
     if (task.recovered.empty()) {
         const auto error = task.errors.empty()
-            ? QStringLiteral("No encrypted AAC sources were found.")
+            ? QCoreApplication::translate("MainWindow.AacKeyRecovery", "No encrypted AAC sources were found.")
             : task.errors.front();
         if (task.requested_sources > 1u) {
             update_key_recovery_progress(
                 this, {}, task.requested_sources, task.requested_sources, error, true);
         } else {
-            show_key_recovery_error(this, QStringLiteral("AAC key recovery"), error);
+            show_key_recovery_error(this, QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery"), error);
         }
-        append_log(QStringLiteral("AAC key recovery failed: ") + error);
-        statusBar()->showMessage(QStringLiteral("AAC key recovery unavailable"), 5000);
+        append_log(QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery failed: ") + error);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery unavailable"), 5000);
         return;
     }
 
     std::vector<KeyRecoveryCandidate> candidates;
     candidates.reserve(task.recovered.size() * cricodecs::MaxKeyRecoveryCandidates);
-    QString details = QStringLiteral("Target: %1\n\n").arg(task.target_label);
+    QString details = QCoreApplication::translate("MainWindow.AacKeyRecovery", "Target: %1\n\n").arg(task.target_label);
     size_t source_count = 0;
     for (const auto& target : task.recovered) {
         const float best_score = target.recovered.candidates.empty()
@@ -175,7 +175,8 @@ void MainWindow::consume_aac_key_recovery_result() {
                 .score = recovered.score,
                 .file = target.source,
             });
-            details += QStringLiteral(
+            details += QCoreApplication::translate(
+                "MainWindow.AacKeyRecovery",
                 "%1\nKey: %2\nScore: %3\nValidated AAC sources: %4 of %5\n"
                 "Containers: %6\nCandidates: %7\n\n")
                 .arg(target.source, key, score)
@@ -183,20 +184,24 @@ void MainWindow::consume_aac_key_recovery_result() {
                 .arg(recovered.source_count)
                 .arg(target.recovered.container_count)
                 .arg(recovered.candidate_count);
-            append_log(QStringLiteral("AAC key recovery candidate for %1: %2, score %3, %4 source(s)")
-                .arg(target.source, key, score)
-                .arg(recovered.source_count));
+            append_log(QCoreApplication::translate(
+                "MainWindow.AacKeyRecovery",
+                "AAC key recovery candidate for %1: %2, score %3, %n source(s)",
+                nullptr,
+                static_cast<int>(recovered.source_count))
+                .arg(target.source, key, score));
         }
         source_count += target.recovered.source_count;
     }
     if (!task.errors.empty()) {
-        details += QStringLiteral("Unavailable targets\n");
+        details += QCoreApplication::translate("MainWindow.AacKeyRecovery", "Unavailable targets\n");
         for (const auto& error : task.errors) {
             details += QStringLiteral("- %1\n").arg(error);
         }
         details += QLatin1Char('\n');
     }
-    details += QStringLiteral(
+    details += QCoreApplication::translate(
+        "MainWindow.AacKeyRecovery",
         "Candidates were not applied globally. Scores are normalized MP4 structural agreement, not probability. "
         "Exact keys are grouped and ranked by score, file support, filename, and key.");
 
@@ -207,12 +212,12 @@ void MainWindow::consume_aac_key_recovery_result() {
         keys.push_back(group.key);
     }
     const auto summary = groups.empty()
-        ? QStringLiteral("No positive key candidate was recovered.")
+        ? QCoreApplication::translate("MainWindow.AacKeyRecovery", "No positive key candidate was recovered.")
         : task.recovered.size() == 1
-        ? QStringLiteral("Recovered key: %1\nScore: %2")
+        ? QCoreApplication::translate("MainWindow.AacKeyRecovery", "Recovered key: %1\nScore: %2")
               .arg(groups.front().key)
               .arg(QString::number(groups.front().mean_score, 'f', 6))
-        : QStringLiteral("Recovered %1 files in %2 exact-key groups.")
+        : QCoreApplication::translate("MainWindow.AacKeyRecovery", "Recovered %1 files in %2 exact-key groups.")
               .arg(task.recovered.size())
               .arg(groups.size());
     if (task.requested_sources > 1u) {
@@ -221,16 +226,16 @@ void MainWindow::consume_aac_key_recovery_result() {
     } else {
         show_key_recovery_result(
             this,
-            QStringLiteral("AAC key recovery"),
+            QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery"),
             summary,
             details,
             keys.join(QLatin1Char('\n')),
-            groups.size() == 1 ? QStringLiteral("Copy Key") : QStringLiteral("Copy Keys"),
+            groups.size() == 1 ? QCoreApplication::translate("MainWindow.AacKeyRecovery", "Copy Key") : QCoreApplication::translate("MainWindow.AacKeyRecovery", "Copy Keys"),
             std::move(groups)
         );
     }
     statusBar()->showMessage(
-        QStringLiteral("AAC key recovery completed for %1 file(s), %2 source(s)")
+        QCoreApplication::translate("MainWindow.AacKeyRecovery", "AAC key recovery completed. Files: %1. Sources: %2.")
             .arg(task.recovered.size())
             .arg(source_count),
         5000);

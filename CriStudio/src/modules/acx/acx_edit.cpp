@@ -1,3 +1,5 @@
+#include "shared/i18n.hpp"
+#include <QCoreApplication>
 #include "modules/acx/acx_edit.hpp"
 
 #include <optional>
@@ -17,13 +19,13 @@ ScratchArchive create_scratch_archive() {
         .container = cricodecs::acx::AcxContainer{},
         .document = LoadedDocument{
             .display_name = "NewArchive.acx",
-            .format = "ACX archive (scratch)",
+            .format = cristudio::i18n::translate_utf8("Acx.AcxEdit", "ACX archive (scratch)"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch ACX archive"},
+                {"Source", cristudio::i18n::translate_utf8("Acx.AcxEdit", "Scratch ACX archive")},
                 {"Entries", "0"}
             },
-            .entry_columns = {"Index", "Type", "Offset", "Size", "Suggested Path"},
+            .entry_columns = {"Index", "Type", "Offset", "Size", cristudio::i18n::translate_utf8("Acx.AcxEdit", "Suggested Path")},
             .entry_column_types = {"integer", "type", "offset", "size", "path"},
             .entries = {}
         }
@@ -33,12 +35,12 @@ ScratchArchive create_scratch_archive() {
 std::vector<TransformDetailRow> detail_rows(const cricodecs::acx::AcxContainer& acx) {
     return {
         {QStringLiteral("Entries"), QString::number(acx.entry_count())},
-        {QStringLiteral("Table size"), QString::number(acx.table_size())},
-        {QStringLiteral("First payload offset"), optional_number(acx.first_payload_offset())},
-        {QStringLiteral("Payload end offset"), optional_number(acx.payload_end_offset())},
-        {QStringLiteral("ADX entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::adx))},
-        {QStringLiteral("Ogg entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))},
-        {QStringLiteral("Unknown entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))}
+        {QCoreApplication::translate("Acx.AcxEdit", "Table size"), QString::number(acx.table_size())},
+        {QCoreApplication::translate("Acx.AcxEdit", "First payload offset"), optional_number(acx.first_payload_offset())},
+        {QCoreApplication::translate("Acx.AcxEdit", "Payload end offset"), optional_number(acx.payload_end_offset())},
+        {QCoreApplication::translate("Acx.AcxEdit", "ADX entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::adx))},
+        {QCoreApplication::translate("Acx.AcxEdit", "Ogg entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))},
+        {QCoreApplication::translate("Acx.AcxEdit", "Unknown entries"), QString::number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))}
     };
 }
 

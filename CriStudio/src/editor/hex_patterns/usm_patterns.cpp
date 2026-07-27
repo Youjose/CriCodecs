@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include "editor/hex_patterns/hex_patterns_internal.hpp"
 
 #include "io_endian.hpp"
@@ -25,8 +26,8 @@ void add_usm_chunk_patterns_from_header(
     const auto header_offset = header[0x09];
     const auto packed_size = static_cast<uint64_t>(chunk_size) + 0x08u;
     add(out, base_offset, std::min<uint64_t>(packed_size, total_size > base_offset ? total_size - base_offset : 0),
-        QStringLiteral("USM chunk %1").arg(ascii_value(header, 0, 4)), tone(0), total_size);
-    add(out, base_offset, 0x20, QStringLiteral("USM chunk header"), tone(0), total_size);
+        QCoreApplication::translate("Editor.UsmPatterns", "USM chunk %1").arg(ascii_value(header, 0, 4)), tone(0), total_size);
+    add(out, base_offset, 0x20, QCoreApplication::translate("Editor.UsmPatterns", "USM chunk header"), tone(0), total_size);
     add_field(out, base_offset + 0x00, 4, QStringLiteral("chunk.magic"), ascii_value(header, 0, 4), 0, total_size);
     add_field(out, base_offset + 0x04, 4, QStringLiteral("chunk.size"), QString::number(chunk_size), 1, total_size);
     add_field(out, base_offset + 0x08, 1, QStringLiteral("chunk.unk08"), hex_value(header[0x08], 2), 2, total_size);
@@ -42,7 +43,7 @@ void add_usm_chunk_patterns_from_header(
     add_field(out, base_offset + 0x1C, 4, QStringLiteral("chunk.unk1c"), hex_value(cricodecs::io::read_be<uint32_t>(header.data() + 0x1C), 8), 12, total_size);
     if (chunk_size > header_offset) {
         const auto payload_offset = base_offset + 0x08u + header_offset;
-        add(out, payload_offset, chunk_size - header_offset, QStringLiteral("USM chunk payload"), tone(2), total_size);
+        add(out, payload_offset, chunk_size - header_offset, QCoreApplication::translate("Editor.UsmPatterns", "USM chunk payload"), tone(2), total_size);
     }
 }
 
@@ -58,7 +59,7 @@ void add_usm_chunk_patterns_at(std::vector<HexPatternRange>& out, uint64_t total
     if (chunk_size > header_offset) {
         const auto payload_offset = base_offset + 0x08u + header_offset;
         add_utf_patterns_at(out, total_size, prefix, payload_offset,
-            QStringLiteral("USM %1 UTF payload").arg(ascii_value(prefix, base, 4)));
+            QCoreApplication::translate("Editor.UsmPatterns", "USM %1 UTF payload").arg(ascii_value(prefix, base, 4)));
     }
 }
 

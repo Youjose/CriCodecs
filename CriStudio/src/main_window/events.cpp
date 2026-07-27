@@ -4,6 +4,7 @@
 #include "../shared/document_preview_router.hpp"
 #include "../path_text.hpp"
 
+#include <QCoreApplication>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
@@ -115,21 +116,26 @@ void MainWindow::open_urls_in_editor(const QList<QUrl>& urls) {
         request.display_name = path.filename().string();
         request.source_path = path;
         request.keys = m_decryption_keys;
-        request.detected_format = document->format;
+        request.detected_format = document->loader_tag.empty() ? document->format : document->loader_tag;
         request.document = std::move(*document);
         m_editor_workspace->open_request(std::move(request));
         ++opened;
     }
 
     if (opened == 0) {
-        statusBar()->showMessage(QStringLiteral("No local files dropped for Editor"), 3000);
+        statusBar()->showMessage(QCoreApplication::translate("MainWindow.Events", "No local files dropped for Editor"), 3000);
         return;
     }
     if (m_workspace_tabs != nullptr) {
         m_workspace_tabs->setCurrentWidget(m_editor_workspace);
     }
-    append_log(QStringLiteral("Opened %1 dropped file(s) in Editor").arg(opened));
-    statusBar()->showMessage(QStringLiteral("Opened dropped file(s) in Editor"), 3000);
+    const auto opened_message = QCoreApplication::translate(
+        "MainWindow.Events",
+        "Opened %n dropped file(s) in Editor",
+        nullptr,
+        static_cast<int>(opened));
+    append_log(opened_message);
+    statusBar()->showMessage(opened_message, 3000);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event) {

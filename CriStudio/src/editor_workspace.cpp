@@ -1,8 +1,10 @@
+#include "shared/i18n.hpp"
 #include "editor_workspace.hpp"
 
 #include "editor/editor_document_widget.hpp"
 #include "editor/editor_widgets.hpp"
 
+#include <QCoreApplication>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolButton>
@@ -58,8 +60,8 @@ void EditorWorkspace::update_close_buttons() {
     auto* close = new QToolButton(m_tabs->tabBar());
     close->setObjectName(QStringLiteral("EditorTabCloseButton"));
     close->setText(QStringLiteral("\u00d7"));
-    close->setToolTip(QStringLiteral("Close document"));
-    close->setAccessibleName(QStringLiteral("Close current editor document"));
+    close->setToolTip(QCoreApplication::translate("EditorWorkspace", "Close document"));
+    close->setAccessibleName(QCoreApplication::translate("EditorWorkspace", "Close current editor document"));
     connect(close, &QToolButton::clicked, this, [this, document = m_tabs->widget(current)] {
         close_tab(m_tabs->indexOf(document));
     });
@@ -82,40 +84,45 @@ void EditorWorkspace::open_request(EditorOpenRequest request) {
 void EditorWorkspace::create_scratch_utf() {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "New UTF Table";
-    request.detected_format = "UTF table";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::Utf;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "New UTF Table");
+    request.detected_format = "UTF";
     open_request(std::move(request));
 }
 
 void EditorWorkspace::create_scratch_afs() {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "New AFS Archive";
-    request.detected_format = "AFS archive";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::Afs;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "New AFS Archive");
+    request.detected_format = "AFS";
     open_request(std::move(request));
 }
 
 void EditorWorkspace::create_scratch_awb() {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "New AWB/AFS2 Archive";
-    request.detected_format = "AWB/AFS2 archive";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::Awb;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "New AWB/AFS2 Archive");
+    request.detected_format = "AWB";
     open_request(std::move(request));
 }
 
 void EditorWorkspace::create_scratch_acx() {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "New ACX Archive";
-    request.detected_format = "ACX archive";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::Acx;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "New ACX Archive");
+    request.detected_format = "ACX";
     open_request(std::move(request));
 }
 
 void EditorWorkspace::create_scratch_cpk(cricodecs::cpk::CpkPreset preset) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "New CPK Archive";
-    request.detected_format = "CPK archive";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::Cpk;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "New CPK Archive");
+    request.detected_format = "CPK";
     request.cpk_preset = preset;
     open_request(std::move(request));
 }
@@ -123,7 +130,8 @@ void EditorWorkspace::create_scratch_cpk(cricodecs::cpk::CpkPreset preset) {
 void EditorWorkspace::create_audio_encode_job(const DecryptionKeys& keys) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "Encode Audio";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::AudioEncode;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "Encode Audio");
     request.detected_format = "Audio encode job";
     request.keys = keys;
     open_request(std::move(request));
@@ -132,7 +140,8 @@ void EditorWorkspace::create_audio_encode_job(const DecryptionKeys& keys) {
 void EditorWorkspace::create_media_build_job(const DecryptionKeys& keys, bool prefer_sfd) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "Build Movie";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::MediaBuild;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "Build Movie");
     request.detected_format = "USM/SFD build job";
     request.keys = keys;
     request.media_build_prefer_sfd = prefer_sfd;
@@ -142,7 +151,8 @@ void EditorWorkspace::create_media_build_job(const DecryptionKeys& keys, bool pr
 void EditorWorkspace::create_aax_build_job(const DecryptionKeys& keys) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "Build AAX";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::AaxBuild;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "Build AAX");
     request.detected_format = "AAX ADX build job";
     request.keys = keys;
     open_request(std::move(request));
@@ -151,7 +161,8 @@ void EditorWorkspace::create_aax_build_job(const DecryptionKeys& keys) {
 void EditorWorkspace::create_aix_build_job(const DecryptionKeys& keys) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "Build AIX";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::AixBuild;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "Build AIX");
     request.detected_format = "AIX ADX build job";
     request.keys = keys;
     open_request(std::move(request));
@@ -160,7 +171,8 @@ void EditorWorkspace::create_aix_build_job(const DecryptionKeys& keys) {
 void EditorWorkspace::create_csb_build_job(const DecryptionKeys& keys) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
-    request.display_name = "Build CSB";
+    request.scratch_kind = EditorOpenRequest::ScratchKind::CsbBuild;
+    request.display_name = cristudio::i18n::translate_utf8("EditorWorkspace", "Build CSB");
     request.detected_format = "CSB folder build job";
     request.keys = keys;
     open_request(std::move(request));
@@ -169,6 +181,7 @@ void EditorWorkspace::create_csb_build_job(const DecryptionKeys& keys) {
 void EditorWorkspace::create_cvm_from_script(const std::filesystem::path& script_path, const DecryptionKeys& keys) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
+    request.scratch_kind = EditorOpenRequest::ScratchKind::CvmScript;
     request.display_name = script_path.filename().string();
     request.detected_format = "CVM build script";
     request.source_path = script_path;
@@ -183,6 +196,7 @@ void EditorWorkspace::create_cvm_from_directory(
 ) {
     EditorOpenRequest request;
     request.source_kind = EditorOpenRequest::SourceKind::Scratch;
+    request.scratch_kind = EditorOpenRequest::ScratchKind::CvmDirectory;
     request.display_name = input_dir.filename().string();
     request.detected_format = "CVM directory";
     request.source_path = input_dir;
@@ -213,6 +227,22 @@ bool EditorWorkspace::has_dirty_documents() const {
         }
     }
     return false;
+}
+
+void EditorWorkspace::retranslate() {
+    if (m_tabs == nullptr) {
+        return;
+    }
+    retranslate_editor_start_tab(m_tabs);
+    for (int index = 0; index < m_tabs->count(); ++index) {
+        auto* widget = m_tabs->widget(index);
+        if (!is_editor_document_widget(widget)) {
+            continue;
+        }
+        retranslate_editor_document(widget);
+        m_tabs->setTabText(index, editor_document_tab_title(widget));
+    }
+    update_close_buttons();
 }
 
 } // namespace cristudio

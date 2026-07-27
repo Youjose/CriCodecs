@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "modules/cpk/cpk_browse.hpp"
 
 #include "path_text.hpp"
@@ -19,21 +20,21 @@ std::string preset_name(cricodecs::cpk::CpkPreset preset) {
     switch (preset) {
     case cricodecs::cpk::CpkPreset::Custom: return "Custom";
     case cricodecs::cpk::CpkPreset::Id: return "ID";
-    case cricodecs::cpk::CpkPreset::IdGroup: return "ID + group";
+    case cricodecs::cpk::CpkPreset::IdGroup: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "ID + group");
     case cricodecs::cpk::CpkPreset::Filename: return "Filename";
-    case cricodecs::cpk::CpkPreset::FilenameGroup: return "Filename + group";
-    case cricodecs::cpk::CpkPreset::FilenameId: return "Filename + ID";
-    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return "Filename + ID + group";
+    case cricodecs::cpk::CpkPreset::FilenameGroup: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Filename + group");
+    case cricodecs::cpk::CpkPreset::FilenameId: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Filename + ID");
+    case cricodecs::cpk::CpkPreset::FilenameIdGroup: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Filename + ID + group");
     }
     return "Unknown";
 }
 
 std::string mode_name(cricodecs::cpk::CpkMode mode) {
     switch (mode) {
-    case cricodecs::cpk::CpkMode::Mode0: return "Mode 0 / ITOC";
-    case cricodecs::cpk::CpkMode::Mode1: return "Mode 1 / TOC";
-    case cricodecs::cpk::CpkMode::Mode2: return "Mode 2 / TOC + ITOC";
-    case cricodecs::cpk::CpkMode::Mode3: return "Mode 3 / TOC + ITOC + GTOC";
+    case cricodecs::cpk::CpkMode::Mode0: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode 0 / ITOC");
+    case cricodecs::cpk::CpkMode::Mode1: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode 1 / TOC");
+    case cricodecs::cpk::CpkMode::Mode2: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode 2 / TOC + ITOC");
+    case cricodecs::cpk::CpkMode::Mode3: return cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode 3 / TOC + ITOC + GTOC");
     }
     return "Unknown";
 }
@@ -69,8 +70,18 @@ void add_chunk_location(LoadedDocument& doc, const cricodecs::cpk::Cpk& cpk, std
     if (!offset || !size || *offset == 0 || *size == 0) {
         return;
     }
-    doc.info.push_back({std::string(name) + " offset", number(*offset)});
-    doc.info.push_back({std::string(name) + " size", number(*size)});
+    const auto offset_id = std::string(name) + " offset";
+    const auto size_id = std::string(name) + " size";
+    doc.info.push_back({
+        std::string(name) + cristudio::i18n::translate_utf8("Cpk.CpkBrowse", " offset"),
+        number(*offset),
+        offset_id
+    });
+    doc.info.push_back({
+        std::string(name) + cristudio::i18n::translate_utf8("Cpk.CpkBrowse", " size"),
+        number(*size),
+        size_id
+    });
 }
 
 EntrySummary sourced_entry(
@@ -89,13 +100,13 @@ EntrySummary sourced_entry(
 } // namespace
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::cpk::Cpk& cpk) {
-    auto doc = base_document(path, "CPK archive");
-    doc.info.push_back({"Entries", number(cpk.file_count())});
-    doc.info.push_back({"Mode", mode_name(cpk.mode())});
-    doc.info.push_back({"Preset", preset_name(cpk.preset())});
-    doc.info.push_back({"Declared preset", cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : "-"});
-    doc.info.push_back({"Alignment", number(cpk.alignment())});
-    doc.info.push_back({"Content offset", number(cpk.content_offset())});
+    auto doc = base_document(path, cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "CPK archive"));
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Entries"), number(cpk.file_count())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode"), mode_name(cpk.mode())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Preset"), preset_name(cpk.preset())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Declared preset"), cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : "-"});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Alignment"), number(cpk.alignment())});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Content offset"), number(cpk.content_offset())});
     doc.info.push_back({"TOC", bool_text(cpk.has_toc())});
     doc.info.push_back({"ITOC", bool_text(cpk.has_itoc())});
     doc.info.push_back({"GTOC", bool_text(cpk.has_gtoc())});
@@ -105,10 +116,10 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::cpk
     add_chunk_location(doc, cpk, "Gtoc");
     add_chunk_location(doc, cpk, "Etoc");
     const auto& options = cpk.options();
-    doc.info.push_back({"CRC option", bool_text(options.enable_crc)});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "CRC option"), bool_text(options.enable_crc)});
     doc.info.push_back({"TVER", options.tver.empty() ? "-" : options.tver});
-    doc.info.push_back({"Comment", options.comment});
-    doc.info.push_back({"ETOC LocalDir", options.etoc_local_dir.empty() ? "-" : options.etoc_local_dir});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Comment"), options.comment});
+    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "ETOC LocalDir"), options.etoc_local_dir.empty() ? "-" : options.etoc_local_dir});
 
     doc.entries.reserve(cpk.files().size());
     for (uint32_t i = 0; i < cpk.files().size(); ++i) {
@@ -119,7 +130,7 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::cpk
             type,
             byte_count(file.extract_size != 0 ? file.extract_size : file.file_size),
             number(file.file_offset),
-            "id " + number(file.id) + ", toc " + number(file.toc_index)
+            "id " + number(file.id) + cristudio::i18n::translate_utf8("Cpk.CpkBrowse", ", toc ") + number(file.toc_index)
         }, path, "CPK", i);
         doc.entries.push_back(std::move(entry));
     }

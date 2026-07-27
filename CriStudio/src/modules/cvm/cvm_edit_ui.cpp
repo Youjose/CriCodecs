@@ -3,6 +3,7 @@
 #include "editor/table_item_helpers.hpp"
 #include "path_text.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -86,10 +87,10 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::cvm::Cv
     table->clear();
     table->setColumnCount(4);
     table->setHorizontalHeaderLabels({
-        QStringLiteral("Index"),
-        QStringLiteral("Archive Path"),
-        QStringLiteral("Extent Sector"),
-        QStringLiteral("Size")
+        QCoreApplication::translate("Cvm.CvmEditUi", "Index"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "Archive Path"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "Extent Sector"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "Size")
     });
     table->setRowCount(static_cast<int>(cvm.entry_count()));
     for (const auto& entry : cvm.entries()) {
@@ -105,8 +106,8 @@ std::optional<std::filesystem::path> choose_entry_path(QWidget* parent, const cr
     bool ok = false;
     const auto path = QInputDialog::getText(
         parent,
-        QStringLiteral("CVM entry path"),
-        QStringLiteral("ROFS path"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "CVM entry path"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "ROFS path"),
         QLineEdit::Normal,
         path_to_qstring(entry.path),
         &ok
@@ -120,7 +121,7 @@ std::optional<std::filesystem::path> choose_entry_path(QWidget* parent, const cr
 std::optional<MetadataOptions> choose_metadata_options(QWidget* parent, const cricodecs::cvm::CvmContainer& cvm) {
     const auto& primary = cvm.primary_volume();
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("CVM/ROFS metadata"));
+    dialog.setWindowTitle(QCoreApplication::translate("Cvm.CvmEditUi", "CVM/ROFS metadata"));
     dialog.setMinimumWidth(520);
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
@@ -130,9 +131,9 @@ std::optional<MetadataOptions> choose_metadata_options(QWidget* parent, const cr
     const auto source_recording_date = utf8_to_qstring(cvm.recording_date_text());
     const auto parsed_recording_date = parse_recording_date(source_recording_date);
     auto* recording_date_mode = new QComboBox(&dialog);
-    recording_date_mode->addItem(QStringLiteral("Date and time"), 0);
-    recording_date_mode->addItem(QStringLiteral("Raw source text"), 1);
-    auto* recording_date_enabled = new QCheckBox(QStringLiteral("Write recording date"), &dialog);
+    recording_date_mode->addItem(QCoreApplication::translate("Cvm.CvmEditUi", "Date and time"), 0);
+    recording_date_mode->addItem(QCoreApplication::translate("Cvm.CvmEditUi", "Raw source text"), 1);
+    auto* recording_date_enabled = new QCheckBox(QCoreApplication::translate("Cvm.CvmEditUi", "Write recording date"), &dialog);
     recording_date_enabled->setChecked(!source_recording_date.trimmed().isEmpty());
     auto* recording_date_edit = new QDateTimeEdit(
         parsed_recording_date ? parsed_recording_date->date_time : QDateTime::currentDateTime(), &dialog);
@@ -143,9 +144,9 @@ std::optional<MetadataOptions> choose_metadata_options(QWidget* parent, const cr
     auto* gmt_offset_spin = new QSpinBox(&dialog);
     gmt_offset_spin->setRange(-48, 52);
     gmt_offset_spin->setValue(parsed_recording_date ? parsed_recording_date->gmt_offset : 0);
-    gmt_offset_spin->setSuffix(QStringLiteral(" × 15 min"));
+    gmt_offset_spin->setSuffix(QCoreApplication::translate("Cvm.CvmEditUi", " × 15 min"));
     auto* raw_recording_date_edit = new QLineEdit(source_recording_date, &dialog);
-    raw_recording_date_edit->setPlaceholderText(QStringLiteral("DD/MM/YYYY HH:MM:SS:FF:TZ"));
+    raw_recording_date_edit->setPlaceholderText(QCoreApplication::translate("Cvm.CvmEditUi", "DD/MM/YYYY HH:MM:SS:FF:TZ"));
     if (!source_recording_date.isEmpty() && !parsed_recording_date) {
         recording_date_mode->setCurrentIndex(1);
     }
@@ -186,27 +187,27 @@ std::optional<MetadataOptions> choose_metadata_options(QWidget* parent, const cr
     auto* preparer_edit = new QLineEdit(utf8_to_qstring(primary.data_preparer_identifier), &dialog);
     auto* application_edit = new QLineEdit(utf8_to_qstring(primary.application_identifier), &dialog);
 
-    form->addRow(QStringLiteral("Disc name"), disc_edit);
-    form->addRow(QStringLiteral("Recording date"), recording_date_enabled);
-    form->addRow(QStringLiteral("Date input"), recording_date_mode);
-    form->addRow(QStringLiteral("Date and time"), recording_date_edit);
-    form->addRow(QStringLiteral("GMT offset"), gmt_offset_spin);
-    form->addRow(QStringLiteral("Raw date"), raw_recording_date_edit);
-    form->addRow(QStringLiteral("Media"), media_combo);
-    form->addRow(QStringLiteral("System identifier"), system_edit);
-    form->addRow(QStringLiteral("Volume identifier"), volume_edit);
-    form->addRow(QStringLiteral("Volume set"), volume_set_edit);
-    form->addRow(QStringLiteral("Publisher"), publisher_edit);
-    form->addRow(QStringLiteral("Data preparer"), preparer_edit);
-    form->addRow(QStringLiteral("Application"), application_edit);
-    form->addRow(QStringLiteral("Logical block size"), new QLabel(QString::number(primary.logical_block_size), &dialog));
-    form->addRow(QStringLiteral("Volume space size"), new QLabel(QString::number(primary.volume_space_size), &dialog));
-    form->addRow(QStringLiteral("Embedded ISO sectors"), new QLabel(QString::number(cvm.embedded_iso_sector_count()), &dialog));
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Disc name"), disc_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Recording date"), recording_date_enabled);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Date input"), recording_date_mode);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Date and time"), recording_date_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "GMT offset"), gmt_offset_spin);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Raw date"), raw_recording_date_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Media"), media_combo);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "System identifier"), system_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Volume identifier"), volume_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Volume set"), volume_set_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Publisher"), publisher_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Data preparer"), preparer_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Application"), application_edit);
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Logical block size"), new QLabel(QString::number(primary.logical_block_size), &dialog));
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Volume space size"), new QLabel(QString::number(primary.volume_space_size), &dialog));
+    form->addRow(QCoreApplication::translate("Cvm.CvmEditUi", "Embedded ISO sectors"), new QLabel(QString::number(cvm.embedded_iso_sector_count()), &dialog));
     sync_recording_date_controls();
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("These fields are the public mutable CVM/ROFS metadata fields. Derived sizes and layout sectors are rebuilt by the native builder."),
+        QCoreApplication::translate("Cvm.CvmEditUi", "These fields are the public mutable CVM/ROFS metadata fields. Derived sizes and layout sectors are rebuilt by the native builder."),
         &dialog
     );
     note->setWordWrap(true);
@@ -245,9 +246,9 @@ std::optional<MetadataOptions> choose_metadata_options(QWidget* parent, const cr
 std::optional<std::filesystem::path> choose_import_script(QWidget* parent) {
     const auto path_text = QFileDialog::getOpenFileName(
         parent,
-        QStringLiteral("Import CVM build script"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "Import CVM build script"),
         QString{},
-        QStringLiteral("CVM scripts (*.cvs);;All files (*)")
+        QCoreApplication::translate("Cvm.CvmEditUi", "CVM scripts (*.cvs);;All files (*)")
     );
     if (path_text.isEmpty()) {
         return std::nullopt;
@@ -262,9 +263,9 @@ std::optional<std::filesystem::path> choose_export_script(QWidget* parent, QStri
     );
     const auto path_text = QFileDialog::getSaveFileName(
         parent,
-        QStringLiteral("Export CVM build script"),
+        QCoreApplication::translate("Cvm.CvmEditUi", "Export CVM build script"),
         default_name,
-        QStringLiteral("CVM scripts (*.cvs);;All files (*)")
+        QCoreApplication::translate("Cvm.CvmEditUi", "CVM scripts (*.cvs);;All files (*)")
     );
     if (path_text.isEmpty()) {
         return std::nullopt;

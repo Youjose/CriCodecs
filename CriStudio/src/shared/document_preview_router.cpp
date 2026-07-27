@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/document_preview_router.hpp"
 
 #include "modules/aax/aax_preview.hpp"
@@ -92,7 +93,7 @@ bool is_sbt_entry(const EntrySummary& entry) {
 }
 
 bool supports_editor(const LoadedDocument& document) {
-    const auto semantic = document.loader_tag + " " + document.format;
+    const auto semantic = std::string(document_format_id(document));
     return !is_standalone_media_text(semantic) && has_editor_format_token(semantic);
 }
 
@@ -125,7 +126,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
         return ffmpeg_audio_preview_from_bytes(codec, bytes, stop_token);
     }
 
-    const auto format = lower_ascii(document.format);
+    const auto format = lower_ascii(document_format_id(document));
     if (format.find("adx") != std::string::npos || format.find("ahx") != std::string::npos) {
         return modules::adx::audio_preview_from_bytes(bytes, keys);
     }
@@ -139,7 +140,7 @@ std::expected<AudioPreview, std::string> audio_preview_from_bytes(
         return modules::wav::audio_preview_from_bytes(bytes, document.path);
     }
 
-    return std::unexpected("audio preview does not support this format yet");
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "audio preview does not support this format yet"));
 }
 
 std::optional<VideoPreview> video_preview_from_bytes(
@@ -195,11 +196,11 @@ std::expected<AudioPreview, std::string> build_direct_audio_preview(
     if (document.loader_tag == "ffmpeg-audio") {
         return ffmpeg_audio_preview_from_file(document.path);
     }
-    if (!is_direct_audio_format(document.format)) {
-        return std::unexpected("selected document is not directly playable audio");
+    if (!is_direct_audio_format(document_format_id(document))) {
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "selected document is not directly playable audio"));
     }
 
-    const auto format = lower_ascii(document.format);
+    const auto format = lower_ascii(document_format_id(document));
     if (format.find("adx") != std::string::npos || format.find("ahx") != std::string::npos) {
         return modules::adx::audio_preview_from_file(document.path, keys);
     }
@@ -213,14 +214,14 @@ std::expected<AudioPreview, std::string> build_direct_audio_preview(
         return modules::wav::audio_preview_from_file(document.path);
     }
 
-    return std::unexpected("audio preview does not support this format yet");
+    return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "audio preview does not support this format yet"));
 }
 
 std::expected<VideoPreview, std::string> build_direct_video_preview(
     const LoadedDocument& document
 ) {
     if (document.loader_tag != "ffmpeg-video") {
-        return std::unexpected("selected document is not directly playable video");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "selected document is not directly playable video"));
     }
 
     auto probe = probe_ffmpeg_media_file(document.path);
@@ -228,13 +229,13 @@ std::expected<VideoPreview, std::string> build_direct_video_preview(
         return std::unexpected(probe.error());
     }
     if (!probe->has_video) {
-        return std::unexpected("media preview no longer contains a playable video stream");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "media preview no longer contains a playable video stream"));
     }
 
     VideoPreview preview;
     preview.playable_path = document.path;
     preview.format = std::move(probe->format);
-    preview.note = "Validated with ffmpeg";
+    preview.note = cristudio::i18n::translate_utf8("Shared.DocumentPreviewRouter", "Validated with ffmpeg");
     return preview;
 }
 

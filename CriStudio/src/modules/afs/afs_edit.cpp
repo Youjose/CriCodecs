@@ -1,3 +1,5 @@
+#include "shared/i18n.hpp"
+#include <QCoreApplication>
 #include "modules/afs/afs_edit.hpp"
 
 #include <utility>
@@ -17,10 +19,10 @@ ScratchArchive create_scratch_archive() {
         .container = std::move(afs),
         .document = LoadedDocument{
             .display_name = "NewArchive.afs",
-            .format = "AFS archive (scratch)",
+            .format = cristudio::i18n::translate_utf8("Afs.AfsEdit", "AFS archive (scratch)"),
             .file_size = 0,
             .info = {
-                {"Source", "Scratch AFS archive"},
+                {"Source", cristudio::i18n::translate_utf8("Afs.AfsEdit", "Scratch AFS archive")},
                 {"Slots", "0"},
                 {"Alignment", std::to_string(cricodecs::afs::AfsContainer::DEFAULT_ALIGNMENT)}
             },
@@ -34,13 +36,13 @@ ScratchArchive create_scratch_archive() {
 std::vector<TransformDetailRow> detail_rows(const cricodecs::afs::AfsContainer& afs) {
     return {
         {QStringLiteral("Slots"), QString::number(afs.entry_count())},
-        {QStringLiteral("Present entries"), QString::number(afs.present_entry_count())},
+        {QCoreApplication::translate("Afs.AfsEdit", "Present entries"), QString::number(afs.present_entry_count())},
         {QStringLiteral("Alignment"), QString::number(afs.alignment())},
-        {QStringLiteral("Directory table in source"), afs.has_directory_table() ? QStringLiteral("yes") : QStringLiteral("no")},
-        {QStringLiteral("Directory table on build"), afs.directory_table_enabled() ? QStringLiteral("yes") : QStringLiteral("no")},
-        {QStringLiteral("Directory offset"), optional_number(afs.directory_table_offset())},
-        {QStringLiteral("Directory size"), optional_number(afs.directory_table_size())},
-        {QStringLiteral("First payload offset"), optional_number(afs.first_payload_offset())}
+        {QCoreApplication::translate("Afs.AfsEdit", "Directory table in source"), afs.has_directory_table() ? QStringLiteral("yes") : QStringLiteral("no")},
+        {QCoreApplication::translate("Afs.AfsEdit", "Directory table on build"), afs.directory_table_enabled() ? QStringLiteral("yes") : QStringLiteral("no")},
+        {QCoreApplication::translate("Afs.AfsEdit", "Directory offset"), optional_number(afs.directory_table_offset())},
+        {QCoreApplication::translate("Afs.AfsEdit", "Directory size"), optional_number(afs.directory_table_size())},
+        {QCoreApplication::translate("Afs.AfsEdit", "First payload offset"), optional_number(afs.first_payload_offset())}
     };
 }
 

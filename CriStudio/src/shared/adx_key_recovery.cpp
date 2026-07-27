@@ -1,3 +1,4 @@
+#include "shared/i18n.hpp"
 #include "shared/adx_key_recovery.hpp"
 
 #include "shared/embedded_entry_extractor.hpp"
@@ -52,7 +53,7 @@ namespace {
     if (source.kind == AdxRecoverySource::Kind::Entry) {
         return extractor.extract(source.entry, keys, EmbeddedPayloadPurpose::Raw);
     }
-    return cricodecs::io::read_file_bytes(source.path, "ADX/AHX key recovery failed");
+    return cricodecs::io::read_file_bytes(source.path, cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", "ADX/AHX key recovery failed"));
 }
 
 } // namespace
@@ -62,7 +63,7 @@ AdxRecoverySource make_adx_recovery_source(const LoadedDocument& document) {
         .kind = AdxRecoverySource::Kind::Document,
         .path = document.path,
         .name = document.display_name,
-        .format = document.format,
+        .format = std::string(document_format_id(document)),
         .loader_tag = document.loader_tag,
     };
 }
@@ -100,7 +101,7 @@ std::expected<AdxKeyRecoveryResult, std::string> recover_adx_key(
             continue;
         }
         std::expected<std::vector<std::vector<uint8_t>>, std::string> collected =
-            std::unexpected("uninitialized recovery source");
+            std::unexpected(cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", "uninitialized recovery source"));
         const auto stream_kind = kind == AdxRecoveryKind::Ahx
             ? cricodecs::adx::RecoveryStreamKind::Ahx
             : cricodecs::adx::RecoveryStreamKind::Adx;
@@ -109,12 +110,12 @@ std::expected<AdxKeyRecoveryResult, std::string> recover_adx_key(
         } else {
             auto source = read_source(input, extractor, keys);
             if (!source) {
-                return std::unexpected("ADX/AHX key recovery failed: " + source.error());
+                return std::unexpected(cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", "ADX/AHX key recovery failed: ") + source.error());
             }
             collected = cricodecs::adx::collect_recovery_streams(*source, stream_kind);
         }
         if (!collected) {
-            return std::unexpected("ADX/AHX key recovery failed: " + collected.error());
+            return std::unexpected(cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", "ADX/AHX key recovery failed: ") + collected.error());
         }
         bytes.insert(
             bytes.end(),
@@ -124,7 +125,7 @@ std::expected<AdxKeyRecoveryResult, std::string> recover_adx_key(
 
     const auto label = kind == AdxRecoveryKind::Ahx ? std::string_view("AHX") : std::string_view("ADX");
     if (bytes.empty()) {
-        return std::unexpected("No encrypted " + std::string(label) + " streams were found in the selected files.");
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", "No encrypted ") + std::string(label) + cristudio::i18n::translate_utf8("Shared.AdxKeyRecovery", " streams were found in the selected files."));
     }
 
     if (kind == AdxRecoveryKind::Adx) {

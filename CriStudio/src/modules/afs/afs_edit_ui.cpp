@@ -5,6 +5,7 @@
 #include "path_text.hpp"
 #include "shared/document_extract_helpers.hpp"
 
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDate>
@@ -54,11 +55,11 @@ uint32_t clamp_spin_value(uint32_t value) {
 
 QString header_mode_name(cricodecs::afs::AfsHeaderNameMode mode) {
     switch (mode) {
-    case cricodecs::afs::AfsHeaderNameMode::filename_only: return QStringLiteral("Only Filename");
-    case cricodecs::afs::AfsHeaderNameMode::cut_overlapping_string: return QStringLiteral("Cut Overlapping String");
-    case cricodecs::afs::AfsHeaderNameMode::full_path: return QStringLiteral("Full Path");
+    case cricodecs::afs::AfsHeaderNameMode::filename_only: return QCoreApplication::translate("Afs.AfsEditUi", "Only Filename");
+    case cricodecs::afs::AfsHeaderNameMode::cut_overlapping_string: return QCoreApplication::translate("Afs.AfsEditUi", "Cut Overlapping String");
+    case cricodecs::afs::AfsHeaderNameMode::full_path: return QCoreApplication::translate("Afs.AfsEditUi", "Full Path");
     }
-    return QStringLiteral("Only Filename");
+    return QCoreApplication::translate("Afs.AfsEditUi", "Only Filename");
 }
 
 QString entry_type_name(cricodecs::afs::AfsEntryType type) {
@@ -129,15 +130,15 @@ void populate_editor_archive_table(QTableWidget* table, const cricodecs::afs::Af
     table->setColumnCount(10);
     table->setHorizontalHeaderLabels({
         QStringLiteral("ID"),
-        QStringLiteral("Present"),
-        QStringLiteral("Name"),
-        QStringLiteral("Type"),
-        QStringLiteral("Offset"),
-        QStringLiteral("Size"),
-        QStringLiteral("Header Source"),
-        QStringLiteral("Timestamp"),
-        QStringLiteral("Metadata"),
-        QStringLiteral("Suggested Path")
+        QCoreApplication::translate("Afs.AfsEditUi", "Present"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Name"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Type"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Offset"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Size"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Header Source"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Timestamp"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Metadata"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Suggested Path")
     });
     table->setRowCount(static_cast<int>(afs.entry_count()));
     for (const auto& entry : afs.entries()) {
@@ -161,18 +162,18 @@ std::optional<AddFileOptions> choose_add_file_options(
     const QString& file_path
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Add AFS file"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "Add AFS file"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     auto* id_edit = make_unsigned_integer_edit(
-        afs.entry_count(), 0, std::numeric_limits<uint32_t>::max(), &dialog, QStringLiteral("AFS file ID"));
+        afs.entry_count(), 0, std::numeric_limits<uint32_t>::max(), &dialog, QCoreApplication::translate("Afs.AfsEditUi", "AFS file ID"));
 
     const auto default_name = path_from_qstring(file_path).filename().generic_string();
     auto* name_edit = new QLineEdit(utf8_to_qstring(default_name), &dialog);
     auto* header_source_edit = new QLineEdit(utf8_to_qstring(default_name), &dialog);
-    auto* timestamp_check = new QCheckBox(QStringLiteral("Write directory timestamp"), &dialog);
+    auto* timestamp_check = new QCheckBox(QCoreApplication::translate("Afs.AfsEditUi", "Write directory timestamp"), &dialog);
     auto* date_edit = new QDateEdit(QDate::currentDate(), &dialog);
     date_edit->setCalendarPopup(true);
     auto* time_edit = new QTimeEdit(QTime::currentTime(), &dialog);
@@ -181,24 +182,24 @@ std::optional<AddFileOptions> choose_add_file_options(
     QObject::connect(timestamp_check, &QCheckBox::toggled, date_edit, &QDateEdit::setEnabled);
     QObject::connect(timestamp_check, &QCheckBox::toggled, time_edit, &QTimeEdit::setEnabled);
 
-    form->addRow(QStringLiteral("File"), new QLabel(file_path, &dialog));
-    form->addRow(QStringLiteral("File ID"), id_edit);
-    form->addRow(QStringLiteral("Directory name"), name_edit);
-    form->addRow(QStringLiteral("Header source"), header_source_edit);
-    form->addRow(QStringLiteral("Timestamp"), timestamp_check);
-    form->addRow(QStringLiteral("Date"), date_edit);
-    form->addRow(QStringLiteral("Time"), time_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "File"), new QLabel(file_path, &dialog));
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "File ID"), id_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Directory name"), name_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Header source"), header_source_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Timestamp"), timestamp_check);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Date"), date_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Time"), time_edit);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("AFS file IDs are table slots. Adding at a later ID reserves empty slots before it; adding at an occupied ID replaces that slot."),
+        QCoreApplication::translate("Afs.AfsEditUi", "AFS file IDs are table slots. Adding at a later ID reserves empty slots before it; adding at an occupied ID replaces that slot."),
         &dialog
     );
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Add"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Afs.AfsEditUi", "Add"));
     bind_valid_input(buttons->button(QDialogButtonBox::Ok), id_edit);
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -209,7 +210,7 @@ std::optional<AddFileOptions> choose_add_file_options(
 
     AddFileOptions options;
     const auto file_id = unsigned_integer_value(
-        id_edit, 0, std::numeric_limits<uint32_t>::max(), QStringLiteral("File ID"));
+        id_edit, 0, std::numeric_limits<uint32_t>::max(), QCoreApplication::translate("Afs.AfsEditUi", "File ID"));
     if (!file_id) {
         return std::nullopt;
     }
@@ -239,25 +240,25 @@ std::optional<AddFileOptions> choose_add_file_options(
 
 std::optional<uint32_t> choose_reserve_file_id(QWidget* parent, const cricodecs::afs::AfsContainer& afs) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Reserve AFS file ID"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "Reserve AFS file ID"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     auto* id_edit = make_unsigned_integer_edit(
-        afs.entry_count(), 0, std::numeric_limits<uint32_t>::max(), &dialog, QStringLiteral("Highest AFS file ID"));
-    form->addRow(QStringLiteral("Highest file ID"), id_edit);
+        afs.entry_count(), 0, std::numeric_limits<uint32_t>::max(), &dialog, QCoreApplication::translate("Afs.AfsEditUi", "Highest AFS file ID"));
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Highest file ID"), id_edit);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("Reserving a later ID creates empty AFS slots. It does not renumber existing entries."),
+        QCoreApplication::translate("Afs.AfsEditUi", "Reserving a later ID creates empty AFS slots. It does not renumber existing entries."),
         &dialog
     );
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Reserve"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Afs.AfsEditUi", "Reserve"));
     bind_valid_input(buttons->button(QDialogButtonBox::Ok), id_edit);
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -266,7 +267,7 @@ std::optional<uint32_t> choose_reserve_file_id(QWidget* parent, const cricodecs:
         return std::nullopt;
     }
     const auto file_id = unsigned_integer_value(
-        id_edit, 0, std::numeric_limits<uint32_t>::max(), QStringLiteral("Highest file ID"));
+        id_edit, 0, std::numeric_limits<uint32_t>::max(), QCoreApplication::translate("Afs.AfsEditUi", "Highest file ID"));
     return file_id ? std::optional<uint32_t>(static_cast<uint32_t>(*file_id)) : std::nullopt;
 }
 
@@ -276,13 +277,13 @@ std::optional<std::optional<cricodecs::afs::AfsDirectoryTimestamp>> choose_direc
     uint32_t file_id
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Set AFS directory timestamp"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "Set AFS directory timestamp"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
     const auto current = entry.directory_timestamp();
-    auto* clear_check = new QCheckBox(QStringLiteral("Clear timestamp metadata"), &dialog);
+    auto* clear_check = new QCheckBox(QCoreApplication::translate("Afs.AfsEditUi", "Clear timestamp metadata"), &dialog);
     clear_check->setChecked(!current.has_value());
 
     const QDate date = current
@@ -300,14 +301,14 @@ std::optional<std::optional<cricodecs::afs::AfsDirectoryTimestamp>> choose_direc
     QObject::connect(clear_check, &QCheckBox::toggled, date_edit, [date_edit](bool checked) { date_edit->setEnabled(!checked); });
     QObject::connect(clear_check, &QCheckBox::toggled, time_edit, [time_edit](bool checked) { time_edit->setEnabled(!checked); });
 
-    form->addRow(QStringLiteral("File ID"), new QLabel(QString::number(file_id), &dialog));
-    form->addRow(QStringLiteral("Clear"), clear_check);
-    form->addRow(QStringLiteral("Date"), date_edit);
-    form->addRow(QStringLiteral("Time"), time_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "File ID"), new QLabel(QString::number(file_id), &dialog));
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Clear"), clear_check);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Date"), date_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Time"), time_edit);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("The timestamp is stored in the 12-byte AFS directory metadata field; raw metadata remains editable in the table."),
+        QCoreApplication::translate("Afs.AfsEditUi", "The timestamp is stored in the 12-byte AFS directory metadata field; raw metadata remains editable in the table."),
         &dialog
     );
     note->setWordWrap(true);
@@ -341,7 +342,7 @@ std::optional<std::optional<cricodecs::afs::AfsDirectoryTimestamp>> choose_direc
 
 std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodecs::afs::AfsContainer& afs) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("AFS options"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "AFS options"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -349,28 +350,28 @@ std::optional<BuildOptions> choose_build_options(QWidget* parent, const cricodec
     auto* align_spin = new QSpinBox(&dialog);
     align_spin->setRange(1, std::numeric_limits<int>::max());
     align_spin->setValue(static_cast<int>(clamp_spin_value(afs.alignment())));
-    align_spin->setSuffix(QStringLiteral(" bytes"));
+    align_spin->setSuffix(QCoreApplication::translate("Afs.AfsEditUi", " bytes"));
 
-    auto* directory_check = new QCheckBox(QStringLiteral("Write the optional 0x30-byte-per-entry directory table"), &dialog);
+    auto* directory_check = new QCheckBox(QCoreApplication::translate("Afs.AfsEditUi", "Write the optional 0x30-byte-per-entry directory table"), &dialog);
     directory_check->setChecked(afs.directory_table_enabled());
 
-    auto* first_offset_check = new QCheckBox(QStringLiteral("Reserve an explicit first payload offset"), &dialog);
+    auto* first_offset_check = new QCheckBox(QCoreApplication::translate("Afs.AfsEditUi", "Reserve an explicit first payload offset"), &dialog);
     first_offset_check->setChecked(afs.first_payload_offset().has_value());
     auto* first_offset_spin = new QSpinBox(&dialog);
     first_offset_spin->setRange(0, std::numeric_limits<int>::max());
     first_offset_spin->setValue(static_cast<int>(clamp_spin_value(afs.first_payload_offset().value_or(0))));
-    first_offset_spin->setSuffix(QStringLiteral(" bytes"));
+    first_offset_spin->setSuffix(QCoreApplication::translate("Afs.AfsEditUi", " bytes"));
     first_offset_spin->setEnabled(first_offset_check->isChecked());
     QObject::connect(first_offset_check, &QCheckBox::toggled, first_offset_spin, &QSpinBox::setEnabled);
 
-    form->addRow(QStringLiteral("Alignment"), align_spin);
-    form->addRow(QStringLiteral("Directory table"), directory_check);
-    form->addRow(QStringLiteral("First payload offset"), first_offset_check);
-    form->addRow(QStringLiteral("Offset value"), first_offset_spin);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Alignment"), align_spin);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Directory table"), directory_check);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "First payload offset"), first_offset_check);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Offset value"), first_offset_spin);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("AFS keeps slot IDs stable. First payload offset is snapped to the selected alignment by the native builder."),
+        QCoreApplication::translate("Afs.AfsEditUi", "AFS keeps slot IDs stable. First payload offset is snapped to the selected alignment by the native builder."),
         &dialog
     );
     note->setWordWrap(true);
@@ -399,16 +400,16 @@ std::optional<AlsImportOptions> choose_als_import_options(
 ) {
     const auto path_text = QFileDialog::getOpenFileName(
         parent,
-        QStringLiteral("Import AFS file list"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Import AFS file list"),
         QString{},
-        QStringLiteral("AFS file lists (*.als);;All files (*)")
+        QCoreApplication::translate("Afs.AfsEditUi", "AFS file lists (*.als);;All files (*)")
     );
     if (path_text.isEmpty()) {
         return std::nullopt;
     }
 
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("AFS ALS import"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "AFS ALS import"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -416,42 +417,42 @@ std::optional<AlsImportOptions> choose_als_import_options(
     auto* align_spin = new QSpinBox(&dialog);
     align_spin->setRange(1, std::numeric_limits<int>::max());
     align_spin->setValue(static_cast<int>(current_afs ? current_afs->alignment() : cricodecs::afs::AfsContainer::DEFAULT_ALIGNMENT));
-    align_spin->setSuffix(QStringLiteral(" bytes"));
+    align_spin->setSuffix(QCoreApplication::translate("Afs.AfsEditUi", " bytes"));
 
-    auto* directory_check = new QCheckBox(QStringLiteral("Write AFS directory table"), &dialog);
+    auto* directory_check = new QCheckBox(QCoreApplication::translate("Afs.AfsEditUi", "Write AFS directory table"), &dialog);
     directory_check->setChecked(current_afs ? current_afs->directory_table_enabled() : true);
 
     auto* source_root_edit = new QLineEdit(&dialog);
-    source_root_edit->setPlaceholderText(QStringLiteral("Optional afslnk -dir lookup root"));
+    source_root_edit->setPlaceholderText(QCoreApplication::translate("Afs.AfsEditUi", "Optional afslnk -dir lookup root"));
     auto* source_root_row = new QWidget(&dialog);
     auto* source_root_layout = new QHBoxLayout(source_root_row);
     source_root_layout->setContentsMargins(0, 0, 0, 0);
     source_root_layout->setSpacing(6);
     source_root_layout->addWidget(source_root_edit, 1);
-    auto* browse_source_root = new QPushButton(QStringLiteral("Browse"), source_root_row);
+    auto* browse_source_root = new QPushButton(QCoreApplication::translate("Afs.AfsEditUi", "Browse"), source_root_row);
     source_root_layout->addWidget(browse_source_root, 0);
     QObject::connect(browse_source_root, &QPushButton::clicked, &dialog, [&dialog, source_root_edit] {
-        const auto dir = QFileDialog::getExistingDirectory(&dialog, QStringLiteral("Choose AFS source root"));
+        const auto dir = QFileDialog::getExistingDirectory(&dialog, QCoreApplication::translate("Afs.AfsEditUi", "Choose AFS source root"));
         if (!dir.isEmpty()) {
             source_root_edit->setText(dir);
         }
     });
 
-    form->addRow(QStringLiteral("File list"), new QLabel(path_text, &dialog));
-    form->addRow(QStringLiteral("Alignment"), align_spin);
-    form->addRow(QStringLiteral("Directory table"), directory_check);
-    form->addRow(QStringLiteral("Source root"), source_root_row);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "File list"), new QLabel(path_text, &dialog));
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Alignment"), align_spin);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Directory table"), directory_check);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Source root"), source_root_row);
     layout->addLayout(form);
 
     auto* note = dim_label(
-        QStringLiteral("The native ALS importer supports :DIR=(dir) and sparse :(id number) commands, preserving header source text for later file-ID headers."),
+        QCoreApplication::translate("Afs.AfsEditUi", "The native ALS importer supports :DIR=(dir) and sparse :(id number) commands, preserving header source text for later file-ID headers."),
         &dialog
     );
     note->setWordWrap(true);
     layout->addWidget(note);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Afs.AfsEditUi", "Import"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -477,7 +478,7 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
     QString default_archive_name
 ) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QStringLiteral("Export AFS file-ID header"));
+    dialog.setWindowTitle(QCoreApplication::translate("Afs.AfsEditUi", "Export AFS file-ID header"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -502,9 +503,9 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
     preview->setLineWrapMode(QPlainTextEdit::NoWrap);
     preview->setMinimumHeight(220);
 
-    form->addRow(QStringLiteral("Archive name"), archive_name_edit);
-    form->addRow(QStringLiteral("ID prefix"), prefix_edit);
-    form->addRow(QStringLiteral("Name mode"), mode_combo);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Archive name"), archive_name_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "ID prefix"), prefix_edit);
+    form->addRow(QCoreApplication::translate("Afs.AfsEditUi", "Name mode"), mode_combo);
     layout->addLayout(form);
     layout->addWidget(preview, 1);
 
@@ -516,7 +517,7 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
             mode
         );
         if (!header) {
-            preview->setPlainText(QStringLiteral("Header preview failed: %1").arg(utf8_to_qstring(header.error())));
+            preview->setPlainText(QCoreApplication::translate("Afs.AfsEditUi", "Header preview failed: %1").arg(utf8_to_qstring(header.error())));
             return;
         }
         preview->setPlainText(utf8_to_qstring(*header));
@@ -527,7 +528,7 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
     refresh_preview();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Export"));
+    buttons->button(QDialogButtonBox::Ok)->setText(QCoreApplication::translate("Afs.AfsEditUi", "Export"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -542,15 +543,15 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
         mode
     );
     if (!header) {
-        return std::unexpected(QStringLiteral("AFS header export failed: %1").arg(utf8_to_qstring(header.error())));
+        return std::unexpected(QCoreApplication::translate("Afs.AfsEditUi", "AFS header export failed: %1").arg(utf8_to_qstring(header.error())));
     }
 
     const auto default_name = safe_output_name(QFileInfo(archive_name_edit->text().trimmed()).completeBaseName(), QStringLiteral(".h"));
     const auto path_text = QFileDialog::getSaveFileName(
         parent,
-        QStringLiteral("Export AFS file-ID header"),
+        QCoreApplication::translate("Afs.AfsEditUi", "Export AFS file-ID header"),
         default_name,
-        QStringLiteral("C/C++ headers (*.h);;All files (*)")
+        QCoreApplication::translate("Afs.AfsEditUi", "C/C++ headers (*.h);;All files (*)")
     );
     if (path_text.isEmpty()) {
         return std::optional<std::filesystem::path>{};
@@ -559,7 +560,7 @@ std::expected<std::optional<std::filesystem::path>, QString> export_file_id_head
     const std::vector<uint8_t> bytes(header->begin(), header->end());
     auto result = write_binary_file(path_from_qstring(path_text), bytes);
     if (!result) {
-        return std::unexpected(QStringLiteral("AFS header export failed: %1").arg(utf8_to_qstring(result.error())));
+        return std::unexpected(QCoreApplication::translate("Afs.AfsEditUi", "AFS header export failed: %1").arg(utf8_to_qstring(result.error())));
     }
     return path_from_qstring(path_text);
 }
