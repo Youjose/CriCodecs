@@ -5,7 +5,6 @@
 #include "path_text.hpp"
 #include "wav_container.hpp"
 
-#include <QCoreApplication>
 #include <QByteArray>
 #include <QFile>
 #include <QElapsedTimer>
@@ -42,39 +41,102 @@ bool has_prefix(std::span<const uint8_t> bytes, std::string_view prefix) {
         );
 }
 
-bool is_obviously_non_media(std::span<const uint8_t> bytes) {
+bool has_bytes_at(std::span<const uint8_t> bytes, size_t offset, std::string_view value) {
+    return offset <= bytes.size() && value.size() <= bytes.size() - offset &&
+        has_prefix(bytes.subspan(offset), value);
+}
+
+bool has_transport_stream_sync(std::span<const uint8_t> bytes, size_t packet_size) {
+    return bytes.size() > packet_size * 2u &&
+        bytes[0] == 0x47 &&
+        bytes[packet_size] == 0x47 &&
+        bytes[packet_size * 2u] == 0x47;
+}
+
+bool has_annex_b_video_prefix(std::span<const uint8_t> bytes) {
+    const size_t nal_offset =
+        has_bytes_at(bytes, 0, std::string_view("\0\0\0\x01", 4)) ? 4u :
+        has_bytes_at(bytes, 0, std::string_view("\0\0\x01", 3)) ? 3u : 0u;
+    if (nal_offset == 0 || nal_offset >= bytes.size()) {
+        return false;
+    }
+    const auto h264_type = bytes[nal_offset] & 0x1Fu;
+    const auto h265_type = (bytes[nal_offset] >> 1u) & 0x3Fu;
+    return h264_type == 7 || h264_type == 9 ||
+        h265_type == 32 || h265_type == 33 || h265_type == 35;
+}
+
+bool is_likely_common_media(std::span<const uint8_t> bytes) {
     if (bytes.empty()) {
+        return false;
+    }
+
+    const auto codec = cricodecs::awb::probe_entry_codec(bytes);
+    if (codec == cricodecs::awb::EntryCodec::Hca ||
+        codec == cricodecs::awb::EntryCodec::Adx ||
+        codec == cricodecs::awb::EntryCodec::Ahx) {
+        return false;
+    }
+    if (codec != cricodecs::awb::EntryCodec::Unknown) {
         return true;
     }
 
-    static constexpr std::array<std::string_view, 10> non_media_signatures{
-        std::string_view("PK\x03\x04", 4),
-        std::string_view("\x7F" "ELF", 4),
-        std::string_view("MZ", 2),
-        std::string_view("%PDF", 4),
-        std::string_view("SQLite format 3\0", 16),
-        std::string_view("Rar!\x1A\x07", 7),
-        std::string_view("7z\xBC\xAF\x27\x1C", 6),
-        std::string_view("\x1F\x8B", 2),
-        std::string_view("BZh", 3),
-        std::string_view("\xFD" "7zXZ\0", 6),
+    static constexpr std::array<std::string_view, 13> prefixes{
+        std::string_view("\x1A\x45\xDF\xA3", 4),
+        "FLV",
+        "DKIF",
+        ".RMF",
+        "caff",
+        ".snd",
+        "MThd",
+        "wvpk",
+        "MAC ",
+        "MPCK",
+        "#!AMR",
+        std::string_view("\x0B\x77", 2),
+        std::string_view("\x30\x26\xB2\x75\x8E\x66\xCF\x11"
+                         "\xA6\xD9\x00\xAA\x00\x62\xCE\x6C", 16),
     };
-    if (std::ranges::any_of(non_media_signatures, [bytes](std::string_view signature) {
+    if (std::ranges::any_of(prefixes, [bytes](std::string_view signature) {
             return has_prefix(bytes, signature);
         })) {
         return true;
     }
 
-    size_t text_bytes = 0;
-    for (const auto byte : bytes) {
-        if (byte == 0) {
-            return false;
-        }
-        if (byte == '\t' || byte == '\n' || byte == '\r' || (byte >= 0x20 && byte < 0x7F)) {
-            ++text_bytes;
-        }
+    if (has_bytes_at(bytes, 4, "ftyp") ||
+        has_bytes_at(bytes, 4, "moov") ||
+        has_bytes_at(bytes, 4, "mdat") ||
+        has_bytes_at(bytes, 4, "wide")) {
+        return true;
     }
-    return text_bytes * 100u >= bytes.size() * 95u;
+    if (has_prefix(bytes, "RIFF") &&
+        (has_bytes_at(bytes, 8, "AVI ") || has_bytes_at(bytes, 8, "WAVE"))) {
+        return true;
+    }
+    if (has_prefix(bytes, "FORM") &&
+        (has_bytes_at(bytes, 8, "AIFF") || has_bytes_at(bytes, 8, "AIFC"))) {
+        return true;
+    }
+    if (has_bytes_at(bytes, 0, std::string_view("\0\0\x01\xBA", 4)) ||
+        has_bytes_at(bytes, 0, std::string_view("\0\0\x01\xB3", 4)) ||
+        has_annex_b_video_prefix(bytes)) {
+        return true;
+    }
+    if (has_transport_stream_sync(bytes, 188) ||
+        has_transport_stream_sync(bytes, 192) ||
+        has_transport_stream_sync(bytes, 204)) {
+        return true;
+    }
+
+    static constexpr std::array<std::string_view, 4> dts_prefixes{
+        std::string_view("\x7F\xFE\x80\x01", 4),
+        std::string_view("\xFE\x7F\x01\x80", 4),
+        std::string_view("\x1F\xFF\xE8\x00", 4),
+        std::string_view("\xFF\x1F\x00\xE8", 4),
+    };
+    return std::ranges::any_of(dts_prefixes, [bytes](std::string_view signature) {
+        return has_prefix(bytes, signature);
+    });
 }
 
 std::expected<void, std::string> write_preview_input(
@@ -177,7 +239,7 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_path(
     FfmpegMediaProbe probe;
     const auto lines = QString::fromLocal8Bit(*result).split(QLatin1Char('\n'));
     for (const auto& line : lines) {
-        if (!line.contains(QCoreApplication::translate("Shared.FfmpegAudioPreview", "Stream #"))) {
+        if (!line.contains(QStringLiteral("Stream #"))) {
             continue;
         }
         probe.has_audio = probe.has_audio || line.contains(QStringLiteral("Audio:"));
@@ -309,8 +371,8 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_file(
         reinterpret_cast<const uint8_t*>(prefix.constData()),
         static_cast<size_t>(prefix.size())
     );
-    if (is_obviously_non_media(prefix_bytes)) {
-        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected obvious non-media content"));
+    if (!is_likely_common_media(prefix_bytes)) {
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected unsupported content"));
     }
     return probe_ffmpeg_media_path(path_to_qstring(path), stop_token);
 }
@@ -322,8 +384,8 @@ std::expected<FfmpegMediaProbe, std::string> probe_ffmpeg_media_bytes(
     if (bytes.size() > static_cast<size_t>((std::numeric_limits<qint64>::max)())) {
         return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview input is too large for ffmpeg"));
     }
-    if (is_obviously_non_media(bytes.first(std::min(bytes.size(), media_prefilter_size)))) {
-        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected obvious non-media content"));
+    if (!is_likely_common_media(bytes.first(std::min(bytes.size(), media_prefilter_size)))) {
+        return std::unexpected(cristudio::i18n::translate_utf8("Shared.FfmpegAudioPreview", "media preview probe rejected unsupported content"));
     }
 
     QTemporaryDir directory;

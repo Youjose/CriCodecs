@@ -46,13 +46,13 @@ std::string entry_type(const cricodecs::acx::AcxEntry& entry) {
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::acx::AcxContainer& acx) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Acx.AcxBrowse", "ACX audio archive"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Entries"), number(acx.entry_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Table size"), number(acx.table_size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "First payload offset"), acx.first_payload_offset() ? hex_u64(*acx.first_payload_offset()) : "-"});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Payload end offset"), acx.payload_end_offset() ? hex_u64(*acx.payload_end_offset()) : "-"});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "ADX entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::adx))});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Ogg entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Acx.AcxBrowse", "Unknown entries"), number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))});
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "Entries", number(acx.entry_count())));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "Table size", number(acx.table_size())));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "First payload offset", acx.first_payload_offset() ? hex_u64(*acx.first_payload_offset()) : "-"));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "Payload end offset", acx.payload_end_offset() ? hex_u64(*acx.payload_end_offset()) : "-"));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "ADX entries", number(acx.type_count(cricodecs::acx::AcxEntryType::adx))));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "Ogg entries", number(acx.type_count(cricodecs::acx::AcxEntryType::ogg))));
+    doc.info.push_back(translated_info_row("Acx.AcxBrowse", "Unknown entries", number(acx.type_count(cricodecs::acx::AcxEntryType::unknown))));
 
     doc.entries.reserve(acx.entries().size());
     for (const auto& entry : acx.entries()) {

@@ -26,10 +26,10 @@ EntrySummary sourced_entry(
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::aix::Aix& aix) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Aix.AixBrowse", "AIX audio container"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aix.AixBrowse", "Segments"), number(aix.segments().size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aix.AixBrowse", "Layers"), number(aix.layers().size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aix.AixBrowse", "Samples"), number(aix.total_sample_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aix.AixBrowse", "Inferred loop"), bool_text(aix.inferred_loop().has_value())});
+    doc.info.push_back(translated_info_row("Aix.AixBrowse", "Segments", number(aix.segments().size())));
+    doc.info.push_back(translated_info_row("Aix.AixBrowse", "Layers", number(aix.layers().size())));
+    doc.info.push_back(translated_info_row("Aix.AixBrowse", "Samples", number(aix.total_sample_count())));
+    doc.info.push_back(translated_info_row("Aix.AixBrowse", "Inferred loop", bool_text(aix.inferred_loop().has_value())));
 
     const auto layer_count = std::max<size_t>(aix.layers().size(), 1);
     for (size_t segment_index = 0; segment_index < aix.segments().size(); ++segment_index) {

@@ -49,13 +49,13 @@ std::string stream_type(const cricodecs::sfd::SfdStream& stream) {
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::sfd::SfdContainer& sfd) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "SFD/SofDec stream"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Streams"), number(sfd.stream_count())});
+    doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Streams", number(sfd.stream_count())));
     if (const auto& header = sfd.header_summary()) {
-        doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Header"), header->header_label});
-        doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Pack size"), number(header->pack_size)});
-        doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Audio streams"), number(header->audio_count)});
-        doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Video streams"), number(header->video_count)});
-        doc.info.push_back({cristudio::i18n::translate_utf8("Sfd.SfdBrowse", "Builder"), header->builder_version});
+        doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Header", header->header_label));
+        doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Pack size", number(header->pack_size)));
+        doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Audio streams", number(header->audio_count)));
+        doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Video streams", number(header->video_count)));
+        doc.info.push_back(translated_info_row("Sfd.SfdBrowse", "Builder", header->builder_version));
     }
 
     doc.entries.reserve(sfd.streams().size());

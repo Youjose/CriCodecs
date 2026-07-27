@@ -59,14 +59,14 @@ std::string timestamp_text(const cricodecs::afs::AfsDirectoryTimestamp& timestam
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::afs::AfsContainer& afs) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Afs.AfsBrowse", "AFS archive"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Entries"), number(afs.entry_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Present entries"), number(afs.present_entry_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Alignment"), number(afs.alignment())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Directory table"), bool_text(afs.has_directory_table())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Directory table on build"), bool_text(afs.directory_table_enabled())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Directory offset"), afs.directory_table_offset() ? hex_u64(*afs.directory_table_offset()) : "-"});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "Directory size"), afs.directory_table_size() ? byte_count(*afs.directory_table_size()) : "-"});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Afs.AfsBrowse", "First payload offset"), afs.first_payload_offset() ? hex_u64(*afs.first_payload_offset()) : "-"});
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Entries", number(afs.entry_count())));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Present entries", number(afs.present_entry_count())));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Alignment", number(afs.alignment())));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Directory table", bool_text(afs.has_directory_table())));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Directory table on build", bool_text(afs.directory_table_enabled())));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Directory offset", afs.directory_table_offset() ? hex_u64(*afs.directory_table_offset()) : "-"));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "Directory size", afs.directory_table_size() ? byte_count(*afs.directory_table_size()) : "-"));
+    doc.info.push_back(translated_info_row("Afs.AfsBrowse", "First payload offset", afs.first_payload_offset() ? hex_u64(*afs.first_payload_offset()) : "-"));
 
     doc.entries.reserve(afs.entries().size());
     for (const auto& entry : afs.entries()) {

@@ -4,6 +4,7 @@
 #include "../editor/hex_patterns.hpp"
 #include "../editor/hex_preview_widget.hpp"
 #include "../path_text.hpp"
+#include "../shared/document_helpers.hpp"
 #include "preview_helpers.hpp"
 #include "ui_helpers.hpp"
 
@@ -275,13 +276,22 @@ void MainWindow::show_entry_inspector(const EntrySummary& entry) {
     m_nested_title->setText(strip_mux_prefix(utf8_to_qstring(entry.name)));
     m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "UTF row inspector"));
     std::vector<InfoRow> rows;
-    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Row"), entry.name});
-    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Fields"), std::to_string(entry.inspector_entries.size())});
+    rows.push_back(translated_info_row("MainWindow.PreviewPanel", "Row", entry.name));
+    rows.push_back(translated_info_row(
+        "MainWindow.PreviewPanel",
+        "Fields",
+        std::to_string(entry.inspector_entries.size())));
     if (!entry.source_path.empty()) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source archive"), path_to_utf8(entry.source_path)});
+        rows.push_back(translated_info_row(
+            "MainWindow.PreviewPanel",
+            "Source archive",
+            path_to_utf8(entry.source_path)));
     }
     if (!entry.source_format.empty()) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source format"), entry.source_format});
+        rows.push_back(translated_info_row(
+            "MainWindow.PreviewPanel",
+            "Source format",
+            entry.source_format));
     }
     populate_info_grid(m_nested_info_grid, rows);
 
@@ -431,6 +441,11 @@ void MainWindow::consume_preview_result() {
         m_nested_image_scroll->hide();
         m_nested_body->hide();
         configure_video_preview(*result.video);
+    } else if (result.audio) {
+        m_nested_subtitle->setText(utf8_to_qstring(result.audio->format));
+        m_nested_entry_view->hide();
+        m_nested_image_scroll->hide();
+        configure_audio_preview(*result.audio);
     } else if (!result.hex_dump.isEmpty()) {
         reset_audio_preview();
         if (!result.preview_bytes.isEmpty()) {
@@ -519,7 +534,11 @@ void MainWindow::show_document(const LoadedDocument* document) {
     m_doc_subtitle->setText(utf8_to_qstring(localized_document_format(*document)));
     if (!document->summary_loaded) {
         std::vector<InfoRow> rows = document->info;
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Details"), cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Loading in background")});
+        rows.push_back(translated_info_row_with_value(
+            "MainWindow.PreviewPanel",
+            "Details",
+            "MainWindow.PreviewPanel",
+            "Loading in background"));
         populate_info_grid(m_info_grid, rows);
         update_document_key_panel(document);
         if (m_doc_mux_preview_button != nullptr) {
@@ -1061,22 +1080,42 @@ void MainWindow::refresh_current_preview() {
 
 void MainWindow::populate_entry_preview_metadata(const EntrySummary& entry) {
     std::vector<InfoRow> rows;
-    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Archive entry"), strip_mux_prefix(utf8_to_qstring(entry.name)).toUtf8().toStdString()});
-    rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Type"), entry.type.empty() ? cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "unknown") : entry.type});
+    rows.push_back(translated_info_row(
+        "MainWindow.PreviewPanel",
+        "Archive entry",
+        strip_mux_prefix(utf8_to_qstring(entry.name)).toUtf8().toStdString()));
+    if (entry.type.empty()) {
+        rows.push_back(translated_info_row_with_value(
+            "MainWindow.PreviewPanel",
+            "Type",
+            "MainWindow.PreviewPanel",
+            "unknown"));
+    } else {
+        rows.push_back(translated_info_row("MainWindow.PreviewPanel", "Type", entry.type));
+    }
     if (!entry.size.empty()) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Size"), entry.size});
+        rows.push_back(translated_info_row("MainWindow.PreviewPanel", "Size", entry.size));
     }
     if (!entry.offset.empty()) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Offset"), entry.offset});
+        rows.push_back(translated_info_row("MainWindow.PreviewPanel", "Offset", entry.offset));
     }
     if (!entry.detail.empty()) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Detail"), entry.detail});
+        rows.push_back(translated_info_row("MainWindow.PreviewPanel", "Detail", entry.detail));
     }
     if (entry.has_source) {
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source archive"), path_to_utf8(entry.source_path)});
-        rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Source format"), entry.source_format});
+        rows.push_back(translated_info_row(
+            "MainWindow.PreviewPanel",
+            "Source archive",
+            path_to_utf8(entry.source_path)));
+        rows.push_back(translated_info_row(
+            "MainWindow.PreviewPanel",
+            "Source format",
+            entry.source_format));
         if (entry.has_nested_source) {
-            rows.push_back({cristudio::i18n::translate_utf8("MainWindow.PreviewPanel", "Nested source"), entry.nested_source_format});
+            rows.push_back(translated_info_row(
+                "MainWindow.PreviewPanel",
+                "Nested source",
+                entry.nested_source_format));
         }
     }
     populate_info_grid(m_nested_info_grid, rows);
@@ -1096,10 +1135,10 @@ void MainWindow::populate_info_grid(QGridLayout* grid, const std::vector<InfoRow
     int row = 0;
     int slot = 0;
     for (const auto& info : rows) {
-        const auto label = utf8_to_qstring(info.name);
-        const auto value = utf8_to_qstring(info.value);
-        // Metadata field identifiers used to choose the layout; never translate comparisons.
-        const auto full_width = info.name == "Path" || info.name == "Source archive" || info.name == "Archive entry" || value.size() > 70;
+        const auto label = utf8_to_qstring(translated_info_name(info));
+        const auto value = utf8_to_qstring(translated_info_value(info));
+        const auto field_id = info_row_id(info);
+        const auto full_width = field_id == "Path" || field_id == "Source archive" || field_id == "Archive entry" || value.size() > 70;
         if (full_width) {
             if (slot != 0) {
                 ++row;

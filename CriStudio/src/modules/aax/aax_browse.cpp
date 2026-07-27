@@ -42,12 +42,12 @@ std::optional<uint64_t> segment_offset(const cricodecs::aax::AaxContainer& aax, 
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::aax::AaxContainer& aax) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Aax.AaxBrowse", "AAX audio wrapper"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Name"), std::string(aax.name())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Segments"), number(aax.segment_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Channels"), number(aax.channels())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Sample rate"), number(aax.sample_rate())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Samples"), number(aax.sample_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Loop segments"), bool_text(aax.has_loop_segments())});
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Name", std::string(aax.name())));
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Segments", number(aax.segment_count())));
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Channels", number(aax.channels())));
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Sample rate", number(aax.sample_rate())));
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Samples", number(aax.sample_count())));
+    doc.info.push_back(translated_info_row("Aax.AaxBrowse", "Loop segments", bool_text(aax.has_loop_segments())));
     doc.entry_columns = {"Segment", "Codec", "Bytes", cristudio::i18n::translate_utf8("Aax.AaxBrowse", "Samples"), "Loop"};
     doc.entry_column_types = {"name", "type", "size", "u32", "bool"};
 

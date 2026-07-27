@@ -198,9 +198,9 @@ LoadedDocument summarize(
 ) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USM/SofDec stream"));
     const auto container_filename = archive_display_path(usm.container_filename());
-    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Container filename"), container_filename});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Streams"), number(usm.streams().size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Chunks"), number(usm.chunks().size())});
+    doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Container filename", container_filename));
+    doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Streams", number(usm.streams().size())));
+    doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Chunks", number(usm.chunks().size())));
     doc.info.push_back({"SFSH", bool_text(usm.sfsh_header().has_value())});
 
     doc.entries.reserve(usm.streams().size());
@@ -248,15 +248,15 @@ LoadedDocument summarize_sbt_subtitles(
     }
 
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Usm.UsmBrowse", "USM SBT subtitles"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Cues"), number(cues->size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Languages"), language_list(*cues)});
+    doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Cues", number(cues->size())));
+    doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Languages", language_list(*cues)));
     if (!cues->empty()) {
-        doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Time unit"), number(cues->front().time_unit)});
+        doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Time unit", number(cues->front().time_unit)));
         uint32_t total_time = 0;
         for (const auto& cue : *cues) {
             total_time = (std::max)(total_time, cue.end_time());
         }
-        doc.info.push_back({cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Total time"), number(total_time)});
+        doc.info.push_back(translated_info_row("Usm.UsmBrowse", "Total time", number(total_time)));
     }
     doc.entry_columns = {"Language", "Time", "Text"};
     doc.entry_column_types = {"u32", "time", "string"};

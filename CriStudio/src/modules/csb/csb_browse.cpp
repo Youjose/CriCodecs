@@ -26,10 +26,10 @@ EntrySummary sourced_entry(
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::csb::CsbContainer& csb) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Csb.CsbBrowse", "CSB cue archive"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Name"), std::string(csb.name())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Sections"), number(csb.section_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Elements"), number(csb.element_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Csb.CsbBrowse", "Streams"), number(csb.stream_count())});
+    doc.info.push_back(translated_info_row("Csb.CsbBrowse", "Name", std::string(csb.name())));
+    doc.info.push_back(translated_info_row("Csb.CsbBrowse", "Sections", number(csb.section_count())));
+    doc.info.push_back(translated_info_row("Csb.CsbBrowse", "Elements", number(csb.element_count())));
+    doc.info.push_back(translated_info_row("Csb.CsbBrowse", "Streams", number(csb.stream_count())));
 
     doc.entries.reserve(csb.stream_count());
     for (uint32_t i = 0; i < csb.stream_count(); ++i) {

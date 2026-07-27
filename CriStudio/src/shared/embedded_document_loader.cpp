@@ -64,11 +64,14 @@ EntrySummary nested_sourced_entry(EntrySummary entry, const EntrySummary& outer_
 void fix_embedded_source_info(LoadedDocument& doc, const EntrySummary& entry, uint64_t byte_size) {
     doc.display_name = entry.name;
     doc.file_size = byte_size;
-    doc.info.insert(doc.info.begin(), {cristudio::i18n::translate_utf8("Shared.EmbeddedDocumentLoader", "Archive entry"), entry.name});
-    doc.info.insert(doc.info.begin() + 1, {cristudio::i18n::translate_utf8("Shared.EmbeddedDocumentLoader", "Source archive"), generic_path(entry.source_path)});
+    doc.info.insert(
+        doc.info.begin(),
+        translated_info_row("Shared.EmbeddedDocumentLoader", "Archive entry", entry.name));
+    doc.info.insert(
+        doc.info.begin() + 1,
+        translated_info_row("Shared.EmbeddedDocumentLoader", "Source archive", generic_path(entry.source_path)));
     for (auto& row : doc.info) {
-        // Metadata field identifier emitted by the native summary; never translate the comparison.
-        if (row.name == "Size") {
+        if (info_row_id(row) == "Size") {
             row.value = byte_count(byte_size);
             break;
         }

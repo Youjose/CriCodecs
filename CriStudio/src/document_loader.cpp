@@ -92,18 +92,18 @@ std::optional<LoadedDocument> probe_generic_media_document(
     auto media = probe_ffmpeg_media_file(path);
     if (!media) {
         rejection_reason = cristudio::i18n::translate_utf8("DocumentLoader", "no supported header signature detected");
-        // Machine-readable fragment from the FFmpeg probe error; never translate.
-        if (media.error().find("requires ffmpeg") != std::string::npos) {
-            rejection_reason += cristudio::i18n::translate_utf8("DocumentLoader", "; ffmpeg is unavailable for generic media probing");
-        }
         return std::nullopt;
     }
 
     auto doc = base_document(path, media->format);
     doc.loader_tag = media->has_video ? "ffmpeg-video" : "ffmpeg-audio";
-    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Preview"), cristudio::i18n::translate_utf8("DocumentLoader", "Validated with ffmpeg")});
-    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Audio stream"), bool_text(media->has_audio)});
-    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Video stream"), bool_text(media->has_video)});
+    doc.info.push_back(translated_info_row_with_value(
+        "DocumentLoader",
+        "Preview",
+        "DocumentLoader",
+        "Validated with ffmpeg"));
+    doc.info.push_back(translated_info_row("DocumentLoader", "Audio stream", bool_text(media->has_audio)));
+    doc.info.push_back(translated_info_row("DocumentLoader", "Video stream", bool_text(media->has_video)));
     rejection_reason.clear();
     return doc;
 }
@@ -645,7 +645,16 @@ std::optional<LoadedDocument> load_document_summary(
     if (order.empty()) {
         return probe_generic_media_document(path, rejection_reason);
     }
-    return load_document_summary_with_order(path, order, rejection_reason, keys);
+    auto document = load_document_summary_with_order(path, order, rejection_reason, keys);
+    if (document) {
+        return document;
+    }
+    const auto native_rejection = rejection_reason;
+    if (auto media = probe_generic_media_document(path, rejection_reason)) {
+        return media;
+    }
+    rejection_reason = native_rejection;
+    return std::nullopt;
 }
 
 std::optional<LoadedDocument> probe_document_summary(
@@ -671,6 +680,11 @@ std::optional<LoadedDocument> probe_document_summary(
         auto doc = load_document_summary_with_order(
             path, {order.front()}, rejection_reason, no_keys);
         if (!doc) {
+            const auto native_rejection = rejection_reason;
+            if (auto media = probe_generic_media_document(path, rejection_reason)) {
+                return media;
+            }
+            rejection_reason = native_rejection;
             return std::nullopt;
         }
         doc->loader_tag = order.front();
@@ -681,7 +695,11 @@ std::optional<LoadedDocument> probe_document_summary(
     auto doc = base_document(path, display_format_for_loader_tag(order.front()));
     doc.loader_tag = order.front();
     doc.summary_loaded = false;
-    doc.info.push_back({cristudio::i18n::translate_utf8("DocumentLoader", "Status"), cristudio::i18n::translate_utf8("DocumentLoader", "Load on selection")});
+    doc.info.push_back(translated_info_row_with_value(
+        "DocumentLoader",
+        "Status",
+        "DocumentLoader",
+        "Load on selection"));
     return doc;
 }
 

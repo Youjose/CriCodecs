@@ -83,9 +83,88 @@ std::string float_text(float value) {
     return out.str();
 }
 
+InfoRow translated_info_row(
+    const char* context,
+    const char* source,
+    std::string value,
+    std::string id,
+    std::string value_id) {
+    return {
+        cristudio::i18n::translate_utf8(context, source),
+        std::move(value),
+        id.empty() ? std::string(source) : std::move(id),
+        std::move(value_id),
+        context,
+        source,
+    };
+}
+
+InfoRow translated_info_row_with_value(
+    const char* name_context,
+    const char* name_source,
+    const char* value_context,
+    const char* value_source,
+    std::string id,
+    std::string value_id) {
+    auto row = translated_info_row(
+        name_context,
+        name_source,
+        cristudio::i18n::translate_utf8(value_context, value_source),
+        std::move(id),
+        std::move(value_id));
+    row.value_translation_context = value_context;
+    row.value_translation_source = value_source;
+    return row;
+}
+
+InfoRow translated_info_row_with_affix(
+    const char* context,
+    const char* source,
+    std::string affix,
+    InfoRow::TranslationAffix affix_position,
+    std::string value,
+    std::string id,
+    std::string value_id) {
+    auto row = translated_info_row(
+        context,
+        source,
+        std::move(value),
+        std::move(id),
+        std::move(value_id));
+    row.name_translation_affix = std::move(affix);
+    row.name_translation_affix_position = affix_position;
+    row.name = translated_info_name(row);
+    return row;
+}
+
+std::string translated_info_name(const InfoRow& row) {
+    std::string translated;
+    if (row.name_translation_context != nullptr && row.name_translation_source != nullptr) {
+        translated = cristudio::i18n::translate_utf8(
+            row.name_translation_context,
+            row.name_translation_source);
+    } else {
+        translated = row.name;
+    }
+    if (row.name_translation_affix_position == InfoRow::TranslationAffix::Prefix) {
+        return row.name_translation_affix + translated;
+    }
+    if (row.name_translation_affix_position == InfoRow::TranslationAffix::Suffix) {
+        translated += row.name_translation_affix;
+    }
+    return translated;
+}
+
+std::string translated_info_value(const InfoRow& row) {
+    if (row.value_translation_context != nullptr && row.value_translation_source != nullptr) {
+        return cristudio::i18n::translate_utf8(row.value_translation_context, row.value_translation_source);
+    }
+    return row.value;
+}
+
 void add_source_info(LoadedDocument& doc) {
-    doc.info.push_back({cristudio::i18n::translate_utf8("Shared.DocumentHelpers", "Path"), generic_path(doc.path)});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Shared.DocumentHelpers", "Size"), byte_count(doc.file_size)});
+    doc.info.push_back(translated_info_row("Shared.DocumentHelpers", "Path", generic_path(doc.path)));
+    doc.info.push_back(translated_info_row("Shared.DocumentHelpers", "Size", byte_count(doc.file_size)));
 }
 
 LoadedDocument base_document(const std::filesystem::path& path, std::string format) {

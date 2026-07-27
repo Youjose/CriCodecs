@@ -26,11 +26,11 @@ EntrySummary sourced_entry(
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::awb::AwbContainer& awb) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Awb.AwbBrowse", "AWB audio bank"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Awb.AwbBrowse", "Entries"), number(awb.file_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Awb.AwbBrowse", "Version"), number(awb.version())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Awb.AwbBrowse", "Alignment"), number(awb.alignment())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Awb.AwbBrowse", "ID size"), number(awb.id_size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Awb.AwbBrowse", "Offset size"), number(awb.offset_size())});
+    doc.info.push_back(translated_info_row("Awb.AwbBrowse", "Entries", number(awb.file_count())));
+    doc.info.push_back(translated_info_row("Awb.AwbBrowse", "Version", number(awb.version())));
+    doc.info.push_back(translated_info_row("Awb.AwbBrowse", "Alignment", number(awb.alignment())));
+    doc.info.push_back(translated_info_row("Awb.AwbBrowse", "ID size", number(awb.id_size())));
+    doc.info.push_back(translated_info_row("Awb.AwbBrowse", "Offset size", number(awb.offset_size())));
 
     doc.entries.reserve(awb.entries().size());
     for (size_t i = 0; i < awb.entries().size(); ++i) {

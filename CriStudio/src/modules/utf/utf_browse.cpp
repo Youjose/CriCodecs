@@ -115,12 +115,12 @@ std::vector<uint32_t> choose_visible_columns(const cricodecs::utf::UtfTable& utf
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::utf::UtfTable& utf) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Utf.UtfBrowse", "UTF table"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Table"), std::string(utf.table_name())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Version"), number(utf.version())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Rows"), number(utf.row_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Columns"), number(utf.columns().size())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Row width"), byte_count(utf.row_width())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Utf.UtfBrowse", "Table size"), byte_count(utf.table_size())});
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Table", std::string(utf.table_name())));
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Version", number(utf.version())));
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Rows", number(utf.row_count())));
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Columns", number(utf.columns().size())));
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Row width", byte_count(utf.row_width())));
+    doc.info.push_back(translated_info_row("Utf.UtfBrowse", "Table size", byte_count(utf.table_size())));
 
     const auto column_count = utf.column_count();
     if (utf.row_count() == 0) {

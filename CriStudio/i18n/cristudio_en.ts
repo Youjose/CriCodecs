@@ -683,13 +683,13 @@
   <context>
     <name>Adx.AdxBrowse</name>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="51" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="46" />
       <source>, bytes </source>
-      <extracomment>metadata; catalog id cristudio.adx.adxbrowse.13458642cce1</extracomment>
+      <extracomment>other; catalog id cristudio.adx.adxbrowse.13458642cce1</extracomment>
       <translation>, bytes </translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="50" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="45" />
       <source>, samples </source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.d95f6aae1fe7</extracomment>
       <translation>, samples </translation>
@@ -707,8 +707,7 @@
       <translation>AHX audio</translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="41" />
-      <location filename="../src/modules/adx/adx_browse.cpp" line="43" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="36" />
       <source>AHX routed</source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.bb3d0934b025</extracomment>
       <translation>AHX routed</translation>
@@ -744,8 +743,7 @@
       <translation>Encoding mode</translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="36" />
-      <location filename="../src/modules/adx/adx_browse.cpp" line="38" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="35" />
       <source>Encrypted</source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.4803a89a43ed</extracomment>
       <translation>Encrypted</translation>
@@ -763,13 +761,13 @@
       <translation>Highpass</translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="48" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="41" />
       <source>Loop</source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.cd5dea6642d3</extracomment>
       <translation>Loop</translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="45" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="37" />
       <source>Loop count</source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.e0f7d96daad5</extracomment>
       <translation>Loop count</translation>
@@ -793,7 +791,7 @@
       <translation>Signature</translation>
     </message>
     <message>
-      <location filename="../src/modules/adx/adx_browse.cpp" line="49" />
+      <location filename="../src/modules/adx/adx_browse.cpp" line="44" />
       <source>type </source>
       <extracomment>metadata; catalog id cristudio.adx.adxbrowse.5ce5c23bab3f</extracomment>
       <translation>type </translation>
@@ -2680,67 +2678,67 @@ Hex preview
   <context>
     <name>Cpk.CpkBrowse</name>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="76" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="77" />
       <source> offset</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.3e6cc0fcaebd</extracomment>
       <translation> offset</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="81" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="85" />
       <source> size</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.842b1d5d8e15</extracomment>
       <translation> size</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="133" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="139" />
       <source>, toc </source>
       <extracomment>other; catalog id cristudio.cpk.cpkbrowse.404593be8337</extracomment>
       <translation>, toc </translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="108" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="114" />
       <source>Alignment</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.943e73c4a9ac</extracomment>
       <translation>Alignment</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="121" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="127" />
       <source>Comment</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.e04bba2f5787</extracomment>
       <translation>Comment</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="109" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="115" />
       <source>Content offset</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.78a00973b5f5</extracomment>
       <translation>Content offset</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="103" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="109" />
       <source>CPK archive</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.dfedce89a33c</extracomment>
       <translation>CPK archive</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="119" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="125" />
       <source>CRC option</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.56f3a5f38754</extracomment>
       <translation>CRC option</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="107" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="113" />
       <source>Declared preset</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.85e2572d2671</extracomment>
       <translation>Declared preset</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="104" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="110" />
       <source>Entries</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.923e4c1091b7</extracomment>
       <translation>Entries</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="122" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="128" />
       <source>ETOC LocalDir</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.997d4640bbbf</extracomment>
       <translation>ETOC LocalDir</translation>
@@ -2770,7 +2768,7 @@ Hex preview
       <translation>ID + group</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="105" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="111" />
       <source>Mode</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.965f9953bcaa</extracomment>
       <translation>Mode</translation>
@@ -2800,7 +2798,7 @@ Hex preview
       <translation>Mode 3 / TOC + ITOC + GTOC</translation>
     </message>
     <message>
-      <location filename="../src/modules/cpk/cpk_browse.cpp" line="106" />
+      <location filename="../src/modules/cpk/cpk_browse.cpp" line="112" />
       <source>Preset</source>
       <extracomment>metadata; catalog id cristudio.cpk.cpkbrowse.b74a834e3709</extracomment>
       <translation>Preset</translation>
@@ -3719,7 +3717,7 @@ Wrapper bytes: %8</translation>
       <translation>CVM/ROFS image</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="57" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="58" />
       <source>Data sector</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.a3b8730acafd</extracomment>
       <translation>Data sector</translation>
@@ -3737,56 +3735,56 @@ Wrapper bytes: %8</translation>
       <translation>Entries</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="54" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="55" />
       <source>Filesystem</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.e0720fd9b750</extracomment>
       <translation>Filesystem</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="53" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="54" />
       <source>Flags</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.d768df6f2098</extracomment>
       <translation>Flags</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="59" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="60" />
       <source>ISO offset</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.392601616539</extracomment>
       <translation>ISO offset</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="58" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="59" />
       <source>ISO sector</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.21fee6b2115d</extracomment>
       <translation>ISO sector</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="61" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="62" />
       <source>ISO sectors</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.638734ea221d</extracomment>
       <translation>ISO sectors</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="60" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="61" />
       <source>ISO size</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.09696f880ed1</extracomment>
       <translation>ISO size</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="47" />
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="49" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="48" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="51" />
       <source>Key</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.767e47f217be</extracomment>
       <translation>Key</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="65" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="66" />
       <source>Logical block</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.3aa9e258459d</extracomment>
       <translation>Logical block</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="55" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="56" />
       <source>Maker</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.ce1e90490782</extracomment>
       <translation>Maker</translation>
@@ -3804,8 +3802,8 @@ Wrapper bytes: %8</translation>
       <translation>Recording date</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="48" />
       <location filename="../src/modules/cvm/cvm_browse.cpp" line="50" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="52" />
       <source>required for TOC</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.6f75cc12cf5a</extracomment>
       <translation>required for TOC</translation>
@@ -3817,25 +3815,25 @@ Wrapper bytes: %8</translation>
       <translation>Scrambled</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="62" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="63" />
       <source>System ID</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.7c0c5becbf9d</extracomment>
       <translation>System ID</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="63" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="64" />
       <source>Volume ID</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.7b72c50090c0</extracomment>
       <translation>Volume ID</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="64" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="65" />
       <source>Volume set</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.75f56f0f20f0</extracomment>
       <translation>Volume set</translation>
     </message>
     <message>
-      <location filename="../src/modules/cvm/cvm_browse.cpp" line="56" />
+      <location filename="../src/modules/cvm/cvm_browse.cpp" line="57" />
       <source>Zone sector</source>
       <extracomment>metadata; catalog id cristudio.cvm.cvmbrowse.c0457b3e4c65</extracomment>
       <translation>Zone sector</translation>
@@ -4377,13 +4375,13 @@ Wrapper bytes: %8</translation>
   <context>
     <name>DocumentLoader</name>
     <message>
-      <location filename="../src/document_loader.cpp" line="961" />
+      <location filename="../src/document_loader.cpp" line="979" />
       <source> - validated with ffmpeg</source>
       <extracomment>other; catalog id cristudio.documentloader.969af172227f</extracomment>
       <translation> - validated with ffmpeg</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="814" />
+      <location filename="../src/document_loader.cpp" line="832" />
       <source> language </source>
       <extracomment>model_text; catalog id cristudio.documentloader.7211c01f7bb1</extracomment>
       <translation> language </translation>
@@ -4393,12 +4391,6 @@ Wrapper bytes: %8</translation>
       <source> mux output</source>
       <extracomment>other; catalog id cristudio.documentloader.79b3c23cf093</extracomment>
       <translation> mux output</translation>
-    </message>
-    <message>
-      <location filename="../src/document_loader.cpp" line="97" />
-      <source>; ffmpeg is unavailable for generic media probing</source>
-      <extracomment>other; catalog id cristudio.documentloader.8c675289c2e1</extracomment>
-      <translation>; ffmpeg is unavailable for generic media probing</translation>
     </message>
     <message>
       <location filename="../src/document_loader.cpp" line="73" />
@@ -4455,13 +4447,13 @@ Wrapper bytes: %8</translation>
       <translation>Audio stream</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="884" />
+      <location filename="../src/document_loader.cpp" line="902" />
       <source>audio stream did not produce WAV data</source>
       <extracomment>message; catalog id cristudio.documentloader.56a7b7caa806</extracomment>
       <translation>audio stream did not produce WAV data</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="867" />
+      <location filename="../src/document_loader.cpp" line="885" />
       <source>audio stream extract failed: </source>
       <extracomment>message; catalog id cristudio.documentloader.22630e95ec17</extracomment>
       <translation>audio stream extract failed: </translation>
@@ -4473,7 +4465,7 @@ Wrapper bytes: %8</translation>
       <translation>audio stream is not directly decodable</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="871" />
+      <location filename="../src/document_loader.cpp" line="889" />
       <source>audio stream preview failed: </source>
       <extracomment>message; catalog id cristudio.documentloader.4c9fca292f14</extracomment>
       <translation>audio stream preview failed: </translation>
@@ -4503,14 +4495,14 @@ Wrapper bytes: %8</translation>
       <translation>CVM image</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="738" />
+      <location filename="../src/document_loader.cpp" line="756" />
       <source>embedded entry is not a supported preview format</source>
       <extracomment>message; catalog id cristudio.documentloader.7899954b9ac7</extracomment>
       <translation>embedded entry is not a supported preview format</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="729" />
-      <location filename="../src/document_loader.cpp" line="898" />
+      <location filename="../src/document_loader.cpp" line="747" />
+      <location filename="../src/document_loader.cpp" line="916" />
       <source>entry is empty</source>
       <extracomment>message; catalog id cristudio.documentloader.bb3320ff7307</extracomment>
       <translation>entry is empty</translation>
@@ -4528,20 +4520,20 @@ Wrapper bytes: %8</translation>
       <translation>Extracting nested archive </translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="778" />
-      <location filename="../src/document_loader.cpp" line="864" />
+      <location filename="../src/document_loader.cpp" line="796" />
+      <location filename="../src/document_loader.cpp" line="882" />
       <source>extraction canceled</source>
       <extracomment>message; catalog id cristudio.documentloader.f8f056f8c28f</extracomment>
       <translation>extraction canceled</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="1051" />
+      <location filename="../src/document_loader.cpp" line="1069" />
       <source>Extraction canceled after </source>
       <extracomment>other; catalog id cristudio.documentloader.50d7b99d8958</extracomment>
       <translation>Extraction canceled after </translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="1007" />
+      <location filename="../src/document_loader.cpp" line="1025" />
       <source>Extraction canceled before it started</source>
       <extracomment>other; catalog id cristudio.documentloader.daabeecd27d3</extracomment>
       <translation>Extraction canceled before it started</translation>
@@ -4554,7 +4546,7 @@ Wrapper bytes: %8</translation>
       <translation>extraction was not started</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="1015" />
+      <location filename="../src/document_loader.cpp" line="1033" />
       <source>Failed to create extraction directory: </source>
       <extracomment>other; catalog id cristudio.documentloader.74c6ed6a3f95</extracomment>
       <translation>Failed to create extraction directory: </translation>
@@ -4578,13 +4570,13 @@ Wrapper bytes: %8</translation>
       <translation>HCA audio</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="815" />
+      <location filename="../src/document_loader.cpp" line="833" />
       <source>language </source>
       <extracomment>model_text; catalog id cristudio.documentloader.50909794b75f</extracomment>
       <translation>language </translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="684" />
+      <location filename="../src/document_loader.cpp" line="702" />
       <source>Load on selection</source>
       <extracomment>metadata; catalog id cristudio.documentloader.6d183297aaa6</extracomment>
       <translation>Load on selection</translation>
@@ -4597,13 +4589,13 @@ Wrapper bytes: %8</translation>
       <translation>mux output unavailable: </translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="826" />
+      <location filename="../src/document_loader.cpp" line="844" />
       <source>mux preview could not find a video stream</source>
       <extracomment>message; catalog id cristudio.documentloader.f4294ee2db92</extracomment>
       <translation>mux preview could not find a video stream</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="770" />
+      <location filename="../src/document_loader.cpp" line="788" />
       <source>mux preview is only available for USM/SFD documents</source>
       <extracomment>message; catalog id cristudio.documentloader.c9147a6fc4e7</extracomment>
       <translation>mux preview is only available for USM/SFD documents</translation>
@@ -4623,13 +4615,13 @@ Wrapper bytes: %8</translation>
     </message>
     <message>
       <location filename="../src/document_loader.cpp" line="640" />
-      <location filename="../src/document_loader.cpp" line="657" />
+      <location filename="../src/document_loader.cpp" line="666" />
       <source>not a regular file</source>
       <extracomment>message; catalog id cristudio.documentloader.dc8c5f3aa489</extracomment>
       <translation>not a regular file</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="104" />
+      <location filename="../src/document_loader.cpp" line="102" />
       <source>Preview</source>
       <extracomment>metadata; catalog id cristudio.documentloader.f70090ee08fe</extracomment>
       <translation>Preview</translation>
@@ -4641,7 +4633,7 @@ Wrapper bytes: %8</translation>
       <translation>SBT load failed</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="813" />
+      <location filename="../src/document_loader.cpp" line="831" />
       <source>SBT subtitles language </source>
       <extracomment>model_text; catalog id cristudio.documentloader.093194bc558c</extracomment>
       <translation>SBT subtitles language </translation>
@@ -4653,19 +4645,19 @@ Wrapper bytes: %8</translation>
       <translation>SFD/SofDec movie</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="684" />
+      <location filename="../src/document_loader.cpp" line="700" />
       <source>Status</source>
       <extracomment>metadata; catalog id cristudio.documentloader.5805ca1adfc9</extracomment>
       <translation>Status</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="986" />
+      <location filename="../src/document_loader.cpp" line="1004" />
       <source>stream payload is not directly decodable; USM masking state is unknown until key-recovery or codec validation provides evidence</source>
       <extracomment>message; catalog id cristudio.documentloader.f54b04181b22</extracomment>
       <translation>stream payload is not directly decodable; USM masking state is unknown until key-recovery or codec validation provides evidence</translation>
     </message>
     <message>
-      <location filename="../src/document_loader.cpp" line="992" />
+      <location filename="../src/document_loader.cpp" line="1010" />
       <source>unknown preview format; showing hex</source>
       <extracomment>message; catalog id cristudio.documentloader.8592a5e551ee</extracomment>
       <translation>unknown preview format; showing hex</translation>
@@ -10022,7 +10014,7 @@ Wrapper bytes: %8</translation>
       <translation>, curve </translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="55" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="51" />
       <source>, delay </source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.0c03405ab2e2</extracomment>
       <translation>, delay </translation>
@@ -10040,7 +10032,7 @@ Wrapper bytes: %8</translation>
       <translation>, noise </translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="56" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="52" />
       <source>, padding </source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.aa1a1ba0625a</extracomment>
       <translation>, padding </translation>
@@ -10070,8 +10062,7 @@ Wrapper bytes: %8</translation>
       <translation>Channels</translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="49" />
-      <location filename="../src/modules/hca/hca_browse.cpp" line="51" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="48" />
       <source>Cipher type</source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.8e9b3fe3d641</extracomment>
       <translation>Cipher type</translation>
@@ -10083,7 +10074,7 @@ Wrapper bytes: %8</translation>
       <translation>Codec type</translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="59" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="55" />
       <source>Comment length</source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.33d4df4af4c3</extracomment>
       <translation>Comment length</translation>
@@ -10113,7 +10104,7 @@ Wrapper bytes: %8</translation>
       <translation>Frames</translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="54" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="50" />
       <source>frames </source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.d526feee59d9</extracomment>
       <translation>frames </translation>
@@ -10131,7 +10122,7 @@ Wrapper bytes: %8</translation>
       <translation>Header size</translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="53" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="49" />
       <source>Loop</source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.06c208661a61</extracomment>
       <translation>Loop</translation>
@@ -10150,7 +10141,7 @@ Wrapper bytes: %8</translation>
     </message>
     <message>
       <location filename="../src/modules/hca/hca_browse.cpp" line="46" />
-      <location filename="../src/modules/hca/hca_browse.cpp" line="57" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="53" />
       <source>no</source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.04c03bee9898</extracomment>
       <translation>no</translation>
@@ -10162,7 +10153,7 @@ Wrapper bytes: %8</translation>
       <translation>Resolution</translation>
     </message>
     <message>
-      <location filename="../src/modules/hca/hca_browse.cpp" line="58" />
+      <location filename="../src/modules/hca/hca_browse.cpp" line="54" />
       <source>RVA volume</source>
       <extracomment>metadata; catalog id cristudio.hca.hcabrowse.28016109320f</extracomment>
       <translation>RVA volume</translation>
@@ -13690,273 +13681,274 @@ HCA support: %3 of %4 streams</translation>
   <context>
     <name>MainWindow.PreviewPanel</name>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="613" />
+      <location filename="../src/main_window/preview_panel.cpp" line="632" />
       <source>All Raw</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.ecca6f087ad5</extracomment>
       <translation>All Raw</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1064" />
-      <location filename="../src/main_window/preview_panel.cpp" line="1102" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1085" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1141" />
       <source>Archive entry</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.dc9b8b66e192</extracomment>
       <translation>Archive entry</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="559" />
+      <location filename="../src/main_window/preview_panel.cpp" line="578" />
       <source>Build playable mux preview</source>
       <extracomment>tooltip; catalog id cristudio.mainwindow.previewpanel.23436df8c5ab</extracomment>
       <translation>Build playable mux preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1073" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1103" />
       <source>Detail</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.c20900631505</extracomment>
       <translation>Detail</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="522" />
+      <location filename="../src/main_window/preview_panel.cpp" line="539" />
       <source>Details</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.facc2fc75942</extracomment>
       <translation>Details</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="782" />
+      <location filename="../src/main_window/preview_panel.cpp" line="801" />
       <source>Entry preview</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.607079dbc98c</extracomment>
       <translation>Entry preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="150" />
+      <location filename="../src/main_window/preview_panel.cpp" line="151" />
       <source>Entry preview started [%1]: %2</source>
       <extracomment>status; catalog id cristudio.mainwindow.previewpanel.4b4c0c6197f8</extracomment>
       <translation>Entry preview started [%1]: %2</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="610" />
+      <location filename="../src/main_window/preview_panel.cpp" line="629" />
       <source>Extract</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.f7ea05120aae</extracomment>
       <translation>Extract</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="610" />
+      <location filename="../src/main_window/preview_panel.cpp" line="629" />
       <source>Extract All</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.37220ea40d9e</extracomment>
       <translation>Extract All</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="156" />
+      <location filename="../src/main_window/preview_panel.cpp" line="157" />
       <source>extracting and identifying the embedded entry</source>
       <extracomment>other; catalog id cristudio.mainwindow.previewpanel.b6e397429c33</extracomment>
       <translation>extracting and identifying the embedded entry</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="279" />
+      <location filename="../src/main_window/preview_panel.cpp" line="282" />
       <source>Fields</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.10cdc723b9d7</extracomment>
       <translation>Fields</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="439" />
+      <location filename="../src/main_window/preview_panel.cpp" line="454" />
       <source>Image preview</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.ef08913d6f33</extracomment>
       <translation>Image preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="707" />
+      <location filename="../src/main_window/preview_panel.cpp" line="726" />
       <source>Loaded file raw preview</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.db4b9d437251</extracomment>
       <translation>Loaded file raw preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="770" />
+      <location filename="../src/main_window/preview_panel.cpp" line="789" />
       <source>Loading audio preview...</source>
       <extracomment>other; catalog id cristudio.mainwindow.previewpanel.46f854d15b0e</extracomment>
       <translation>Loading audio preview...</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="522" />
+      <location filename="../src/main_window/preview_panel.cpp" line="541" />
       <source>Loading in background</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.c7acf31a983e</extracomment>
       <translation>Loading in background</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="104" />
-      <location filename="../src/main_window/preview_panel.cpp" line="149" />
+      <location filename="../src/main_window/preview_panel.cpp" line="105" />
+      <location filename="../src/main_window/preview_panel.cpp" line="150" />
       <source>Loading preview...</source>
       <extracomment>other; catalog id cristudio.mainwindow.previewpanel.7691ce270aa2</extracomment>
       <translation>Loading preview...</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="399" />
+      <location filename="../src/main_window/preview_panel.cpp" line="409" />
       <source>Mux preview</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.2ba18b0e95d5</extracomment>
       <translation>Mux preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="409" />
+      <location filename="../src/main_window/preview_panel.cpp" line="419" />
       <source>Mux preview unavailable</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.9ca24ad3f07d</extracomment>
       <translation>Mux preview unavailable</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1079" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1117" />
       <source>Nested source</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.916a1cf47941</extracomment>
       <translation>Nested source</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="480" />
+      <location filename="../src/main_window/preview_panel.cpp" line="495" />
       <source>No file selected</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.963e904ddc38</extracomment>
       <translation>No file selected</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1092" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1131" />
       <source>No metadata</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.167d25b1acea</extracomment>
       <translation>No metadata</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1070" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1100" />
       <source>Offset</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.051f3dbb1c4f</extracomment>
       <translation>Offset</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="481" />
+      <location filename="../src/main_window/preview_panel.cpp" line="496" />
       <source>Open or drop CRI files to inspect them.</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.a3b1ced6642c</extracomment>
       <translation>Open or drop CRI files to inspect them.</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="845" />
-      <location filename="../src/main_window/preview_panel.cpp" line="903" />
+      <location filename="../src/main_window/preview_panel.cpp" line="864" />
+      <location filename="../src/main_window/preview_panel.cpp" line="922" />
       <source>Play</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.de16e87f22a1</extracomment>
       <translation>Play</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="168" />
+      <location filename="../src/main_window/preview_panel.cpp" line="169" />
       <source>preparing the embedded video for playback</source>
       <extracomment>other; catalog id cristudio.mainwindow.previewpanel.f57fc2b2f869</extracomment>
       <translation>preparing the embedded video for playback</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="355" />
+      <location filename="../src/main_window/preview_panel.cpp" line="365" />
       <source>Preview completed [%1]</source>
       <extracomment>status; catalog id cristudio.mainwindow.previewpanel.11b8843d9503</extracomment>
       <translation>Preview completed [%1]</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="231" />
+      <location filename="../src/main_window/preview_panel.cpp" line="232" />
       <source>Preview failed while %1 with an unknown exception</source>
       <extracomment>message; catalog id cristudio.mainwindow.previewpanel.e924b79992ef</extracomment>
       <translation>Preview failed while %1 with an unknown exception</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="221" />
+      <location filename="../src/main_window/preview_panel.cpp" line="222" />
       <source>Preview failed while %1: %2 [%3]</source>
       <extracomment>message; catalog id cristudio.mainwindow.previewpanel.03ce4ce65487</extracomment>
       <translation>Preview failed while %1: %2 [%3]</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="308" />
+      <location filename="../src/main_window/preview_panel.cpp" line="318" />
       <source>Preview failed with an unknown exception</source>
       <extracomment>message; catalog id cristudio.mainwindow.previewpanel.ed5164c15bbd</extracomment>
       <translation>Preview failed with an unknown exception</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="304" />
+      <location filename="../src/main_window/preview_panel.cpp" line="314" />
       <source>Preview failed: %1 [%2]</source>
       <extracomment>message; catalog id cristudio.mainwindow.previewpanel.b76b692d4f1b</extracomment>
       <translation>Preview failed: %1 [%2]</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="353" />
+      <location filename="../src/main_window/preview_panel.cpp" line="363" />
       <source>Preview result [%1]: %2</source>
       <extracomment>status; catalog id cristudio.mainwindow.previewpanel.4f38c6938887</extracomment>
       <translation>Preview result [%1]: %2</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="463" />
-      <location filename="../src/main_window/preview_panel.cpp" line="466" />
+      <location filename="../src/main_window/preview_panel.cpp" line="478" />
+      <location filename="../src/main_window/preview_panel.cpp" line="481" />
       <source>Preview unavailable</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.05ab10025535</extracomment>
       <translation>Preview unavailable</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="613" />
+      <location filename="../src/main_window/preview_panel.cpp" line="632" />
       <source>Raw</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.e70faafea9ff</extracomment>
       <translation>Raw</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="656" />
+      <location filename="../src/main_window/preview_panel.cpp" line="675" />
       <source>Raw preview failed: could not open file</source>
       <extracomment>status; catalog id cristudio.mainwindow.previewpanel.fe1fa6ee714c</extracomment>
       <translation>Raw preview failed: could not open file</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="586" />
+      <location filename="../src/main_window/preview_panel.cpp" line="605" />
       <source>Raw preview is unavailable for this file.</source>
       <extracomment>other; catalog id cristudio.mainwindow.previewpanel.831703e5ffd3</extracomment>
       <translation>Raw preview is unavailable for this file.</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="278" />
+      <location filename="../src/main_window/preview_panel.cpp" line="279" />
       <source>Row</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.d8ff84938700</extracomment>
       <translation>Row</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="786" />
+      <location filename="../src/main_window/preview_panel.cpp" line="805" />
       <source>Select a supported embedded file.</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.6d45cacac97f</extracomment>
       <translation>Select a supported embedded file.</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1067" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1097" />
       <source>Size</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.1168accacb93</extracomment>
       <translation>Size</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="281" />
-      <location filename="../src/main_window/preview_panel.cpp" line="1076" />
-      <location filename="../src/main_window/preview_panel.cpp" line="1102" />
+      <location filename="../src/main_window/preview_panel.cpp" line="287" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1108" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1141" />
       <source>Source archive</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.491a4a4220b7</extracomment>
       <translation>Source archive</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="284" />
-      <location filename="../src/main_window/preview_panel.cpp" line="1077" />
+      <location filename="../src/main_window/preview_panel.cpp" line="293" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1112" />
       <source>Source format</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.239723990d8d</extracomment>
       <translation>Source format</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="290" />
-      <location filename="../src/main_window/preview_panel.cpp" line="1065" />
+      <location filename="../src/main_window/preview_panel.cpp" line="300" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1090" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1094" />
       <source>Type</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.c7945d4f447e</extracomment>
       <translation>Type</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="1065" />
+      <location filename="../src/main_window/preview_panel.cpp" line="1092" />
       <source>unknown</source>
       <extracomment>metadata; catalog id cristudio.mainwindow.previewpanel.1812afb26196</extracomment>
       <translation>unknown</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="453" />
+      <location filename="../src/main_window/preview_panel.cpp" line="468" />
       <source>Unknown format - hex preview</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.b1e6dda0c338</extracomment>
       <translation>Unknown format - hex preview</translation>
     </message>
     <message>
-      <location filename="../src/main_window/preview_panel.cpp" line="276" />
+      <location filename="../src/main_window/preview_panel.cpp" line="277" />
       <source>UTF row inspector</source>
       <extracomment>label; catalog id cristudio.mainwindow.previewpanel.59c2383a90f1</extracomment>
       <translation>UTF row inspector</translation>
@@ -15025,13 +15017,13 @@ USM containers: %2
   <context>
     <name>Shared.DocumentHelpers</name>
     <message>
-      <location filename="../src/shared/document_helpers.cpp" line="87" />
+      <location filename="../src/shared/document_helpers.cpp" line="166" />
       <source>Path</source>
       <extracomment>metadata; catalog id cristudio.shared.documenthelpers.047ac1f64d7c</extracomment>
       <translation>Path</translation>
     </message>
     <message>
-      <location filename="../src/shared/document_helpers.cpp" line="88" />
+      <location filename="../src/shared/document_helpers.cpp" line="167" />
       <source>Size</source>
       <extracomment>metadata; catalog id cristudio.shared.documenthelpers.1165204f05d4</extracomment>
       <translation>Size</translation>
@@ -15072,30 +15064,21 @@ USM containers: %2
     </message>
   </context>
   <context>
-    <name>Shared.DocumentSniffer</name>
-    <message>
-      <location filename="../src/shared/document_sniffer.cpp" line="254" />
-      <source>Sofdec Stream</source>
-      <extracomment>other; catalog id cristudio.shared.documentsniffer.544cafbcf500</extracomment>
-      <translation>Sofdec Stream</translation>
-    </message>
-  </context>
-  <context>
     <name>Shared.EmbeddedDocumentLoader</name>
     <message>
-      <location filename="../src/shared/embedded_document_loader.cpp" line="67" />
+      <location filename="../src/shared/embedded_document_loader.cpp" line="69" />
       <source>Archive entry</source>
       <extracomment>other; catalog id cristudio.shared.embeddeddocumentloader.ae95a4b8caff</extracomment>
       <translation>Archive entry</translation>
     </message>
     <message>
-      <location filename="../src/shared/embedded_document_loader.cpp" line="135" />
+      <location filename="../src/shared/embedded_document_loader.cpp" line="138" />
       <source>no embedded supported header signature detected</source>
       <extracomment>message; catalog id cristudio.shared.embeddeddocumentloader.8d67ccce1f5d</extracomment>
       <translation>no embedded supported header signature detected</translation>
     </message>
     <message>
-      <location filename="../src/shared/embedded_document_loader.cpp" line="68" />
+      <location filename="../src/shared/embedded_document_loader.cpp" line="72" />
       <source>Source archive</source>
       <extracomment>other; catalog id cristudio.shared.embeddeddocumentloader.d4bbf349eefa</extracomment>
       <translation>Source archive</translation>
@@ -15125,167 +15108,161 @@ USM containers: %2
   <context>
     <name>Shared.FfmpegAudioPreview</name>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="120" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="182" />
       <source> could not start ffmpeg: </source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.547b36a968a7</extracomment>
       <translation> could not start ffmpeg: </translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="150" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="212" />
       <source> failed</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.1af6448e1b46</extracomment>
       <translation> failed</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="113" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="175" />
       <source> requires ffmpeg</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.c440da3c541f</extracomment>
       <translation> requires ffmpeg</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="138" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="200" />
       <source> timed out</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.0052ea2d7ea3</extracomment>
       <translation> timed out</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="259" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="386" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="321" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="448" />
       <source>audio preview could not create a temporary ffmpeg directory</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.06ebf073f107</extracomment>
       <translation>audio preview could not create a temporary ffmpeg directory</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="234" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="296" />
       <source>audio preview could not parse ffmpeg WAV output: </source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.fa061bf9626a</extracomment>
       <translation>audio preview could not parse ffmpeg WAV output: </translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="222" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="284" />
       <source>audio preview could not read the ffmpeg WAV output</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.72a9a621af47</extracomment>
       <translation>audio preview could not read the ffmpeg WAV output</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="265" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="327" />
       <source>audio preview could not stage the ffmpeg input</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.29664008b0bc</extracomment>
       <translation>audio preview could not stage the ffmpeg input</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="355" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="417" />
       <source>audio preview does not use ffmpeg for </source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.c9d1b908bf6d</extracomment>
       <translation>audio preview does not use ffmpeg for </translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="215" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="277" />
       <source>audio preview ffmpeg decode</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.21863e4de892</extracomment>
       <translation>audio preview ffmpeg decode</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="226" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="288" />
       <source>audio preview ffmpeg decode produced an empty WAV output</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.43e2d03ed817</extracomment>
       <translation>audio preview ffmpeg decode produced an empty WAV output</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="254" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="316" />
       <source>audio preview input is too large for ffmpeg</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.7c431d8910b6</extracomment>
       <translation>audio preview input is too large for ffmpeg</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="243" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="305" />
       <source>Decoded with ffmpeg</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.d5452e3b5df6</extracomment>
       <translation>Decoded with ffmpeg</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="352" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="414" />
       <source>extraction canceled</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.85b75af3bfd3</extracomment>
       <translation>extraction canceled</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="195" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="375" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="391" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="257" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="437" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="453" />
       <source>FFmpeg audio</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.c04c07bbec1c</extracomment>
       <translation>FFmpeg audio</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="193" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="255" />
       <source>FFmpeg video</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.9d8478dc024e</extracomment>
       <translation>FFmpeg video</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="191" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="253" />
       <source>FFmpeg video with audio</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.fb204ef40baa</extracomment>
       <translation>FFmpeg video with audio</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="331" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="393" />
       <source>media preview could not create a temporary ffmpeg directory</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.7accf8fc1f8a</extracomment>
       <translation>media preview could not create a temporary ffmpeg directory</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="94" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="336" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="156" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="398" />
       <source>media preview could not stage the ffmpeg input</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.6f3a2716b444</extracomment>
       <translation>media preview could not stage the ffmpeg input</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="323" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="385" />
       <source>media preview input is too large for ffmpeg</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.7d1b0caba3d3</extracomment>
       <translation>media preview input is too large for ffmpeg</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="172" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="234" />
       <source>media preview probe</source>
       <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.8cce25a33d60</extracomment>
       <translation>media preview probe</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="305" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="367" />
       <source>media preview probe could not read the input</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.47f20655eb12</extracomment>
       <translation>media preview probe could not read the input</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="187" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="249" />
       <source>media preview probe found no playable audio or video stream</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.64db89f8e53f</extracomment>
       <translation>media preview probe found no playable audio or video stream</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="313" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="326" />
-      <source>media preview probe rejected obvious non-media content</source>
-      <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.f4f86c46c065</extracomment>
-      <translation>media preview probe rejected obvious non-media content</translation>
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="375" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="388" />
+      <source>media preview probe rejected unsupported content</source>
+      <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.0834261b197f</extracomment>
+      <translation>media preview probe rejected unsupported content</translation>
     </message>
     <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="88" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="108" />
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="132" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="150" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="170" />
+      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="194" />
       <source>preview canceled</source>
       <extracomment>message; catalog id cristudio.shared.ffmpegaudiopreview.58b042ff6c38</extracomment>
       <translation>preview canceled</translation>
-    </message>
-    <message>
-      <location filename="../src/shared/ffmpeg_audio_preview.cpp" line="180" />
-      <source>Stream #</source>
-      <extracomment>other; catalog id cristudio.shared.ffmpegaudiopreview.11dcf403e8b3</extracomment>
-      <translation>Stream #</translation>
     </message>
   </context>
   <context>

@@ -20,6 +20,29 @@ namespace cristudio {
 [[nodiscard]] std::string byte_count(uint64_t value);
 [[nodiscard]] std::string indexed_label(std::string_view label, uint64_t value);
 [[nodiscard]] std::string float_text(float value);
+[[nodiscard]] InfoRow translated_info_row(
+    const char* context,
+    const char* source,
+    std::string value,
+    std::string id = {},
+    std::string value_id = {});
+[[nodiscard]] InfoRow translated_info_row_with_value(
+    const char* name_context,
+    const char* name_source,
+    const char* value_context,
+    const char* value_source,
+    std::string id = {},
+    std::string value_id = {});
+[[nodiscard]] InfoRow translated_info_row_with_affix(
+    const char* context,
+    const char* source,
+    std::string affix,
+    InfoRow::TranslationAffix affix_position,
+    std::string value,
+    std::string id = {},
+    std::string value_id = {});
+[[nodiscard]] std::string translated_info_name(const InfoRow& row);
+[[nodiscard]] std::string translated_info_value(const InfoRow& row);
 
 void add_source_info(LoadedDocument& doc);
 [[nodiscard]] LoadedDocument base_document(const std::filesystem::path& path, std::string format);

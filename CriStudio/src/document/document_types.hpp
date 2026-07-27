@@ -33,10 +33,22 @@ struct DecryptionKeys {
 };
 
 struct InfoRow {
+    enum class TranslationAffix : uint8_t {
+        None,
+        Prefix,
+        Suffix,
+    };
+
     std::string name;
     std::string value;
     std::string id;
     std::string value_id;
+    const char* name_translation_context = nullptr;
+    const char* name_translation_source = nullptr;
+    const char* value_translation_context = nullptr;
+    const char* value_translation_source = nullptr;
+    std::string name_translation_affix;
+    TranslationAffix name_translation_affix_position = TranslationAffix::None;
 };
 
 struct EntrySummary {

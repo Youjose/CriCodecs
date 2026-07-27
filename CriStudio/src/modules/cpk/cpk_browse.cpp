@@ -72,16 +72,22 @@ void add_chunk_location(LoadedDocument& doc, const cricodecs::cpk::Cpk& cpk, std
     }
     const auto offset_id = std::string(name) + " offset";
     const auto size_id = std::string(name) + " size";
-    doc.info.push_back({
-        std::string(name) + cristudio::i18n::translate_utf8("Cpk.CpkBrowse", " offset"),
+    doc.info.push_back(translated_info_row_with_affix(
+        "Cpk.CpkBrowse",
+        " offset",
+        std::string(name),
+        InfoRow::TranslationAffix::Prefix,
         number(*offset),
         offset_id
-    });
-    doc.info.push_back({
-        std::string(name) + cristudio::i18n::translate_utf8("Cpk.CpkBrowse", " size"),
+    ));
+    doc.info.push_back(translated_info_row_with_affix(
+        "Cpk.CpkBrowse",
+        " size",
+        std::string(name),
+        InfoRow::TranslationAffix::Prefix,
         number(*size),
         size_id
-    });
+    ));
 }
 
 EntrySummary sourced_entry(
@@ -101,12 +107,12 @@ EntrySummary sourced_entry(
 
 LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::cpk::Cpk& cpk) {
     auto doc = base_document(path, cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "CPK archive"));
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Entries"), number(cpk.file_count())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Mode"), mode_name(cpk.mode())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Preset"), preset_name(cpk.preset())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Declared preset"), cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : "-"});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Alignment"), number(cpk.alignment())});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Content offset"), number(cpk.content_offset())});
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Entries", number(cpk.file_count())));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Mode", mode_name(cpk.mode())));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Preset", preset_name(cpk.preset())));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Declared preset", cpk.has_declared_preset() ? preset_name(cpk.declared_preset()) : "-"));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Alignment", number(cpk.alignment())));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Content offset", number(cpk.content_offset())));
     doc.info.push_back({"TOC", bool_text(cpk.has_toc())});
     doc.info.push_back({"ITOC", bool_text(cpk.has_itoc())});
     doc.info.push_back({"GTOC", bool_text(cpk.has_gtoc())});
@@ -116,10 +122,10 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::cpk
     add_chunk_location(doc, cpk, "Gtoc");
     add_chunk_location(doc, cpk, "Etoc");
     const auto& options = cpk.options();
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "CRC option"), bool_text(options.enable_crc)});
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "CRC option", bool_text(options.enable_crc)));
     doc.info.push_back({"TVER", options.tver.empty() ? "-" : options.tver});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "Comment"), options.comment});
-    doc.info.push_back({cristudio::i18n::translate_utf8("Cpk.CpkBrowse", "ETOC LocalDir"), options.etoc_local_dir.empty() ? "-" : options.etoc_local_dir});
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "Comment", options.comment));
+    doc.info.push_back(translated_info_row("Cpk.CpkBrowse", "ETOC LocalDir", options.etoc_local_dir.empty() ? "-" : options.etoc_local_dir));
 
     doc.entries.reserve(cpk.files().size());
     for (uint32_t i = 0; i < cpk.files().size(); ++i) {
