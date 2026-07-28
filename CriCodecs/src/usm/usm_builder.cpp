@@ -46,7 +46,6 @@ constexpr uint32_t mpeg_fmtver = 0;
 constexpr uint8_t mpeg_dcprec = 11;
 constexpr uint32_t h264_codec_id = 5;
 constexpr uint32_t base_frame_rate = 2997;
-constexpr double audio_chunk_interval = 99.9;
 constexpr uint32_t audio_ixsize = 27860;
 constexpr std::array<uint8_t, 0x20> contents_end_marker = {
     '#','C','O','N','T','E','N','T','S',' ','E','N','D',' ',' ',' ',
@@ -63,6 +62,7 @@ constexpr std::array<uint8_t, 0x20> metadata_end_marker = {
 
 struct BuiltChunk {
     UsmChunk chunk;
+    uint64_t scheduler_time = 0;
     uint32_t priority = 0;
     bool is_keyframe = false;
     uint32_t frame_index = 0;
@@ -484,6 +484,8 @@ std::expected<SubtitleBuildInfo, std::string> build_subtitle_chunks(
                 cue.time_unit,
                 std::span<const uint8_t>(*payload).subspan(payload_offset, record_size)
             ),
+            .scheduler_time =
+                static_cast<uint64_t>(cue.start_time) * base_frame_rate / cue.time_unit,
             .priority = 2,
         };
         max_chunk_size = std::max(max_chunk_size, static_cast<uint32_t>(chunk.chunk.packed_size()));
@@ -563,6 +565,7 @@ std::expected<VideoBuildInfo, std::string> build_ivf_video_chunks(
         payload.insert(payload.end(), frame->record_bytes.begin(), frame->record_bytes.end());
 
         BuiltChunk chunk;
+        chunk.scheduler_time = *frame_time;
         chunk.priority = stream_type == UsmChunkType::SFV ? 0u : 1u;
         chunk.is_keyframe = frame->is_keyframe;
         chunk.frame_index = actual_frame_count;
@@ -649,6 +652,7 @@ std::expected<VideoBuildInfo, std::string> build_mpeg_video_chunks(
 
         std::vector<uint8_t> payload(frame->record_bytes.begin(), frame->record_bytes.end());
         BuiltChunk chunk;
+        chunk.scheduler_time = static_cast<uint32_t>(std::llround(current_interval));
         chunk.priority = stream_type == UsmChunkType::SFV ? 0u : 1u;
         chunk.is_keyframe = frame->is_keyframe;
         chunk.frame_index = actual_frame_count;
@@ -740,6 +744,7 @@ std::expected<VideoBuildInfo, std::string> build_h264_video_chunks(
 
         std::vector<uint8_t> payload(frame->record_bytes.begin(), frame->record_bytes.end());
         BuiltChunk chunk;
+        chunk.scheduler_time = static_cast<uint32_t>(std::llround(current_interval));
         chunk.priority = stream_type == UsmChunkType::SFV ? 0u : 1u;
         chunk.is_keyframe = frame->is_keyframe;
         chunk.frame_index = actual_frame_count;
@@ -847,26 +852,29 @@ std::expected<AudioBuildInfo, std::string> build_adx_audio_chunks(
         }
     }
 
-    const size_t first_chunk_size = std::min<size_t>(file_bytes.size(), header.data_offset + 4u);
-    const size_t steady_chunk_size = static_cast<size_t>(
-        (info.sample_rate / (static_cast<double>(base_frame_rate) / 100.0) / 32.0) *
-        (header.block_size * header.channels));
-    size_t offset = 0;
-    double current_interval = 0.0;
+    if (header.block_size <= 2u || header.channels == 0u || header.bit_depth == 0u) {
+        return std::unexpected("USM build failed: ADX audio has an invalid frame layout");
+    }
+    const size_t samples_per_frame =
+        (static_cast<size_t>(header.block_size) - 2u) * 8u / header.bit_depth;
+    if (samples_per_frame == 0u) {
+        return std::unexpected("USM build failed: ADX audio has an invalid samples-per-frame value");
+    }
 
-    while (offset < file_bytes.size()) {
-        size_t chunk_size = offset == 0 ? first_chunk_size : steady_chunk_size;
-        if (chunk_size == 0 || offset + chunk_size > file_bytes.size()) {
-            chunk_size = file_bytes.size() - offset;
-        }
-        if (chunk_size == 0) {
-            break;
-        }
+    const size_t header_size = static_cast<size_t>(header.data_offset) + 4u;
+    const size_t interleaved_frame_size =
+        static_cast<size_t>(header.block_size) * header.channels;
+    const size_t frame_count =
+        (static_cast<size_t>(header.sample_count) + samples_per_frame - 1u) / samples_per_frame;
+    if (frame_count > (std::numeric_limits<size_t>::max() - header_size) / interleaved_frame_size) {
+        return std::unexpected("USM build failed: ADX audio frame layout exceeds the addressable size");
+    }
+    const size_t data_end = header_size + frame_count * interleaved_frame_size;
+    if (header_size > file_bytes.size() || data_end > file_bytes.size()) {
+        return std::unexpected("USM build failed: ADX audio is shorter than its declared frame layout");
+    }
 
-        std::vector<uint8_t> payload(
-            file_bytes.begin() + static_cast<std::ptrdiff_t>(offset),
-            file_bytes.begin() + static_cast<std::ptrdiff_t>(offset + chunk_size));
-        const auto frame_time = static_cast<uint32_t>(std::llround(current_interval));
+    const auto append_chunk = [&](std::span<const uint8_t> payload, uint32_t frame_time) {
         BuiltChunk chunk{
             .chunk = make_chunk(
                 UsmChunkType::SFA,
@@ -875,15 +883,51 @@ std::expected<AudioBuildInfo, std::string> build_adx_audio_chunks(
                 frame_time,
                 base_frame_rate,
                 payload),
+            .scheduler_time = frame_time,
             .priority = 1,
         };
         if (encrypt_audio) {
             transform_stream_chunk_payload_with_padding(chunk.chunk, crypto, true);
         }
         info.chunks.push_back(std::move(chunk));
+    };
 
-        offset += chunk_size;
-        current_interval += audio_chunk_interval;
+    append_chunk(file_bytes.first(header_size), 0);
+
+    size_t emitted_frames = 0;
+    uint64_t packet_index = 0;
+    while (emitted_frames < frame_count) {
+        ++packet_index;
+        const uint64_t target_frames =
+            packet_index * info.sample_rate * 100u /
+            (static_cast<uint64_t>(base_frame_rate) * samples_per_frame);
+        const size_t next_frame = static_cast<size_t>(std::min<uint64_t>(
+            static_cast<uint64_t>(frame_count),
+            std::max<uint64_t>(target_frames, static_cast<uint64_t>(emitted_frames) + 1u)
+        ));
+        const size_t packet_frames = next_frame - emitted_frames;
+        const uint64_t timestamp_numerator =
+            static_cast<uint64_t>(emitted_frames) * samples_per_frame * base_frame_rate;
+        const uint64_t frame_time =
+            (timestamp_numerator + info.sample_rate / 2u) / info.sample_rate;
+        if (frame_time > std::numeric_limits<uint32_t>::max()) {
+            return std::unexpected("USM build failed: ADX packet timestamp exceeds the USM field width");
+        }
+
+        const size_t offset = header_size + emitted_frames * interleaved_frame_size;
+        append_chunk(
+            file_bytes.subspan(offset, packet_frames * interleaved_frame_size),
+            static_cast<uint32_t>(frame_time)
+        );
+        emitted_frames = next_frame;
+    }
+
+    if (data_end < file_bytes.size()) {
+        const uint64_t footer_time = packet_index * 100u;
+        if (footer_time > std::numeric_limits<uint32_t>::max()) {
+            return std::unexpected("USM build failed: ADX footer timestamp exceeds the USM field width");
+        }
+        append_chunk(file_bytes.subspan(data_end), static_cast<uint32_t>(footer_time));
     }
 
     info.chunks.push_back(BuiltChunk{
@@ -982,6 +1026,7 @@ std::expected<AudioBuildInfo, std::string> build_hca_audio_chunks(
             0,
             base_frame_rate,
             hca_header),
+        .scheduler_time = 0,
         .priority = 1,
     });
 
@@ -1004,6 +1049,7 @@ std::expected<AudioBuildInfo, std::string> build_hca_audio_chunks(
                 static_cast<uint32_t>(frame_time),
                 base_frame_rate,
                 std::span<const uint8_t>(bytes).subspan(frame_offset, header.codec.frame_size)),
+            .scheduler_time = frame_time,
             .priority = 1,
         });
     }
@@ -1484,8 +1530,15 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
         );
     }
     std::stable_sort(content_chunks.begin(), content_chunks.end(), [](const BuiltChunk& lhs, const BuiltChunk& rhs) {
-        return std::tie(lhs.chunk.header.payload_type_and_flags, lhs.chunk.header.frame_time, lhs.priority) <
-            std::tie(rhs.chunk.header.payload_type_and_flags, rhs.chunk.header.frame_time, rhs.priority);
+        return std::tie(
+            lhs.chunk.header.payload_type_and_flags,
+            lhs.scheduler_time,
+            lhs.priority
+        ) < std::tie(
+            rhs.chunk.header.payload_type_and_flags,
+            rhs.scheduler_time,
+            rhs.priority
+        );
     });
 
     size_t header_size = 0;
