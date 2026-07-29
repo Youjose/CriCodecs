@@ -37,9 +37,11 @@ QString waveform_summary(const cricodecs::acb::AcbContainer& acb, uint32_t index
     parts.push_back(QCoreApplication::translate("Acb.AcbEdit", "id %1").arg(waveform.id));
     parts.push_back(QCoreApplication::translate("Acb.AcbEdit", "mem %1").arg(waveform.memory_awb_id));
     parts.push_back(QCoreApplication::translate("Acb.AcbEdit", "stream %1").arg(waveform.stream_awb_id));
+    const auto codec = acb.waveform_codec(index);
     parts.push_back(QCoreApplication::translate("Acb.AcbEdit", "encode %1%2")
         .arg(waveform.encode_type)
-        .arg(utf8_to_qstring(std::string(cricodecs::acb::encode_type_extension(waveform.encode_type)))));
+        .arg(utf8_to_qstring(std::string(cricodecs::awb::entry_codec_extension(
+            codec.value_or(cricodecs::awb::EntryCodec::Unknown))))));
     if (waveform.loop_flag) {
         parts.push_back(QStringLiteral("loop"));
     }

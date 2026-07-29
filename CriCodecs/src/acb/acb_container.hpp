@@ -28,20 +28,49 @@
 
 namespace cricodecs::acb {
 
-constexpr std::string_view encode_type_extension(uint8_t type) {
+/**
+ * Official CriAtomCraft raw-codec mapping for WaveformTable.EncodeType.
+ *
+ * The mapping is authoritative when ACB metadata is available. HCA-MX and
+ * platform ADPCM payloads are not always distinguishable from bytes alone.
+ */
+[[nodiscard]] constexpr std::optional<awb::EntryCodec> encode_type_codec(uint8_t type) noexcept {
+    using awb::EntryCodec;
     switch (type) {
-        case 0: case 3:  return ".adx";
-        case 2: case 6:  return ".hca";
-        case 7: case 10: return ".vag";
-        case 8:          return ".at3";
-        case 9:          return ".bcwav";
-        case 11: case 18: return ".at9";
-        case 12:         return ".xma";
-        case 13: case 4: case 5: return ".dsp";
-        case 19:         return ".m4a";
-        case 24:         return ".opus";
-        default:         return ".bin";
+    case 0:
+    case 3:  return EntryCodec::Adx;
+    case 1:  return EntryCodec::SwLpcm;
+    case 2:  return EntryCodec::Hca;
+    case 4:  return EntryCodec::WiiAdpcm;
+    case 5:  return EntryCodec::DsAdpcm;
+    case 6:  return EntryCodec::HcaMx;
+    case 7:  return EntryCodec::Vag;
+    case 8:  return EntryCodec::Atrac3;
+    case 9:  return EntryCodec::ThreeDsAdpcm;
+    case 10:
+    case 14: return EntryCodec::Hevag;
+    case 11:
+    case 18: return EntryCodec::Atrac9;
+    case 12: return EntryCodec::Xma2;
+    case 13: return EntryCodec::WiiUAdpcm;
+    case 19: return EntryCodec::AacM4a;
+    case 24: return EntryCodec::SwitchOpus;
+    default: return std::nullopt;
     }
+}
+
+[[nodiscard]] inline awb::EntryCodec resolve_entry_codec(
+    uint8_t encode_type,
+    std::span<const uint8_t> payload) noexcept {
+    if (const auto codec = encode_type_codec(encode_type)) {
+        return *codec;
+    }
+    return awb::probe_entry_codec(payload);
+}
+
+[[nodiscard]] constexpr std::string_view encode_type_extension(uint8_t type) noexcept {
+    const auto codec = encode_type_codec(type);
+    return codec ? awb::entry_codec_extension(*codec) : ".bin";
 }
 
 struct WaveformInfo {
@@ -103,6 +132,8 @@ public:
     [[nodiscard]] std::string_view find_name(uint16_t wave_id) const;
     [[nodiscard]] std::string_view waveform_name(uint32_t index) const;
     [[nodiscard]] std::string_view waveform_name_raw(uint32_t index) const;
+    /// Prefer ACB EncodeType; probe the resolved AWB payload only for unknown values.
+    [[nodiscard]] std::expected<awb::EntryCodec, std::string> waveform_codec(uint32_t index) const;
     [[nodiscard]] std::string waveform_filename(uint32_t index, bool include_index_prefix = false) const;
     [[nodiscard]] std::optional<std::span<const uint8_t>> embedded_awb() const;
     [[nodiscard]] bool has_embedded_awb() const;

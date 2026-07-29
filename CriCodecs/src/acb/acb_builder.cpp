@@ -75,6 +75,25 @@ std::expected<std::reference_wrapper<const awb::AwbContainer>, std::string> AcbC
     return std::cref(*m_associated_awb);
 }
 
+std::expected<awb::EntryCodec, std::string> AcbContainer::waveform_codec(uint32_t index) const {
+    if (index >= m_waveforms.size()) {
+        return std::unexpected("ACB waveform codec failed: waveform index is out of range");
+    }
+    if (const auto codec = encode_type_codec(m_waveforms[index].encode_type)) {
+        return *codec;
+    }
+
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected("ACB waveform codec fallback failed: " + awb.error());
+    }
+    auto payload = waveform_data_from_awb(index, awb->get());
+    if (!payload) {
+        return std::unexpected("ACB waveform codec fallback failed: " + payload.error());
+    }
+    return awb::probe_entry_codec(*payload);
+}
+
 std::expected<WaveformAwbEntry, std::string> AcbContainer::waveform_awb_entry(
     uint32_t index,
     bool prefer_stream_bank) const {

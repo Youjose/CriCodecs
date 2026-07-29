@@ -57,7 +57,8 @@ std::string AcbContainer::waveform_filename(uint32_t index, bool include_index_p
         result += std::to_string(index + 1);
     }
 
-    result += encode_type_extension(m_waveforms[index].encode_type);
+    const auto codec = waveform_codec(index).value_or(awb::EntryCodec::Unknown);
+    result += awb::entry_codec_extension(codec);
     return result;
 }
 

@@ -52,18 +52,9 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::acb
     doc.entries.reserve(acb.waveform_count());
     for (uint32_t i = 0; i < acb.waveform_count(); ++i) {
         const auto& wave = acb.waveform(i);
-        auto codec = std::string(cricodecs::acb::encode_type_extension(wave.encode_type));
-        if (!codec.empty() && codec.front() == '.') {
-            codec.erase(codec.begin());
-        }
-        if (!codec.empty()) {
-            std::ranges::transform(codec, codec.begin(), [](unsigned char ch) {
-                return static_cast<char>(std::toupper(ch));
-            });
-            codec += " audio";
-        } else {
-            codec = "audio";
-        }
+        const auto resolved_codec = acb.waveform_codec(i);
+        const auto codec = std::string(cricodecs::awb::entry_codec_name(
+            resolved_codec.value_or(cricodecs::awb::EntryCodec::Unknown)));
         auto entry = sourced_entry({
             acb.waveform_filename(i),
             codec,
