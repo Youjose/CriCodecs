@@ -347,6 +347,9 @@ bool is_ffmpeg_audio_codec(cricodecs::awb::EntryCodec codec) {
     case EntryCodec::Ogg:
     case EntryCodec::Flac:
     case EntryCodec::Mp3:
+    case EntryCodec::Vag:
+    case EntryCodec::Atrac3:
+    case EntryCodec::Atrac9:
         return true;
     case EntryCodec::Unknown:
     case EntryCodec::Hca:
@@ -358,11 +361,8 @@ bool is_ffmpeg_audio_codec(cricodecs::awb::EntryCodec codec) {
     case EntryCodec::NintendoDsp:
     case EntryCodec::WiiAdpcm:
     case EntryCodec::WiiUAdpcm:
-    case EntryCodec::Vag:
     case EntryCodec::Hevag:
-    case EntryCodec::Atrac3:
     case EntryCodec::ThreeDsAdpcm:
-    case EntryCodec::Atrac9:
     case EntryCodec::Xma2:
     case EntryCodec::SwitchOpus:
     case EntryCodec::Wave:
