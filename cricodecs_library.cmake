@@ -33,9 +33,11 @@ function(cricodecs_add_library target_name)
         "${cricodecs_generated_version_header}"
         @ONLY
     )
-    set(CRICODECS_GIT_HASH "unknown")
+    set(CRICODECS_GIT_HASH "" CACHE STRING
+        "Source revision embedded in CriCodecs CLI build information"
+    )
     find_package(Git QUIET)
-    if(Git_FOUND AND EXISTS "${CRICODECS_REPO_ROOT}/.git")
+    if(CRICODECS_GIT_HASH STREQUAL "" AND Git_FOUND AND EXISTS "${CRICODECS_REPO_ROOT}/.git")
         execute_process(
             COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD
             WORKING_DIRECTORY "${CRICODECS_REPO_ROOT}"
@@ -56,6 +58,30 @@ function(cricodecs_add_library target_name)
                 string(APPEND CRICODECS_GIT_HASH "-dirty")
             endif()
         endif()
+    endif()
+    if(CRICODECS_GIT_HASH STREQUAL "" AND
+       EXISTS "${CRICODECS_REPO_ROOT}/CriCodecs/source_revision.txt")
+        file(STRINGS
+            "${CRICODECS_REPO_ROOT}/CriCodecs/source_revision.txt"
+            CRICODECS_GIT_HASH
+            LIMIT_COUNT 1
+        )
+    endif()
+    if(CRICODECS_GIT_HASH STREQUAL "" AND NOT "$ENV{CRICODECS_SOURCE_REVISION}" STREQUAL "")
+        set(CRICODECS_GIT_HASH "$ENV{CRICODECS_SOURCE_REVISION}")
+    endif()
+    if(CRICODECS_GIT_HASH MATCHES "^[0-9A-Fa-f]+$")
+        string(LENGTH "${CRICODECS_GIT_HASH}" CRICODECS_GIT_HASH_LENGTH)
+        if(CRICODECS_GIT_HASH_LENGTH GREATER 12)
+            string(SUBSTRING "${CRICODECS_GIT_HASH}" 0 12 CRICODECS_GIT_HASH)
+        endif()
+    endif()
+    if(CRICODECS_GIT_HASH STREQUAL "")
+        set(CRICODECS_GIT_HASH "unknown")
+    elseif(NOT CRICODECS_GIT_HASH MATCHES "^[0-9A-Za-z._+-]+$")
+        message(FATAL_ERROR
+            "CRICODECS_GIT_HASH must contain only revision-safe characters"
+        )
     endif()
 
     set(cricodecs_sources

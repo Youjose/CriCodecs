@@ -130,22 +130,74 @@ void replace_all(std::string& text, std::string_view needle, std::string_view re
 [[nodiscard]] std::string escape_json(std::string_view text) {
     std::string escaped;
     escaped.reserve(text.size() + 8);
-    for (unsigned char ch : text) {
+    const auto continuation = [](unsigned char value) {
+        return value >= 0x80u && value <= 0xBFu;
+    };
+    const auto utf8_length = [text, continuation](size_t offset) -> size_t {
+        const auto first = static_cast<unsigned char>(text[offset]);
+        const size_t remaining = text.size() - offset;
+        if (first >= 0xC2u && first <= 0xDFu && remaining >= 2 &&
+            continuation(static_cast<unsigned char>(text[offset + 1]))) {
+            return 2;
+        }
+        if (remaining >= 3) {
+            const auto second = static_cast<unsigned char>(text[offset + 1]);
+            const auto third = static_cast<unsigned char>(text[offset + 2]);
+            const bool valid_second =
+                (first == 0xE0u && second >= 0xA0u && second <= 0xBFu) ||
+                (first >= 0xE1u && first <= 0xECu && continuation(second)) ||
+                (first == 0xEDu && second >= 0x80u && second <= 0x9Fu) ||
+                (first >= 0xEEu && first <= 0xEFu && continuation(second));
+            if (valid_second && continuation(third)) {
+                return 3;
+            }
+        }
+        if (remaining >= 4) {
+            const auto second = static_cast<unsigned char>(text[offset + 1]);
+            const auto third = static_cast<unsigned char>(text[offset + 2]);
+            const auto fourth = static_cast<unsigned char>(text[offset + 3]);
+            const bool valid_second =
+                (first == 0xF0u && second >= 0x90u && second <= 0xBFu) ||
+                (first >= 0xF1u && first <= 0xF3u && continuation(second)) ||
+                (first == 0xF4u && second >= 0x80u && second <= 0x8Fu);
+            if (valid_second && continuation(third) && continuation(fourth)) {
+                return 4;
+            }
+        }
+        return 0;
+    };
+
+    for (size_t offset = 0; offset < text.size();) {
+        const auto ch = static_cast<unsigned char>(text[offset]);
         switch (ch) {
-            case '\\': escaped += "\\\\"; break;
-            case '"': escaped += "\\\""; break;
-            case '\b': escaped += "\\b"; break;
-            case '\f': escaped += "\\f"; break;
-            case '\n': escaped += "\\n"; break;
-            case '\r': escaped += "\\r"; break;
-            case '\t': escaped += "\\t"; break;
+            case '\\': escaped += "\\\\"; ++offset; break;
+            case '"': escaped += "\\\""; ++offset; break;
+            case '\b': escaped += "\\b"; ++offset; break;
+            case '\f': escaped += "\\f"; ++offset; break;
+            case '\n': escaped += "\\n"; ++offset; break;
+            case '\r': escaped += "\\r"; ++offset; break;
+            case '\t': escaped += "\\t"; ++offset; break;
             default:
                 if (ch < 0x20) {
                     std::ostringstream stream;
                     stream << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(ch);
                     escaped += stream.str();
-                } else {
+                    ++offset;
+                } else if (ch < 0x80) {
                     escaped.push_back(static_cast<char>(ch));
+                    ++offset;
+                } else {
+                    const size_t length = utf8_length(offset);
+                    if (length != 0) {
+                        escaped.append(text.substr(offset, length));
+                        offset += length;
+                    } else {
+                        std::ostringstream stream;
+                        stream << "\\u00" << std::hex << std::setw(2) << std::setfill('0')
+                               << static_cast<int>(ch);
+                        escaped += stream.str();
+                        ++offset;
+                    }
                 }
                 break;
         }

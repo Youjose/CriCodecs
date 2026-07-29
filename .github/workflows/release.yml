@@ -102,6 +102,7 @@ jobs:
       - name: Build and verify sdist
         run: |
           python -m pip install --upgrade pip build twine
+          printf '%s\n' "$GITHUB_SHA" > CriCodecs/source_revision.txt
           python -m build --sdist
           python -m twine check dist/*.tar.gz
           python - <<'PY'
@@ -129,6 +130,16 @@ jobs:
           unexpected = sorted(roots - allowed)
           if unexpected:
               raise SystemExit(f"unexpected top-level paths in sdist: {unexpected}")
+          revision_files = [
+              name for name in names
+              if name.endswith("/CriCodecs/source_revision.txt")
+          ]
+          if len(revision_files) != 1:
+              raise SystemExit("sdist must contain exactly one source revision file")
+          with tarfile.open(archive) as package:
+              revision = package.extractfile(revision_files[0]).read().decode().strip()
+          if revision != "${{ github.sha }}":
+              raise SystemExit(f"sdist source revision mismatch: {revision}")
           PY
 
       - uses: actions/upload-artifact@v7
@@ -177,7 +188,11 @@ jobs:
       CIBW_TEST_COMMAND: >-
         python -c "import cricodecs, cricodecs.adx;
         text = repr(cricodecs.adx.AdxEncodeConfig());
-        assert 'sample_rate=' in text; print(text)"
+        assert 'sample_rate=' in text;
+        import subprocess;
+        build = subprocess.check_output(['cricodecs', '--version'], text=True);
+        assert 'unknown' not in build, build;
+        print(text, build)"
       CMAKE_ARGS: >-
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
         -DCRICODECS_ENABLE_PCH=ON
@@ -309,7 +324,10 @@ jobs:
         python {package}/PyCriCodecs/build_wheel_core.py
       CIBW_TEST_COMMAND: >-
         python -c "import cricodecs, cricodecs.adx;
-        assert 'sample_rate=' in repr(cricodecs.adx.AdxEncodeConfig())"
+        assert 'sample_rate=' in repr(cricodecs.adx.AdxEncodeConfig());
+        import subprocess;
+        build = subprocess.check_output(['cricodecs', '--version'], text=True);
+        assert 'unknown' not in build, build"
       CMAKE_ARGS: >-
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
         -DCRICODECS_ENABLE_PCH=ON
