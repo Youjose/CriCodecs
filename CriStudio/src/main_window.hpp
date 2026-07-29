@@ -412,6 +412,7 @@ private:
     QToolButton* m_preview_panel_button = nullptr;
     QWidget* m_right_edge_rail = nullptr;
     QWidget* m_nested_panel = nullptr;
+    int m_left_panel_width = 320;
     int m_preview_panel_width = 420;
     EntryTableModel* m_nested_entry_model = nullptr;
     QLabel* m_nested_title = nullptr;

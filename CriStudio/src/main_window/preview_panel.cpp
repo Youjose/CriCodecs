@@ -962,33 +962,13 @@ void MainWindow::toggle_preview_panel() {
         return;
     }
     const auto expanded = m_toggle_preview_action->isChecked();
-    m_nested_title->setVisible(expanded);
-    m_nested_subtitle->setVisible(expanded);
-    m_nested_info_panel->setVisible(expanded);
-    if (m_preview_tabs != nullptr) {
-        m_preview_tabs->setVisible(expanded);
-    }
-    if (m_preview_key_panel != nullptr) {
-        m_preview_key_panel->setVisible(expanded && m_preview_key_kind != KeyPanelKind::None);
-    }
-    set_preview_entry_actions_visible(expanded && m_current_preview_entry.has_value() && m_current_preview_entry->has_source);
-    const auto has_nested_entries = m_nested_entry_model != nullptr && m_nested_entry_model->rowCount() > 0;
-    const auto has_body_content = !m_nested_body->toPlainText().isEmpty();
-    m_nested_entry_view->setVisible(expanded && has_nested_entries);
-    m_nested_body->setVisible(expanded && !has_nested_entries && m_nested_image_scroll->isHidden() && has_body_content);
-    if (m_audio_panel != nullptr) {
-        m_audio_panel->setVisible(expanded && (!m_audio_source_path.isEmpty() || m_preview_running));
-    }
-    if (m_video_widget != nullptr) {
-        m_video_widget->setVisible(expanded && m_video_preview_active);
-    }
-    if (m_video_container != nullptr) {
-        m_video_container->setVisible(expanded && m_video_preview_active);
-    }
     if (expanded) {
-        m_nested_panel->show();
         m_nested_panel->setMaximumWidth(QWIDGETSIZE_MAX);
         m_nested_panel->setMinimumWidth(0);
+        m_nested_panel->show();
+        set_preview_entry_actions_visible(
+            m_current_preview_entry.has_value() && m_current_preview_entry->has_source
+        );
         if (m_splitter != nullptr) {
             const auto sizes = m_splitter->sizes();
             if (sizes.size() >= 3 && sizes[2] < 360) {
@@ -1001,24 +981,6 @@ void MainWindow::toggle_preview_panel() {
             }
         }
     } else {
-        if (m_audio_panel != nullptr) {
-            m_audio_panel->hide();
-        }
-        m_nested_image_scroll->hide();
-        if (m_video_widget != nullptr) {
-            m_video_widget->hide();
-        }
-        if (m_video_container != nullptr) {
-            m_video_container->hide();
-        }
-        if (m_preview_tabs != nullptr) {
-            m_preview_tabs->hide();
-        }
-        if (m_preview_key_panel != nullptr) {
-            m_preview_key_panel->hide();
-        }
-        set_preview_entry_actions_visible(false);
-        m_nested_entry_view->hide();
         if (m_splitter != nullptr) {
             const auto sizes = m_splitter->sizes();
             if (sizes.size() >= 3) {

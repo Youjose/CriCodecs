@@ -854,6 +854,12 @@ void MainWindow::apply_pending_language() {
 }
 
 void MainWindow::retranslate_ui() {
+    // Model/filter refreshes can temporarily remap current indexes. Keep those
+    // internal updates from being interpreted as a new file or entry choice.
+    const QSignalBlocker file_selection_blocker(m_file_view->selectionModel());
+    const QSignalBlocker entry_selection_blocker(m_entry_view->selectionModel());
+    const QSignalBlocker nested_selection_blocker(m_nested_entry_view->selectionModel());
+
     for (const auto& binding : m_ui_text_bindings) {
         if (binding.object != nullptr) {
             binding.object->setProperty(
@@ -1482,15 +1488,12 @@ void MainWindow::build_ui() {
     nested_layout->addWidget(m_preview_key_panel);
     nested_layout->addWidget(m_preview_tabs, 8);
     nested_layout->addStretch(1);
-    m_nested_title->hide();
-    m_nested_subtitle->hide();
-    m_nested_info_panel->hide();
-    m_preview_tabs->hide();
     m_video_container->hide();
     m_video_widget->hide();
     m_nested_entry_view->hide();
     m_nested_body->hide();
     m_nested_panel->setMaximumWidth(0);
+    m_nested_panel->hide();
 
     auto* content_host = new ContentHostWidget(this);
     m_content_host = content_host;
@@ -1530,6 +1533,12 @@ void MainWindow::build_ui() {
     m_splitter->setStretchFactor(1, 1);
     m_splitter->setStretchFactor(2, 0);
     connect(m_splitter, &QSplitter::splitterMoved, this, [this] {
+        if (m_toggle_left_action != nullptr && m_toggle_left_action->isChecked()) {
+            const auto sizes = m_splitter->sizes();
+            if (!sizes.empty() && sizes[0] >= 260) {
+                m_left_panel_width = sizes[0];
+            }
+        }
         if (m_toggle_preview_action != nullptr && m_toggle_preview_action->isChecked()) {
             const auto sizes = m_splitter->sizes();
             if (sizes.size() >= 3 && sizes[2] >= 320) {
@@ -2374,29 +2383,30 @@ void MainWindow::toggle_left_panel() {
         return;
     }
     const auto expanded = m_toggle_left_action->isChecked();
-    m_file_filter->setVisible(expanded);
-    if (m_file_sort != nullptr) {
-        m_file_sort->setVisible(expanded);
-    }
-    if (m_file_type_filter != nullptr) {
-        m_file_type_filter->setVisible(expanded);
-    }
-    m_file_view->setVisible(expanded);
-    if (m_file_list_status != nullptr) {
-        m_file_list_status->setVisible(expanded);
-    }
     if (expanded) {
         m_left_panel->setMaximumWidth(QWIDGETSIZE_MAX);
         m_left_panel->setMinimumWidth(260);
+        m_left_panel->show();
         if (m_splitter != nullptr) {
             const auto sizes = m_splitter->sizes();
             if (!sizes.empty() && sizes[0] < 260) {
-                m_splitter->setSizes({320, sizes.value(1, 900), sizes.value(2, 0)});
+                const auto left_width = std::max(260, m_left_panel_width);
+                m_splitter->setSizes({
+                    left_width,
+                    std::max(0, sizes.value(1, 900) - left_width),
+                    sizes.value(2, 0)
+                });
             }
         }
     } else {
+        if (m_splitter != nullptr) {
+            const auto sizes = m_splitter->sizes();
+            if (!sizes.empty() && sizes[0] >= 260) {
+                m_left_panel_width = sizes[0];
+            }
+        }
         m_left_panel->setMinimumWidth(0);
-        m_left_panel->setMaximumWidth(0);
+        m_left_panel->hide();
     }
     schedule_position_edge_buttons();
 }

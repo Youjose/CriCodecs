@@ -459,9 +459,12 @@ void EntryTableModel::clear() {
 }
 
 void EntryTableModel::retranslate() {
-    beginResetModel();
-    rebuild();
-    endResetModel();
+    update_folder_details(*m_root);
+    update_search_text(*m_root);
+    if (const auto columns = columnCount(); columns > 0) {
+        emit headerDataChanged(Qt::Horizontal, 0, columns - 1);
+    }
+    emit_retranslated_data();
 }
 
 bool EntryTableModel::has_custom_columns() const {
@@ -713,6 +716,23 @@ void EntryTableModel::update_search_text(Node& node) {
     node.search_text = parts.join(QLatin1Char(' '));
     for (const auto& child : node.children) {
         update_search_text(*child);
+    }
+}
+
+void EntryTableModel::emit_retranslated_data(const QModelIndex& parent) {
+    const auto rows = rowCount(parent);
+    const auto columns = columnCount(parent);
+    if (rows <= 0 || columns <= 0) {
+        return;
+    }
+
+    emit dataChanged(
+        index(0, 0, parent),
+        index(rows - 1, columns - 1, parent),
+        {Qt::DisplayRole, Qt::ToolTipRole, FullPathRole, SortRole}
+    );
+    for (int row = 0; row < rows; ++row) {
+        emit_retranslated_data(index(row, 0, parent));
     }
 }
 

@@ -4,8 +4,8 @@
 #define CRICODECS_VERSION "unknown"
 #endif
 
-#ifndef CRICODECS_GIT_HASH
-#define CRICODECS_GIT_HASH "unknown"
+#ifndef CRICODECS_SOURCE_REVISION
+#define CRICODECS_SOURCE_REVISION "unknown"
 #endif
 
 namespace cricodecs::cli::detail {
@@ -239,7 +239,7 @@ template <typename T>
 }
 
 [[nodiscard]] std::string build_identity() {
-    return std::string(CRICODECS_VERSION) + " (" + CRICODECS_GIT_HASH + ")";
+    return std::string(CRICODECS_VERSION) + " (rev " + CRICODECS_SOURCE_REVISION + ")";
 }
 
 [[nodiscard]] bool has_magic_at(std::span<const uint8_t> bytes, size_t offset, const io::FourCC& magic) {

@@ -52,6 +52,10 @@
 #include <unordered_map>
 #include <utility>
 
+#ifndef CRISTUDIO_SOURCE_REVISION
+#define CRISTUDIO_SOURCE_REVISION "unknown"
+#endif
+
 namespace cristudio {
 
 void SeekSlider::mousePressEvent(QMouseEvent* event) {
@@ -919,7 +923,8 @@ QToolButton* make_rail_action_button(const QIcon& icon, const QString& tooltip, 
 
 
 QString app_title() {
-    return QCoreApplication::translate("MainWindow.UiHelpers", "CriStudio %1").arg(QStringLiteral(CRISTUDIO_VERSION));
+    return QStringLiteral("CriStudio %1 (rev %2)")
+        .arg(QStringLiteral(CRISTUDIO_VERSION), QStringLiteral(CRISTUDIO_SOURCE_REVISION));
 }
 
 

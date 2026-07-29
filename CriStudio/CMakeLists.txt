@@ -1,7 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent LinguistTools)
 include(GNUInstallDirs)
 
-set(CRISTUDIO_VERSION "1.1.0" CACHE STRING "CriStudio release version")
+set(CRISTUDIO_VERSION "1.1.1" CACHE STRING "CriStudio release version")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" cristudio_numeric_version "${CRISTUDIO_VERSION}")
 if(NOT cristudio_numeric_version)
     message(FATAL_ERROR "CRISTUDIO_VERSION must begin with major.minor.patch")
@@ -208,7 +208,14 @@ qt_add_translations(
 )
 
 target_link_libraries(CriStudio PRIVATE CriCodecs Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets Qt6::Concurrent)
-target_compile_definitions(CriStudio PRIVATE CRISTUDIO_VERSION="${CRISTUDIO_VERSION}")
+get_target_property(CRISTUDIO_SOURCE_REVISION CriCodecs CRICODECS_SOURCE_REVISION)
+if(NOT CRISTUDIO_SOURCE_REVISION)
+    set(CRISTUDIO_SOURCE_REVISION "unknown")
+endif()
+target_compile_definitions(CriStudio PRIVATE
+    CRISTUDIO_VERSION="${CRISTUDIO_VERSION}"
+    CRISTUDIO_SOURCE_REVISION="${CRISTUDIO_SOURCE_REVISION}"
+)
 if(WIN32)
     file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/cristudio.ico" CRISTUDIO_WINDOWS_ICON)
     set(CRISTUDIO_WINDOWS_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/cristudio.rc")

@@ -79,6 +79,7 @@ private:
     void compress_folder_paths(Node& node);
     void update_folder_details(Node& node);
     void update_search_text(Node& node);
+    void emit_retranslated_data(const QModelIndex& parent = {});
     [[nodiscard]] bool table_mode() const;
 
     std::unique_ptr<Node> m_root;
