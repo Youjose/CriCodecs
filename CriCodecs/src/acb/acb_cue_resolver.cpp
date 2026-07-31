@@ -6,10 +6,12 @@
 #include "acb_cue_resolver.hpp"
 
 #include <algorithm>
+#include <iomanip>
 #include <map>
 #include <ranges>
 #include <set>
 #include <span>
+#include <sstream>
 #include <tuple>
 #include <utility>
 
@@ -18,6 +20,7 @@ namespace cricodecs::acb {
 namespace {
 
 using SelectorState = std::map<std::string, std::string, std::less<>>;
+using CueSelectorMap = std::map<std::string, std::set<std::string>>;
 
 struct ReferenceKey {
     uint16_t type = 0;
@@ -525,34 +528,71 @@ private:
     std::map<std::string, size_t> m_signature_to_plan;
 };
 
-} // namespace
-
-std::expected<AcbCueSheetResolution, std::string> resolve_cue_sheet_playback(
-    const AcbCueGraph& graph,
-    const AcbCueSheetResolveOptions& options) {
-    return CueResolver(graph, options).resolve();
+[[nodiscard]] std::string safe_cue_filename_component(std::string_view text) {
+    std::string result;
+    result.reserve(text.size());
+    for (const unsigned char ch : text) {
+        if (ch < 0x20 || ch == '/' || ch == '\\' || ch == ':' || ch == '*' ||
+            ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|') {
+            result.push_back('_');
+        } else {
+            result.push_back(static_cast<char>(ch));
+        }
+    }
+    while (!result.empty() && (result.back() == ' ' || result.back() == '.')) {
+        result.pop_back();
+    }
+    return result.empty() ? "cue" : result;
 }
 
-std::expected<AcbCueSheetResolution, std::string> resolve_cue_sheet_playback(
-    const AcbContainer& acb,
-    const AcbCueSheetResolveOptions& options) {
-    auto resolved = resolve_cue_sheet_playback(acb.cue_graph(), options);
-    if (!resolved) {
-        return std::unexpected(resolved.error());
+[[nodiscard]] CueSelectorMap canonical_cue_selectors(
+    const AcbResolvedCuePlan& resolved) {
+    CueSelectorMap selectors;
+    const bool has_terminal_source = std::ranges::any_of(
+        resolved.sources,
+        [&](const auto& source) {
+            return source.source_cue_index == resolved.plan.cue_index;
+        });
+    for (const auto& source : resolved.sources) {
+        if (has_terminal_source &&
+            source.source_cue_index != resolved.plan.cue_index) {
+            continue;
+        }
+        for (const auto& selector : source.selector_values) {
+            if (!selector.name.empty() && !selector.value.empty()) {
+                selectors[selector.name].insert(selector.value);
+            }
+        }
+        for (const auto& path : source.paths) {
+            for (const auto& choice : path) {
+                if (!choice.selector_name.empty() &&
+                    !choice.selector_value.empty()) {
+                    selectors[choice.selector_name].insert(
+                        choice.selector_value);
+                }
+            }
+        }
     }
+    return selectors;
+}
+
+[[nodiscard]] std::expected<AcbCueSheetResolution, std::string>
+resolve_awb_provenance(
+    const AcbContainer& acb,
+    AcbCueSheetResolution resolved) {
     if (!acb.has_embedded_awb() && !acb.companion_awb_path()) {
         return resolved;
     }
 
     std::map<uint32_t, WaveformAwbEntry> entries;
     std::set<uint32_t> attempted;
-    for (auto& resolved_plan : resolved->plans) {
+    for (auto& resolved_plan : resolved.plans) {
         for (auto& block : resolved_plan.plan.blocks) {
             for (auto& clip : block.clips) {
                 if (attempted.insert(clip.waveform_index).second) {
                     auto entry = acb.waveform_awb_entry(clip.waveform_index);
                     if (!entry) {
-                        resolved->diagnostics.push_back(
+                        resolved.diagnostics.push_back(
                             "waveform " + std::to_string(clip.waveform_index) +
                             " AWB provenance is unresolved: " + entry.error());
                     } else {
@@ -574,11 +614,181 @@ std::expected<AcbCueSheetResolution, std::string> resolve_cue_sheet_playback(
     return resolved;
 }
 
+} // namespace
+
+std::expected<AcbCueSheetResolution, std::string> resolve_cue_sheet_playback(
+    const AcbCueGraph& graph,
+    const AcbCueSheetResolveOptions& options) {
+    return CueResolver(graph, options).resolve();
+}
+
+std::expected<AcbCueSheetResolution, std::string> resolve_cue_sheet_playback(
+    const AcbContainer& acb,
+    const AcbCueSheetResolveOptions& options) {
+    auto resolved = resolve_cue_sheet_playback(acb.cue_graph(), options);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    return resolve_awb_provenance(acb, std::move(*resolved));
+}
+
 std::expected<AcbCueSheetResolution, std::string> resolve_cue_playback_paths(
     const AcbCueGraph& graph,
     uint32_t cue_index,
     const AcbCueSheetResolveOptions& options) {
     return CueResolver(graph, options).resolve_one(cue_index);
+}
+
+std::expected<AcbCueSheetResolution, std::string> resolve_cue_playback_paths(
+    const AcbContainer& acb,
+    uint32_t cue_index,
+    const AcbCueSheetResolveOptions& options) {
+    auto resolved =
+        resolve_cue_playback_paths(acb.cue_graph(), cue_index, options);
+    if (!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    return resolve_awb_provenance(acb, std::move(*resolved));
+}
+
+std::vector<std::string> cue_plan_filenames(
+    const AcbCueSheetResolution& resolution,
+    bool include_index_prefix) {
+    std::vector<std::string> bases;
+    std::vector<CueSelectorMap> selectors;
+    bases.reserve(resolution.plans.size());
+    selectors.reserve(resolution.plans.size());
+
+    std::map<std::string, std::vector<size_t>> groups;
+    for (size_t index = 0; index < resolution.plans.size(); ++index) {
+        const auto& resolved = resolution.plans[index];
+        auto base = safe_cue_filename_component(resolved.plan.cue_name);
+        groups[base].push_back(index);
+        bases.push_back(std::move(base));
+        selectors.push_back(canonical_cue_selectors(resolved));
+    }
+
+    std::vector<std::string> suffixes(resolution.plans.size());
+    for (const auto& group : groups | std::views::values) {
+        if (group.size() < 2) {
+            continue;
+        }
+
+        std::set<std::string> candidates;
+        for (const auto plan_index : group) {
+            for (const auto& [name, values] : selectors[plan_index]) {
+                if (values.size() == 1) {
+                    candidates.insert(name);
+                }
+            }
+        }
+
+        std::set<std::pair<size_t, size_t>> unresolved_pairs;
+        for (size_t lhs = 0; lhs < group.size(); ++lhs) {
+            for (size_t rhs = lhs + 1; rhs < group.size(); ++rhs) {
+                unresolved_pairs.emplace(lhs, rhs);
+            }
+        }
+
+        std::vector<std::string> selected;
+        while (!unresolved_pairs.empty()) {
+            size_t best_score = 0;
+            auto best = candidates.end();
+            for (auto candidate = candidates.begin();
+                 candidate != candidates.end();
+                 ++candidate) {
+                size_t score = 0;
+                for (const auto& [lhs, rhs] : unresolved_pairs) {
+                    const auto lhs_values =
+                        selectors[group[lhs]].find(*candidate);
+                    const auto rhs_values =
+                        selectors[group[rhs]].find(*candidate);
+                    if (lhs_values != selectors[group[lhs]].end() &&
+                        rhs_values != selectors[group[rhs]].end() &&
+                        lhs_values->second.size() == 1 &&
+                        rhs_values->second.size() == 1 &&
+                        *lhs_values->second.begin() !=
+                            *rhs_values->second.begin()) {
+                        ++score;
+                    }
+                }
+                if (score > best_score) {
+                    best_score = score;
+                    best = candidate;
+                }
+            }
+            if (best == candidates.end() || best_score == 0) {
+                break;
+            }
+
+            selected.push_back(*best);
+            std::erase_if(
+                unresolved_pairs,
+                [&](const auto& pair) {
+                    const auto& [lhs, rhs] = pair;
+                    const auto lhs_values =
+                        selectors[group[lhs]].find(*best);
+                    const auto rhs_values =
+                        selectors[group[rhs]].find(*best);
+                    return
+                        lhs_values != selectors[group[lhs]].end() &&
+                        rhs_values != selectors[group[rhs]].end() &&
+                        lhs_values->second.size() == 1 &&
+                        rhs_values->second.size() == 1 &&
+                        *lhs_values->second.begin() !=
+                            *rhs_values->second.begin();
+                });
+            candidates.erase(best);
+        }
+
+        for (size_t ordinal = 0; ordinal < group.size(); ++ordinal) {
+            const auto plan_index = group[ordinal];
+            for (const auto& selector_name : selected) {
+                const auto found = selectors[plan_index].find(selector_name);
+                if (found == selectors[plan_index].end() ||
+                    found->second.size() != 1) {
+                    continue;
+                }
+                suffixes[plan_index] += "__";
+                suffixes[plan_index] +=
+                    safe_cue_filename_component(selector_name);
+                suffixes[plan_index] += '-';
+                suffixes[plan_index] +=
+                    safe_cue_filename_component(*found->second.begin());
+            }
+            if (!unresolved_pairs.empty() || suffixes[plan_index].empty()) {
+                suffixes[plan_index] += "__variant-";
+                suffixes[plan_index] += std::to_string(ordinal + 1);
+            }
+        }
+
+        std::map<std::string, size_t> sanitized_suffix_counts;
+        for (const auto plan_index : group) {
+            ++sanitized_suffix_counts[suffixes[plan_index]];
+        }
+        for (size_t ordinal = 0; ordinal < group.size(); ++ordinal) {
+            const auto plan_index = group[ordinal];
+            if (sanitized_suffix_counts[suffixes[plan_index]] > 1) {
+                suffixes[plan_index] += "__variant-";
+                suffixes[plan_index] += std::to_string(ordinal + 1);
+            }
+        }
+    }
+
+    const size_t width = std::max<size_t>(
+        3, std::to_string(resolution.plans.size()).size());
+    std::vector<std::string> filenames;
+    filenames.reserve(resolution.plans.size());
+    for (size_t index = 0; index < resolution.plans.size(); ++index) {
+        std::ostringstream name;
+        if (include_index_prefix) {
+            name << std::setw(static_cast<int>(width)) << std::setfill('0')
+                 << index + 1 << '_';
+        }
+        name << bases[index] << suffixes[index] << ".wav";
+        filenames.push_back(std::move(name).str());
+    }
+    return filenames;
 }
 
 } // namespace cricodecs::acb

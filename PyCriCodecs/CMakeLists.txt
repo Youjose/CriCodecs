@@ -34,6 +34,7 @@ nanobind_add_module(cricodecs
     src/aix_bindings.cpp
     src/acx_bindings.cpp
     src/acb_bindings.cpp
+    src/acb_cue_bindings.cpp
     src/hca_bindings.cpp
     src/awb_bindings.cpp
     src/afs_bindings.cpp

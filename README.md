@@ -211,14 +211,27 @@ new_archive.add_bytes(b"hello", "text/readme.txt")
 Path("output.cpk").write_bytes(new_archive.save_bytes())
 ```
 
-### ACB/AWB And USM
+### ACB Cue Graphs, AWB, And USM
 
 ```python
 from cricodecs import acb, usm
 
 cue_sheet = acb.load("sound.acb")
 print(cue_sheet.info())
-cue_sheet.extract("sound")
+print(cue_sheet.graph)
+
+cue_index = 0
+print(cue_sheet.selector_options(cue_index))
+resolution = cue_sheet.resolve_cue(cue_index)
+print(resolution.filenames())
+
+# Choose one inspected static result; named selectors can also be passed to
+# cue_sheet.cue_plan(...) when the ACB provides them.
+plan = resolution.plans[0].plan
+plan.export(cue_sheet, "cue.wav")
+
+# Flat waveform extraction remains available separately.
+cue_sheet.extract("sound_waveforms")
 
 movie = usm.load("movie.usm")
 print(movie.info())

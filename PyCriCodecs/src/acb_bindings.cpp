@@ -2,11 +2,15 @@
 
 #include <filesystem>
 #include <map>
+#include <set>
 
 #include <nanobind/stl/map.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/vector.h>
 
 #include "../../CriCodecs/src/acb/acb_container.hpp"
 #include "../../CriCodecs/src/acb/acb_cue_renderer.hpp"
+#include "../../CriCodecs/src/acb/acb_cue_resolver.hpp"
 #include "../../CriCodecs/src/wav/wav_container.hpp"
 
 namespace cricodecs::python {
@@ -87,62 +91,129 @@ namespace {
     return options;
 }
 
-[[nodiscard]] nb::object cue_plan_object(
-    const cricodecs::acb::AcbCuePlaybackPlan& plan) {
-    nb::object result = simple_namespace();
-    result.attr("cue_index") = plan.cue_index;
-    result.attr("cue_id") = plan.cue_id;
-    result.attr("cue_name") = plan.cue_name;
-    nb::list blocks;
-    for (const auto& block : plan.blocks) {
-        nb::object block_object = simple_namespace();
-        block_object.attr("block_position") = block.block_position
-            ? nb::cast(*block.block_position)
-            : nb::none();
-        block_object.attr("block_index") = block.block_index
-            ? nb::cast(*block.block_index)
-            : nb::none();
-        block_object.attr("name") = block.name;
-        block_object.attr("duration_us") = block.duration_us;
-        block_object.attr("authored_loop_count") = block.authored_loop_count;
-        block_object.attr("render_loop_count") = block.render_loop_count;
-        block_object.attr("forced_advance") = block.forced_advance;
-        block_object.attr("skipped_empty_hold") = block.skipped_empty_hold;
-        nb::list clips;
-        for (const auto& clip : block.clips) {
-            nb::object clip_object = simple_namespace();
-            clip_object.attr("waveform_index") = clip.waveform_index;
-            clip_object.attr("start_time_us") = clip.start_time_us;
-            clip_object.attr("awb_wave_id") = clip.awb_wave_id
-                ? nb::cast(*clip.awb_wave_id)
-                : nb::none();
-            clip_object.attr("awb_stream_index") = clip.awb_stream_index
-                ? nb::cast(*clip.awb_stream_index)
-                : nb::none();
-            clip_object.attr("awb_bank") = clip.awb_bank
-                ? nb::cast(
-                      *clip.awb_bank ==
-                              cricodecs::acb::AcbCueAwbBank::stream
-                          ? "stream"
-                          : "memory")
-                : nb::none();
-            clips.append(clip_object);
+[[nodiscard]] std::vector<cricodecs::acb::AcbCueSelectorValue>
+selector_values_from_object(const nb::object& selectors) {
+    if (selectors.is_none()) {
+        return {};
+    }
+    const auto values =
+        nb::cast<std::map<std::string, std::string>>(selectors);
+    std::vector<cricodecs::acb::AcbCueSelectorValue> result;
+    result.reserve(values.size());
+    for (const auto& [name, value] : values) {
+        result.push_back({.name = name, .value = value});
+    }
+    return result;
+}
+
+[[nodiscard]] cricodecs::acb::AcbCueSheetResolveOptions resolve_options(
+    uint32_t loop_count,
+    bool advance_after_infinite,
+    bool include_empty_holds,
+    const nb::object& block_loop_counts,
+    const nb::object& selectors,
+    uint64_t max_paths,
+    uint32_t max_action_depth) {
+    return {
+        .enumeration = {
+            .render = cue_options(
+                loop_count,
+                advance_after_infinite,
+                0,
+                nb::none(),
+                include_empty_holds,
+                block_loop_counts),
+            .max_paths = max_paths,
+        },
+        .selector_values = selector_values_from_object(selectors),
+        .max_action_depth = max_action_depth,
+    };
+}
+
+[[nodiscard]] uint32_t cue_index_from_id(
+    const cricodecs::acb::AcbContainer& self,
+    uint32_t cue_id) {
+    const auto* cue = self.cue_graph().cue_by_id(cue_id);
+    if (cue == nullptr) {
+        raise_value_error("ACB cue ID was not found");
+    }
+    return static_cast<uint32_t>(cue - self.cue_graph().cues().data());
+}
+
+[[nodiscard]] cricodecs::acb::AcbCuePlaybackPlan selected_cue_plan(
+    const cricodecs::acb::AcbContainer& self,
+    uint32_t cue_index,
+    const cricodecs::acb::AcbCueSheetResolveOptions& options,
+    const nb::object& variant) {
+    auto resolution = unwrap_expected(
+        cricodecs::acb::resolve_cue_playback_paths(self, cue_index, options));
+    if (resolution.plans.empty()) {
+        std::string message =
+            "ACB cue has no statically playable plan";
+        if (!resolution.diagnostics.empty()) {
+            message += ": ";
+            message += resolution.diagnostics.front();
         }
-        block_object.attr("clips") = clips;
-        blocks.append(block_object);
+        raise_value_error(message);
     }
-    result.attr("blocks") = blocks;
-    nb::list diagnostics;
-    for (const auto& diagnostic : plan.diagnostics) {
-        diagnostics.append(diagnostic);
+
+    if (variant.is_none()) {
+        if (resolution.plans.size() != 1) {
+            raise_value_error(
+                "ACB cue resolves to " +
+                std::to_string(resolution.plans.size()) +
+                " distinct plans; pass selectors={...} or variant=N");
+        }
+        return std::move(resolution.plans.front().plan);
     }
-    result.attr("diagnostics") = diagnostics;
+
+    const auto selected = nb::cast<size_t>(variant);
+    if (selected >= resolution.plans.size()) {
+        raise_value_error(
+            "ACB cue plan variant is out of range (available: 0.." +
+            std::to_string(resolution.plans.size() - 1) + ")");
+    }
+    return std::move(resolution.plans[selected].plan);
+}
+
+[[nodiscard]] nb::dict selector_options_for_resolution(
+    const cricodecs::acb::AcbCueSheetResolution& resolution) {
+    std::map<std::string, std::set<std::string>> values;
+    for (const auto& resolved : resolution.plans) {
+        for (const auto& source : resolved.sources) {
+            for (const auto& selector : source.selector_values) {
+                if (!selector.name.empty() && !selector.value.empty()) {
+                    values[selector.name].insert(selector.value);
+                }
+            }
+            for (const auto& path : source.paths) {
+                for (const auto& choice : path) {
+                    if (!choice.selector_name.empty() &&
+                        !choice.selector_value.empty()) {
+                        values[choice.selector_name].insert(
+                            choice.selector_value);
+                    }
+                }
+            }
+        }
+    }
+
+    nb::dict result;
+    for (const auto& [name, options] : values) {
+        nb::list option_list;
+        for (const auto& option : options) {
+            option_list.append(option);
+        }
+        result[nb::str(name.c_str())] = option_list;
+    }
     return result;
 }
 
 } // namespace
 
 void bind_acb_module(nb::module_& module) {
+    bind_acb_cue_types(module);
+
     nb::class_<cricodecs::acb::WaveformAwbEntry>(module, "WaveformAwbEntry")
         .def_ro("waveform_index", &cricodecs::acb::WaveformAwbEntry::waveform_index)
         .def_ro("wave_id", &cricodecs::acb::WaveformAwbEntry::wave_id)
@@ -179,6 +250,10 @@ void bind_acb_module(nb::module_& module) {
         .def_prop_ro("cue_count", [](const cricodecs::acb::AcbContainer& self) {
             return self.cue_graph().cues().size();
         })
+        .def_prop_ro(
+            "graph",
+            &cricodecs::acb::AcbContainer::cue_graph,
+            nb::rv_policy::reference_internal)
         .def_prop_ro("has_embedded_awb", &cricodecs::acb::AcbContainer::has_embedded_awb)
         .def_prop_ro("companion_awb_path", [](const cricodecs::acb::AcbContainer& self) -> nb::object {
             const auto path = self.companion_awb_path();
@@ -309,30 +384,193 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("include_index_prefix") = true
         )
         .def(
+            "selector_options",
+            [](const cricodecs::acb::AcbContainer& self,
+               const nb::object& index,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                const auto options = resolve_options(
+                    0,
+                    true,
+                    true,
+                    nb::none(),
+                    nb::none(),
+                    max_paths,
+                    max_action_depth);
+                if (index.is_none()) {
+                    return selector_options_for_resolution(unwrap_expected(
+                        cricodecs::acb::resolve_cue_sheet_playback(
+                            self, options)));
+                }
+                return selector_options_for_resolution(unwrap_expected(
+                    cricodecs::acb::resolve_cue_playback_paths(
+                        self, nb::cast<uint32_t>(index), options)));
+            },
+            nb::arg("index") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64)
+        .def(
+            "resolve_cue",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               const nb::object& selectors,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                return unwrap_expected(
+                    cricodecs::acb::resolve_cue_playback_paths(
+                        self,
+                        index,
+                        resolve_options(
+                            loop_count,
+                            advance_after_infinite,
+                            include_empty_holds,
+                            block_loop_counts,
+                            selectors,
+                            max_paths,
+                            max_action_depth)));
+            },
+            nb::arg("index"),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64)
+        .def(
+            "resolve_cue_by_id",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t cue_id,
+               const nb::object& selectors,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                return unwrap_expected(
+                    cricodecs::acb::resolve_cue_playback_paths(
+                        self,
+                        cue_index_from_id(self, cue_id),
+                        resolve_options(
+                            loop_count,
+                            advance_after_infinite,
+                            include_empty_holds,
+                            block_loop_counts,
+                            selectors,
+                            max_paths,
+                            max_action_depth)));
+            },
+            nb::arg("cue_id"),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64)
+        .def(
+            "resolve_cues",
+            [](const cricodecs::acb::AcbContainer& self,
+               const nb::object& selectors,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                return unwrap_expected(
+                    cricodecs::acb::resolve_cue_sheet_playback(
+                        self,
+                        resolve_options(
+                            loop_count,
+                            advance_after_infinite,
+                            include_empty_holds,
+                            block_loop_counts,
+                            selectors,
+                            max_paths,
+                            max_action_depth)));
+            },
+            nb::arg("selectors") = nb::none(),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64)
+        .def(
             "cue_plan",
             [](const cricodecs::acb::AcbContainer& self,
                uint32_t index,
                uint32_t loop_count,
                bool advance_after_infinite,
                bool include_empty_holds,
-               const nb::object& block_loop_counts) {
-                auto plan = unwrap_expected(cricodecs::acb::plan_cue_playback(
+               const nb::object& block_loop_counts,
+               const nb::object& selectors,
+               const nb::object& variant,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                return selected_cue_plan(
                     self,
                     index,
-                    cue_options(
+                    resolve_options(
                         loop_count,
                         advance_after_infinite,
-                        0,
-                        nb::none(),
                         include_empty_holds,
-                        block_loop_counts)));
-                return cue_plan_object(plan);
+                        block_loop_counts,
+                        selectors,
+                        max_paths,
+                        max_action_depth),
+                    variant);
             },
             nb::arg("index"),
             nb::arg("loop_count") = 0,
             nb::arg("advance_after_infinite") = true,
             nb::arg("include_empty_holds") = true,
-            nb::arg("block_loop_counts") = nb::none()
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("variant") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64
+        )
+        .def(
+            "cue_plan_by_id",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t cue_id,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts,
+               const nb::object& selectors,
+               const nb::object& variant,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                return selected_cue_plan(
+                    self,
+                    cue_index_from_id(self, cue_id),
+                    resolve_options(
+                        loop_count,
+                        advance_after_infinite,
+                        include_empty_holds,
+                        block_loop_counts,
+                        selectors,
+                        max_paths,
+                        max_action_depth),
+                    variant);
+            },
+            nb::arg("cue_id"),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("variant") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64
         )
         .def(
             "cue_wav_bytes",
@@ -343,17 +581,34 @@ void bind_acb_module(nb::module_& module) {
                uint64_t hca_keycode,
                const nb::object& hca_subkey,
                bool include_empty_holds,
-               const nb::object& block_loop_counts) {
-                auto rendered = unwrap_expected(cricodecs::acb::render_cue(
+               const nb::object& block_loop_counts,
+               const nb::object& selectors,
+               const nb::object& variant,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                auto plan = selected_cue_plan(
                     self,
                     index,
-                    cue_options(
+                    resolve_options(
                         loop_count,
                         advance_after_infinite,
-                        hca_keycode,
-                        hca_subkey,
                         include_empty_holds,
-                        block_loop_counts)));
+                        block_loop_counts,
+                        selectors,
+                        max_paths,
+                        max_action_depth),
+                    variant);
+                auto rendered = unwrap_expected(
+                    cricodecs::acb::render_cue_plan(
+                        self,
+                        std::move(plan),
+                        cue_options(
+                            loop_count,
+                            advance_after_infinite,
+                            hca_keycode,
+                            hca_subkey,
+                            include_empty_holds,
+                            block_loop_counts)));
                 auto wav = unwrap_expected(cricodecs::wav::WavContainer::build_bytes(
                     rendered.pcm,
                     rendered.sample_rate,
@@ -366,7 +621,11 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("hca_keycode") = 0,
             nb::arg("hca_subkey") = nb::none(),
             nb::arg("include_empty_holds") = true,
-            nb::arg("block_loop_counts") = nb::none()
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("variant") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64
         )
         .def(
             "extract_cue",
@@ -378,10 +637,26 @@ void bind_acb_module(nb::module_& module) {
                uint64_t hca_keycode,
                const nb::object& hca_subkey,
                bool include_empty_holds,
-               const nb::object& block_loop_counts) {
-                unwrap_expected(cricodecs::acb::extract_cue(
+               const nb::object& block_loop_counts,
+               const nb::object& selectors,
+               const nb::object& variant,
+               uint64_t max_paths,
+               uint32_t max_action_depth) {
+                auto plan = selected_cue_plan(
                     self,
                     index,
+                    resolve_options(
+                        loop_count,
+                        advance_after_infinite,
+                        include_empty_holds,
+                        block_loop_counts,
+                        selectors,
+                        max_paths,
+                        max_action_depth),
+                    variant);
+                unwrap_expected(cricodecs::acb::extract_cue_plan(
+                    self,
+                    std::move(plan),
                     require_python_path(output_path, "output_path"),
                     cue_options(
                         loop_count,
@@ -398,7 +673,11 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("hca_keycode") = 0,
             nb::arg("hca_subkey") = nb::none(),
             nb::arg("include_empty_holds") = true,
-            nb::arg("block_loop_counts") = nb::none()
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("variant") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64
         )
         .def(
             "extract_cues",
@@ -409,7 +688,11 @@ void bind_acb_module(nb::module_& module) {
                uint64_t hca_keycode,
                const nb::object& hca_subkey,
                bool include_empty_holds,
-               const nb::object& block_loop_counts) {
+               const nb::object& block_loop_counts,
+               const nb::object& selectors,
+               uint64_t max_paths,
+               uint32_t max_action_depth,
+               bool include_index_prefix) {
                 const auto root = require_python_path(output_dir, "output_dir");
                 std::error_code filesystem_error;
                 std::filesystem::create_directories(root, filesystem_error);
@@ -418,26 +701,34 @@ void bind_acb_module(nb::module_& module) {
                         "ACB cue extract failed: could not create output directory: " +
                         filesystem_error.message());
                 }
-                const auto options = cue_options(
+                const auto audio_options = cue_options(
                     loop_count,
                     advance_after_infinite,
                     hca_keycode,
                     hca_subkey,
                     include_empty_holds,
                     block_loop_counts);
+                auto resolution = unwrap_expected(
+                    cricodecs::acb::resolve_cue_sheet_playback(
+                        self,
+                        resolve_options(
+                            loop_count,
+                            advance_after_infinite,
+                            include_empty_holds,
+                            block_loop_counts,
+                            selectors,
+                            max_paths,
+                            max_action_depth)));
+                const auto filenames = cricodecs::acb::cue_plan_filenames(
+                    resolution, include_index_prefix);
                 nb::list paths;
-                for (uint32_t cue_index = 0;
-                     cue_index < self.cue_graph().cues().size();
-                     ++cue_index) {
-                    if (!cricodecs::acb::plan_cue_playback(
-                            self, cue_index, options)) {
-                        continue;
-                    }
-                    const auto path =
-                        root / cricodecs::acb::cue_filename(
-                            self, cue_index, true);
-                    unwrap_expected(cricodecs::acb::extract_cue(
-                        self, cue_index, path, options));
+                for (size_t index = 0; index < resolution.plans.size(); ++index) {
+                    const auto path = root / filenames[index];
+                    unwrap_expected(cricodecs::acb::extract_cue_plan(
+                        self,
+                        std::move(resolution.plans[index].plan),
+                        path,
+                        audio_options));
                     paths.append(path.generic_string());
                 }
                 return paths;
@@ -448,7 +739,11 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("hca_keycode") = 0,
             nb::arg("hca_subkey") = nb::none(),
             nb::arg("include_empty_holds") = true,
-            nb::arg("block_loop_counts") = nb::none()
+            nb::arg("block_loop_counts") = nb::none(),
+            nb::arg("selectors") = nb::none(),
+            nb::arg("max_paths") = 65'536,
+            nb::arg("max_action_depth") = 64,
+            nb::arg("include_index_prefix") = true
         )
         .def(
             "extract_waveform_data",

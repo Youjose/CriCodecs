@@ -31,6 +31,7 @@ void bind_aax_module(nb::module_& module);
 void bind_aix_module(nb::module_& module);
 void bind_acx_module(nb::module_& module);
 void bind_acb_module(nb::module_& module);
+void bind_acb_cue_types(nb::module_& module);
 void bind_hca_module(nb::module_& module);
 void bind_awb_module(nb::module_& module);
 void bind_afs_module(nb::module_& module);

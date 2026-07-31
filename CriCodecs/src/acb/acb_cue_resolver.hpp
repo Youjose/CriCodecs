@@ -68,4 +68,20 @@ resolve_cue_playback_paths(
     uint32_t cue_index,
     const AcbCueSheetResolveOptions& options = {});
 
+[[nodiscard]] std::expected<AcbCueSheetResolution, std::string>
+resolve_cue_playback_paths(
+    const AcbContainer& acb,
+    uint32_t cue_index,
+    const AcbCueSheetResolveOptions& options = {});
+
+/**
+ * Builds stable, filesystem-safe WAV names for a resolved plan set.
+ *
+ * Selector labels are added when one authored cue name resolves to multiple
+ * distinct plans. A variant ordinal remains as the collision fallback.
+ */
+[[nodiscard]] std::vector<std::string> cue_plan_filenames(
+    const AcbCueSheetResolution& resolution,
+    bool include_index_prefix = true);
+
 } // namespace cricodecs::acb

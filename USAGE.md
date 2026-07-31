@@ -41,6 +41,63 @@ cricodecs archive.cpk --index 2 --index 7 -o selected
 Output templates may use `?i` for an entry index, `?e` for an entry filename,
 and `?s` for the input filename.
 
+### Inspect and render ACB cues
+
+ACB files have two useful extraction views:
+
+- the default flat view extracts each ACB `WaveformTable` row with its
+  preferred cue-derived name (several rows may reuse one physical AWB asset);
+- `--cue` resolves authored sequences, selector alternatives, action-start
+  chains, blocks, scheduled clips, and static loop policy into unique playable
+  cue plans.
+
+```sh
+# Flat waveform view.
+cricodecs --list Music.acb
+cricodecs Music.acb -o Music_waveforms
+
+# Resolved cue-plan view.
+cricodecs --cue --list Music.acb
+
+# Show blocks, clips, timings, AWB IDs, and physical AWB stream indexes for
+# zero-based resolved-plan index 3.
+cricodecs --cue --list --index 3 Music.acb
+
+# Render all unique static plans, or only plan index 3.
+cricodecs --cue Music.acb -o Music_cues
+cricodecs --cue --index 3 Music.acb -o Music_cues
+```
+
+The number before each `--cue --list` entry is its zero-based resolved-plan
+index. The numeric filename prefix is one-based and exists only to keep bulk
+output ordered. Equivalent plans reached through several cue names/actions
+share one output; distinct plans with the same terminal cue name use selector
+labels such as `__Music_GameState-Scene`, with `__variant-N` as the fallback
+when authored choices have no usable label.
+
+Infinite ACB blocks have no natural duration when exported outside the game.
+The default renders the initial play with zero repeats and advances. Empty
+infinite holds are included once but are not affected by the global loop count:
+
+```sh
+# Add two repeats to every audio-bearing infinite block.
+cricodecs --cue --cue-loop-count 2 Music.acb -o Music_cues
+
+# Override one zero-based block position on selected plan 3.
+cricodecs --cue --index 3 --cue-block-loop-count 3=4 \
+  Music.acb -o Music_cues
+
+# Stop after the first rendered infinite block.
+cricodecs --cue --cue-stop-at-loop Music.acb -o Music_cues
+
+# Omit waveform-less infinite holding blocks.
+cricodecs --cue --cue-skip-empty-holds Music.acb -o Music_cues
+```
+
+This is a static projection, not a full CRI Atom runtime. Live game-variable
+changes, event-driven block transitions, multi-ACB outside links, gains,
+envelopes, transition curves, and resampling are not currently emulated.
+
 ### Encode audio
 
 WAV input can be encoded as HCA, ADX, or AHX:
@@ -234,6 +291,159 @@ Path("output.cpk").write_bytes(created.save_bytes())
 Loaded mutable container objects preserve inspectable state. Prefer their
 `save_bytes()` or file-output methods after mutation rather than reconstructing
 private table structures yourself.
+
+### Inspect and render ACB cue graphs
+
+An `acb.Acb` keeps both the flat waveform view and the authored cue graph.
+Graph indexes are zero-based table-row indexes; an authored cue ID is a
+different value and should be converted explicitly:
+
+```python
+from cricodecs import acb
+
+bank = acb.load("Music.acb")
+graph = bank.graph
+
+print(bank.waveform_count)
+print(graph.cue_count, graph.waveform_count)
+print(graph.sequences[0])
+print(graph.track_events[0])
+
+cue_index = next(
+    row.cue_index
+    for row in graph.cue_names
+    if row.name == "Music_Chapter01_Village_Scene"
+)
+cue_id = graph.cue(cue_index).cue_id
+assert graph.cue_index_by_id(cue_id) == cue_index
+```
+
+The graph exposes cues, names, sequences, tracks, action tracks, synths,
+block sequences, blocks, waveforms, strings, outside links, command streams,
+diagnostics, and per-cue node/edge assemblies:
+
+```python
+assembly = graph.assemble_cue(cue_index)
+print(assembly.nodes)
+print(assembly.edges)
+print(assembly.unresolved)
+```
+
+Named selector alternatives can be inspected before choosing a plan:
+
+```python
+print(bank.selector_options(cue_index))
+# {'Music_GameState': ['Battle', 'Scene']}
+
+resolution = bank.resolve_cue(cue_index)
+print(resolution.plan_count)       # 2
+print(resolution.filenames())
+
+for resolved in resolution.plans:
+    print(resolved.plan)
+    for source in resolved.sources:
+        print(source.source_cue_name)
+        print(source.selector_values)
+        print(source.action_cue_chain)
+        print(source.paths)
+```
+
+`cue_plan()` returns a plan directly only when the selected cue resolves to one
+unique audio result. Supply named selectors when available:
+
+```python
+plan = bank.cue_plan(
+    cue_index,
+    selectors={"Music_GameState": "Scene"},
+)
+
+# The cue-ID form is explicit rather than treating IDs and indexes as the same.
+same_plan = bank.cue_plan_by_id(
+    cue_id,
+    selectors={"Music_GameState": "Scene"},
+)
+```
+
+For random, sequential, or otherwise unlabeled alternatives, inspect
+`resolve_cue()` and select a zero-based variant:
+
+```python
+resolution = bank.resolve_cue(cue_index)
+plan = bank.cue_plan(cue_index, variant=0)
+```
+
+Calling `cue_plan(cue_index)` without selectors or a variant raises
+`ValueError` when several unique plans remain. Control-only cues can resolve to
+no playable plan; inspect `non_playable_cues` and `diagnostics` on the
+resolution instead of assuming every cue contains audio.
+
+Plans expose their authored blocks and scheduled waveform clips:
+
+```python
+for block in plan.blocks:
+    print(
+        block.block_position,
+        block.name,
+        block.duration_us,
+        block.authored_loop_count,
+        block.render_loop_count,
+    )
+    for clip in block.clips:
+        print(
+            clip.waveform_index,
+            clip.start_time_us,
+            clip.awb_wave_id,
+            clip.awb_stream_index,
+            clip.awb_bank,
+        )
+```
+
+`awb_wave_id` and `awb_bank` come from the ACB and remain available when the
+ACB was loaded from bytes without an AWB. `awb_stream_index` is the zero-based
+physical file index and is available only when an embedded or companion AWB
+can be resolved.
+
+Render or export a chosen static plan against its source ACB:
+
+```python
+from pathlib import Path
+
+Path("village_scene.wav").write_bytes(plan.wav_bytes(bank))
+plan.export(bank, "village_scene.wav")
+```
+
+The plan takes the `Acb` explicitly and does not retain a hidden reference to
+it. HCA key parameters are accepted by both plan audio methods when needed.
+
+Resolve or export the whole sheet with the same semantic deduplication and
+selector-aware filenames as the CLI:
+
+```python
+sheet = bank.resolve_cues()
+print(sheet.plan_count)
+print(sheet.non_playable_cues)
+print(sheet.filenames())
+
+written_paths = bank.extract_cues("Music_cues")
+```
+
+Looping is expressed as repeats after the initial block play. The defaults are
+zero repeats, advance after an infinite audio block, and include empty
+infinite holds once:
+
+```python
+plan = bank.cue_plan(
+    cue_index,
+    selectors={"Music_GameState": "Scene"},
+    loop_count=2,
+    advance_after_infinite=False,
+    include_empty_holds=False,
+    block_loop_counts={3: 4},
+)
+```
+
+As with CLI cue export, these are static paths. They do not emulate live
+game-variable changes, event-driven transitions, or external ACB loading.
 
 ### Mux USM
 
