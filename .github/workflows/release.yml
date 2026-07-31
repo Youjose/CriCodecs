@@ -991,7 +991,8 @@ jobs:
           if ($null -eq $window -or $window.MainWindowHandle -eq 0) {
               throw 'Portable CriStudio did not create a main window'
           }
-          $expectedTitle = "CriStudio $env:CRISTUDIO_RELEASE_VERSION"
+          $expectedRevision = $env:GITHUB_SHA.Substring(0, 12)
+          $expectedTitle = "CriStudio $env:CRISTUDIO_RELEASE_VERSION (rev $expectedRevision)"
           if ($window.MainWindowTitle -ne $expectedTitle) {
               throw "Unexpected CriStudio window title: $($window.MainWindowTitle)"
           }
