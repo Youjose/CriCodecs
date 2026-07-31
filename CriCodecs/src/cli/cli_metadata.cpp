@@ -623,8 +623,11 @@ Metadata build_metadata(Format format, const LoadedDocument& document) {
                 add(row, "minimum_buffer_size", stream.minbuf);
                 add(row, "average_bitrate", stream.avbps);
 
-                if (stream.audio_codec) {
-                    const auto sample = current.extract_stream_sample(index, 64u * 1024u);
+                if (stream.audio_codec &&
+                    index <= std::numeric_limits<uint32_t>::max()) {
+                    const auto sample = current.extract_stream_sample(
+                        static_cast<uint32_t>(index),
+                        64u * 1024u);
                     if (sample && *stream.audio_codec == usm::UsmAudioCodec::Hca) {
                         if (const auto audio = hca::Hca::load(std::span<const uint8_t>(*sample))) {
                             add(row, "codec_version", hca_version_text(audio->header().file.version));

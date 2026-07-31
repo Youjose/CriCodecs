@@ -217,10 +217,10 @@ private:
         if (start == invalid_acb_index || count == 0) {
             return;
         }
-        const uint32_t end = std::min<uint32_t>(
-            static_cast<uint32_t>(start) + count,
+        const size_t end = std::min(
+            static_cast<size_t>(start) + count,
             m_graph.action_tracks().size());
-        for (uint32_t index = start; index < end; ++index) {
+        for (size_t index = start; index < end; ++index) {
             const auto& action = m_graph.action_tracks()[index];
             const auto* stream = action_stream(m_graph, action);
             if (stream == nullptr) {

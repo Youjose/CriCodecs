@@ -1178,20 +1178,23 @@ std::expected<AcbCueAssembly, std::string> AcbCueGraph::assemble_cue(uint32_t cu
             // omitting the corresponding optional table entirely.
             if (table_is_empty) return;
 
-            AcbCueNodeKind stream_kind;
-            switch (kind) {
-                case AcbCommandTableKind::track_event:      stream_kind = AcbCueNodeKind::track_event; break;
-                case AcbCommandTableKind::legacy_command:   stream_kind = AcbCueNodeKind::legacy_command; break;
-                case AcbCommandTableKind::sequence_command: stream_kind = AcbCueNodeKind::sequence_command; break;
-                case AcbCommandTableKind::track_command:    stream_kind = AcbCueNodeKind::track_command; break;
-                case AcbCommandTableKind::synth_command:    stream_kind = AcbCueNodeKind::synth_command; break;
-            }
+            const auto stream_kind = [&]() -> std::optional<AcbCueNodeKind> {
+                switch (kind) {
+                    case AcbCommandTableKind::track_event:      return AcbCueNodeKind::track_event;
+                    case AcbCommandTableKind::legacy_command:   return AcbCueNodeKind::legacy_command;
+                    case AcbCommandTableKind::sequence_command: return AcbCueNodeKind::sequence_command;
+                    case AcbCommandTableKind::track_command:    return AcbCueNodeKind::track_command;
+                    case AcbCommandTableKind::synth_command:    return AcbCueNodeKind::synth_command;
+                }
+                return std::nullopt;
+            }();
+            if (!stream_kind) return;
             if (command_stream(kind, index) == nullptr) {
                 add_unresolved(node, 0xC000 + static_cast<uint16_t>(kind), index,
                     "command-stream index is out of range");
                 return;
             }
-            connect(node, {stream_kind, index}, edge_kind, 0);
+            connect(node, {*stream_kind, index}, edge_kind, 0);
         };
 
         switch (node.kind) {
