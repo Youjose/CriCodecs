@@ -50,13 +50,13 @@ namespace cricodecs::cli::detail {
             options.cue_stop_at_loop = true;
             continue;
         }
-        if (arg == "--cue-skip-empty-holds") {
-            options.cue_skip_empty_holds = true;
+        if (arg == "--cue-include-empty-holds") {
+            options.cue_include_empty_holds = true;
             options.cue_empty_hold_policy_set = true;
             continue;
         }
-        if (arg == "--cue-include-empty-holds") {
-            options.cue_skip_empty_holds = false;
+        if (arg == "--cue-skip-empty-holds") {
+            options.cue_include_empty_holds = false;
             options.cue_empty_hold_policy_set = true;
             continue;
         }
@@ -631,7 +631,7 @@ void print_usage(std::ostream& out, bool show_identity) {
         "      --cue-loop-count N  loop each authored infinite audio block N times (default 0)\n"
         "      --cue-block-loop-count P=N  set loops for block position P; requires --index\n"
         "      --cue-stop-at-loop  stop after the first rendered infinite block instead of advancing\n"
-        "      --cue-skip-empty-holds  omit waveform-less infinite holds (included once by default)\n"
+        "      --cue-include-empty-holds  include waveform-less infinite holds (omitted by default)\n"
         "\n"
         "Valid force types:\n"
         "  aax acb acx adx afs ahx aix awb cpk csb cvm hca sfd usm utf\n";

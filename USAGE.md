@@ -77,7 +77,8 @@ when authored choices have no usable label.
 
 Infinite ACB blocks have no natural duration when exported outside the game.
 The default renders the initial play with zero repeats and advances. Empty
-infinite holds are included once but are not affected by the global loop count:
+infinite holds remain visible in the plan but their synthesized silent duration
+is omitted by default:
 
 ```sh
 # Add two repeats to every audio-bearing infinite block.
@@ -90,8 +91,9 @@ cricodecs --cue --index 3 --cue-block-loop-count 3=4 \
 # Stop after the first rendered infinite block.
 cricodecs --cue --cue-stop-at-loop Music.acb -o Music_cues
 
-# Omit waveform-less infinite holding blocks.
-cricodecs --cue --cue-skip-empty-holds Music.acb -o Music_cues
+# Include waveform-less infinite holding blocks when their authored silence is
+# useful for a particular export.
+cricodecs --cue --cue-include-empty-holds Music.acb -o Music_cues
 ```
 
 This is a static projection, not a full CRI Atom runtime. Live game-variable
@@ -428,8 +430,8 @@ written_paths = bank.extract_cues("Music_cues")
 ```
 
 Looping is expressed as repeats after the initial block play. The defaults are
-zero repeats, advance after an infinite audio block, and include empty
-infinite holds once:
+zero repeats, advance after an infinite audio block, and omit the synthesized
+duration of empty infinite holds:
 
 ```python
 plan = bank.cue_plan(
@@ -437,7 +439,7 @@ plan = bank.cue_plan(
     selectors={"Music_GameState": "Scene"},
     loop_count=2,
     advance_after_infinite=False,
-    include_empty_holds=False,
+    include_empty_holds=True,  # Opt in only when the authored hold is useful.
     block_loop_counts={3: 4},
 )
 ```

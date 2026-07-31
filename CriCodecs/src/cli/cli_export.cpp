@@ -387,7 +387,7 @@ void append_cue_plan_details(
                     .infinite_block_loop_count = options.cue_loop_count,
                     .advance_after_infinite_block = !options.cue_stop_at_loop,
                     .include_empty_infinite_blocks =
-                        !options.cue_skip_empty_holds,
+                        options.cue_include_empty_holds,
                     .block_loop_overrides = options.cue_block_loop_overrides,
                     .hca_subkey = options.subkey,
                 };
@@ -577,7 +577,7 @@ void append_cue_plan_details(
                         .advance_after_infinite_block =
                             !options.cue_stop_at_loop,
                         .include_empty_infinite_blocks =
-                            !options.cue_skip_empty_holds,
+                            options.cue_include_empty_holds,
                         .block_loop_overrides =
                             options.cue_block_loop_overrides,
                         .hca_keycode = *keycode,

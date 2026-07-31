@@ -33,7 +33,7 @@ struct AcbCueRenderOptions {
     /// Continue to the next authored block after the finite export substitute.
     bool advance_after_infinite_block = true;
     /// Render infinite holding blocks that schedule no waveform material.
-    bool include_empty_infinite_blocks = true;
+    bool include_empty_infinite_blocks = false;
     /// Per-position repeat overrides, applied after authored loop policy.
     std::vector<AcbCueBlockLoopOverride> block_loop_overrides;
     uint64_t hca_keycode = 0;

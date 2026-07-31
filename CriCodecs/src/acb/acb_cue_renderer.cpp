@@ -240,6 +240,7 @@ private:
                 if (empty_hold &&
                     !m_options.include_empty_infinite_blocks &&
                     !has_override) {
+                    block.render_loop_count = 0;
                     block.skipped_empty_hold = true;
                     m_plan.diagnostics.push_back(
                         "block `" + block.name +

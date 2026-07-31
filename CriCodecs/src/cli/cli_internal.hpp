@@ -104,7 +104,7 @@ struct Options {
     bool trim_after_loop = false;
     bool cue_based = false;
     bool cue_stop_at_loop = false;
-    bool cue_skip_empty_holds = false;
+    bool cue_include_empty_holds = false;
     bool cue_empty_hold_policy_set = false;
     uint32_t cue_loop_count = 0;
     std::vector<acb::AcbCueBlockLoopOverride> cue_block_loop_overrides;
