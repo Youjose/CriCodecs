@@ -14,6 +14,7 @@
 #include "acb/acb_container.hpp"
 #include "acb/acb_cue_graph.hpp"
 #include "acb/acb_cue_renderer.hpp"
+#include "acb/acb_cue_resolver.hpp"
 #include "acx/acx_builder.hpp"
 #include "acx/acx_container.hpp"
 #include "adx/adx_codec.hpp"

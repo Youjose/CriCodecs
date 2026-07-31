@@ -10,9 +10,11 @@
 #include "../wav/wav_container.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
+#include <sstream>
 #include <tuple>
 #include <utility>
 
@@ -31,6 +33,15 @@ struct ReferenceKey {
 struct AuthoredAwbReference {
     uint16_t wave_id = invalid_acb_index;
     AcbCueAwbBank bank = AcbCueAwbBank::memory;
+};
+
+struct PendingChoice {
+    AcbCueChoiceDomain domain = AcbCueChoiceDomain::sequence_track;
+    uint32_t node_index = 0;
+    uint32_t occurrence = 0;
+    uint32_t option_count = 0;
+    uint8_t mode = 0;
+    std::vector<std::pair<std::string, std::string>> selector_labels;
 };
 
 std::optional<AuthoredAwbReference> authored_awb_reference(
@@ -63,10 +74,27 @@ public:
     PlaybackPlanner(
         const AcbCueGraph& graph,
         uint32_t cue_index,
-        const AcbCueRenderOptions& options)
-        : m_graph(graph), m_cue_index(cue_index), m_options(options) {}
+        const AcbCueRenderOptions& options,
+        std::span<const AcbCueChoiceSelection> choices = {})
+        : m_graph(graph),
+          m_cue_index(cue_index),
+          m_options(options),
+          m_choices(choices) {}
+
+    [[nodiscard]] const std::optional<PendingChoice>& pending_choice() const noexcept {
+        return m_pending_choice;
+    }
 
     std::expected<AcbCuePlaybackPlan, std::string> build() {
+        std::set<std::tuple<AcbCueChoiceDomain, uint32_t, uint32_t>> choice_keys;
+        for (const auto& choice : m_choices) {
+            const auto key = std::tuple{
+                choice.domain, choice.node_index, choice.occurrence};
+            if (!choice_keys.insert(key).second) {
+                return std::unexpected(
+                    "ACB cue plan failed: duplicate runtime choice selection");
+            }
+        }
         std::set<uint32_t> override_positions;
         for (const auto& override : m_options.block_loop_overrides) {
             if (!override_positions.insert(override.block_position).second) {
@@ -116,6 +144,10 @@ public:
             return std::unexpected(
                 "ACB cue plan failed: cue `" + m_plan.cue_name +
                 "` has no statically playable audio");
+        }
+        if (m_used_choices.size() != m_choices.size()) {
+            return std::unexpected(
+                "ACB cue plan failed: runtime choice does not belong to the selected path");
         }
         return std::move(m_plan);
     }
@@ -340,10 +372,24 @@ private:
         }
         const auto& synth = m_graph.synths()[index];
         if (synth.reference_items.size() > 1 && synth.type != 0) {
-            return std::unexpected(
-                "ACB cue plan failed: synth type `" +
-                std::string(sequence_type_name(synth.type)) +
-                "` requires a runtime choice");
+            const auto choice = selected_option(
+                AcbCueChoiceDomain::synth_reference,
+                index,
+                synth.type,
+                static_cast<uint32_t>(synth.reference_items.size()),
+                {});
+            if (!choice) {
+                if (m_choice_error) {
+                    return std::unexpected(*m_choice_error);
+                }
+                return std::unexpected(
+                    "ACB cue plan failed: synth type `" +
+                    std::string(sequence_type_name(synth.type)) +
+                    "` requires a runtime choice");
+            }
+            const auto& reference = synth.reference_items[*choice];
+            return append_reference(
+                reference.type, reference.index, start_time_us, clips);
         }
         for (const auto& reference : synth.reference_items) {
             auto result = append_reference(
@@ -362,10 +408,51 @@ private:
         }
         const auto& sequence = m_graph.sequences()[index];
         if (sequence.track_indices.size() > 1 && sequence.type != 0) {
-            return std::unexpected(
-                "ACB cue plan failed: sequence type `" +
-                std::string(sequence_type_name(sequence.type)) +
-                "` requires a runtime track choice");
+            std::vector<std::pair<std::string, std::string>> selector_labels(
+                sequence.track_indices.size());
+            for (size_t ordinal = 0;
+                 ordinal < sequence.track_indices.size();
+                 ++ordinal) {
+                const auto track_index = sequence.track_indices[ordinal];
+                if (track_index >= m_graph.tracks().size()) {
+                    continue;
+                }
+                const auto& track = m_graph.tracks()[track_index];
+                const auto* commands = m_graph.command_stream(
+                    AcbCommandTableKind::track_command, track.command_index);
+                if (commands == nullptr) {
+                    continue;
+                }
+                for (const auto& command : commands->commands) {
+                    if (command.meaning != AcbCueCommandMeaning::selector_condition ||
+                        !command.argument_u16 ||
+                        !command.argument_u16_2) {
+                        continue;
+                    }
+                    selector_labels[ordinal] = {
+                        std::string(m_graph.string_value(*command.argument_u16)),
+                        std::string(m_graph.string_value(*command.argument_u16_2)),
+                    };
+                    break;
+                }
+            }
+            const auto choice = selected_option(
+                AcbCueChoiceDomain::sequence_track,
+                index,
+                sequence.type,
+                static_cast<uint32_t>(sequence.track_indices.size()),
+                std::move(selector_labels));
+            if (!choice) {
+                if (m_choice_error) {
+                    return std::unexpected(*m_choice_error);
+                }
+                return std::unexpected(
+                    "ACB cue plan failed: sequence type `" +
+                    std::string(sequence_type_name(sequence.type)) +
+                    "` requires a runtime track choice");
+            }
+            return append_track(
+                sequence.track_indices[*choice], start_time_us, clips);
         }
         if (sequence.num_action_tracks != 0 ||
             sequence.num_watch_actions != 0 ||
@@ -379,6 +466,58 @@ private:
             if (!result) return result;
         }
         return {};
+    }
+
+    std::optional<uint32_t> selected_option(
+        AcbCueChoiceDomain domain,
+        uint32_t node_index,
+        uint8_t mode,
+        uint32_t option_count,
+        std::vector<std::pair<std::string, std::string>> selector_labels) {
+        const auto occurrence_key = std::pair{domain, node_index};
+        const uint32_t occurrence = m_choice_occurrences[occurrence_key]++;
+        const auto selected = std::ranges::find_if(
+            m_choices,
+            [=](const AcbCueChoiceSelection& choice) {
+                return choice.domain == domain &&
+                    choice.node_index == node_index &&
+                    choice.occurrence == occurrence;
+            });
+        if (selected != m_choices.end()) {
+            if (selected->option_index >= option_count) {
+                m_choice_error =
+                    "ACB cue plan failed: runtime choice option is out of range";
+                return std::nullopt;
+            }
+            if (selected->mode != mode) {
+                m_choice_error =
+                    "ACB cue plan failed: runtime choice mode does not match the authored node";
+                return std::nullopt;
+            }
+            if (selected->option_index < selector_labels.size()) {
+                const auto& label = selector_labels[selected->option_index];
+                if ((!selected->selector_name.empty() &&
+                     selected->selector_name != label.first) ||
+                    (!selected->selector_value.empty() &&
+                     selected->selector_value != label.second)) {
+                    m_choice_error =
+                        "ACB cue plan failed: runtime selector label does not match the authored option";
+                    return std::nullopt;
+                }
+            }
+            m_used_choices.insert(std::tuple{
+                domain, node_index, occurrence});
+            return selected->option_index;
+        }
+        m_pending_choice = PendingChoice{
+            .domain = domain,
+            .node_index = node_index,
+            .occurrence = occurrence,
+            .option_count = option_count,
+            .mode = mode,
+            .selector_labels = std::move(selector_labels),
+        };
+        return std::nullopt;
     }
 
     uint64_t inferred_duration_us(std::span<const AcbCueClipPlan> clips) const {
@@ -402,6 +541,11 @@ private:
     const AcbCueRenderOptions& m_options;
     AcbCuePlaybackPlan m_plan;
     std::set<ReferenceKey> m_active;
+    std::span<const AcbCueChoiceSelection> m_choices;
+    std::map<std::pair<AcbCueChoiceDomain, uint32_t>, uint32_t> m_choice_occurrences;
+    std::optional<PendingChoice> m_pending_choice;
+    std::set<std::tuple<AcbCueChoiceDomain, uint32_t, uint32_t>> m_used_choices;
+    std::optional<std::string> m_choice_error;
 };
 
 struct DecodedWaveform {
@@ -438,6 +582,42 @@ std::string safe_cue_name(std::string_view name) {
     return result.empty() ? "cue" : result;
 }
 
+std::string semantic_plan_signature(
+    const AcbCueGraph& graph,
+    const AcbCuePlaybackPlan& plan) {
+    std::ostringstream out;
+    for (const auto& block : plan.blocks) {
+        out << "B:"
+            << block.duration_us << ':'
+            << block.authored_loop_count << ':'
+            << block.render_loop_count << ':'
+            << block.skipped_empty_hold << ';';
+        for (const auto& clip : block.clips) {
+            out << "C:"
+                << clip.start_time_us << ':'
+                << clip.awb_wave_id.value_or(invalid_acb_index) << ':'
+                << static_cast<unsigned>(clip.awb_bank.value_or(
+                    AcbCueAwbBank::memory));
+            if (clip.waveform_index < graph.waveforms().size()) {
+                const auto& waveform = graph.waveforms()[clip.waveform_index];
+                out << ':'
+                    << static_cast<unsigned>(waveform.encode_type) << ':'
+                    << waveform.sampling_rate << ':'
+                    << waveform.num_samples << ':'
+                    << static_cast<unsigned>(waveform.loop_flag) << ':'
+                    << waveform.stream_awb_port_no;
+                if (waveform.extension_data < graph.waveform_extensions().size()) {
+                    const auto& extension =
+                        graph.waveform_extensions()[waveform.extension_data];
+                    out << ':' << extension.loop_start << ':' << extension.loop_end;
+                }
+            }
+            out << ';';
+        }
+    }
+    return std::move(out).str();
+}
+
 } // namespace
 
 std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
@@ -448,26 +628,125 @@ std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
 }
 
 std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
-    const AcbContainer& acb,
+    const AcbCueGraph& graph,
     uint32_t cue_index,
+    std::span<const AcbCueChoiceSelection> choices,
     const AcbCueRenderOptions& options) {
-    auto plan = plan_cue_playback(acb.cue_graph(), cue_index, options);
-    if (!plan) {
-        return std::unexpected(plan.error());
+    return PlaybackPlanner(graph, cue_index, options, choices).build();
+}
+
+std::expected<AcbCuePlanEnumeration, std::string> enumerate_cue_playback(
+    const AcbCueGraph& graph,
+    uint32_t cue_index,
+    const AcbCueEnumerationOptions& options) {
+    if (options.max_paths == 0) {
+        return std::unexpected(
+            "ACB cue enumeration failed: max_paths must be greater than zero");
+    }
+    if (cue_index >= graph.cues().size()) {
+        return std::unexpected(
+            "ACB cue enumeration failed: cue index is out of range");
     }
 
+    AcbCuePlanEnumeration result{
+        .cue_index = cue_index,
+        .variants = {},
+        .terminal_errors = {},
+        .terminal_paths = {},
+        .explored_paths = 0,
+    };
+    std::vector<std::vector<AcbCueChoiceSelection>> pending_paths(1);
+    std::map<std::string, size_t> signature_to_variant;
+    std::set<std::string> terminal_errors;
+
+    for (size_t position = 0; position < pending_paths.size(); ++position) {
+        if (++result.explored_paths > options.max_paths) {
+            return std::unexpected(
+                "ACB cue enumeration failed: path limit " +
+                std::to_string(options.max_paths) + " exceeded");
+        }
+
+        auto choices = std::move(pending_paths[position]);
+        PlaybackPlanner planner(graph, cue_index, options.render, choices);
+        auto plan = planner.build();
+        if (plan) {
+            const auto signature = semantic_plan_signature(graph, *plan);
+            const auto [it, inserted] =
+                signature_to_variant.emplace(signature, result.variants.size());
+            if (inserted) {
+                result.variants.push_back({
+                    .plan = std::move(*plan),
+                    .paths = {std::move(choices)},
+                });
+            } else {
+                result.variants[it->second].paths.push_back(std::move(choices));
+            }
+            continue;
+        }
+
+        const auto& request = planner.pending_choice();
+        if (!request) {
+            terminal_errors.insert(plan.error());
+            result.terminal_paths.push_back({
+                .choices = std::move(choices),
+                .error = plan.error(),
+            });
+            continue;
+        }
+        if (pending_paths.size() + request->option_count > options.max_paths) {
+            return std::unexpected(
+                "ACB cue enumeration failed: path limit " +
+                std::to_string(options.max_paths) + " exceeded");
+        }
+        for (uint32_t option = 0; option < request->option_count; ++option) {
+            auto branch = choices;
+            AcbCueChoiceSelection selection{
+                .domain = request->domain,
+                .node_index = request->node_index,
+                .occurrence = request->occurrence,
+                .option_index = option,
+                .mode = request->mode,
+                .selector_name = {},
+                .selector_value = {},
+            };
+            if (option < request->selector_labels.size()) {
+                selection.selector_name =
+                    request->selector_labels[option].first;
+                selection.selector_value =
+                    request->selector_labels[option].second;
+            }
+            branch.push_back(std::move(selection));
+            pending_paths.push_back(std::move(branch));
+        }
+    }
+
+    result.terminal_errors.assign(
+        std::make_move_iterator(terminal_errors.begin()),
+        std::make_move_iterator(terminal_errors.end()));
+    return result;
+}
+
+std::string cue_plan_semantic_signature(
+    const AcbCueGraph& graph,
+    const AcbCuePlaybackPlan& plan) {
+    return semantic_plan_signature(graph, plan);
+}
+
+static std::expected<AcbCuePlaybackPlan, std::string> resolve_plan_awb_entries(
+    const AcbContainer& acb,
+    AcbCuePlaybackPlan plan) {
     if (!acb.has_embedded_awb() && !acb.companion_awb_path()) {
         return plan;
     }
 
     std::map<uint32_t, WaveformAwbEntry> resolved;
     std::set<uint32_t> attempted;
-    for (auto& block : plan->blocks) {
+    for (auto& block : plan.blocks) {
         for (auto& clip : block.clips) {
             if (attempted.insert(clip.waveform_index).second) {
                 auto entry = acb.waveform_awb_entry(clip.waveform_index);
                 if (!entry) {
-                    plan->diagnostics.push_back(
+                    plan.diagnostics.push_back(
                         "waveform " + std::to_string(clip.waveform_index) +
                         " AWB provenance is unresolved: " + entry.error());
                 } else {
@@ -488,13 +767,43 @@ std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
     return plan;
 }
 
+std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
+    const AcbContainer& acb,
+    uint32_t cue_index,
+    const AcbCueRenderOptions& options) {
+    auto plan = plan_cue_playback(acb.cue_graph(), cue_index, options);
+    if (!plan) {
+        return std::unexpected(plan.error());
+    }
+    return resolve_plan_awb_entries(acb, std::move(*plan));
+}
+
+std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
+    const AcbContainer& acb,
+    uint32_t cue_index,
+    std::span<const AcbCueChoiceSelection> choices,
+    const AcbCueRenderOptions& options) {
+    auto plan = plan_cue_playback(
+        acb.cue_graph(), cue_index, choices, options);
+    if (!plan) {
+        return std::unexpected(plan.error());
+    }
+    return resolve_plan_awb_entries(acb, std::move(*plan));
+}
+
 std::expected<AcbRenderedCue, std::string> render_cue(
     const AcbContainer& acb,
     uint32_t cue_index,
     const AcbCueRenderOptions& options) {
     auto plan = plan_cue_playback(acb, cue_index, options);
     if (!plan) return std::unexpected(plan.error());
+    return render_cue_plan(acb, std::move(*plan), options);
+}
 
+std::expected<AcbRenderedCue, std::string> render_cue_plan(
+    const AcbContainer& acb,
+    AcbCuePlaybackPlan plan,
+    const AcbCueRenderOptions& options) {
     uint16_t hca_subkey = options.hca_subkey.value_or(0);
     if (!options.hca_subkey) {
         auto subkey = acb.awb_subkey();
@@ -557,7 +866,7 @@ std::expected<AcbRenderedCue, std::string> render_cue(
     uint32_t output_rate = 0;
     uint8_t output_channels = 0;
     std::vector<int16_t> output;
-    for (const auto& block : plan->blocks) {
+    for (const auto& block : plan.blocks) {
         for (const auto& clip : block.clips) {
             auto waveform = decode_waveform(clip.waveform_index);
             if (!waveform) return std::unexpected(waveform.error());
@@ -578,7 +887,7 @@ std::expected<AcbRenderedCue, std::string> render_cue(
         return std::unexpected("ACB cue render failed: cue produced no decodable audio");
     }
 
-    for (const auto& block : plan->blocks) {
+    for (const auto& block : plan.blocks) {
         if (block.skipped_empty_hold) {
             continue;
         }
@@ -636,11 +945,11 @@ std::expected<AcbRenderedCue, std::string> render_cue(
         }
     }
 
-    plan->diagnostics.push_back(
+    plan.diagnostics.push_back(
         "waveform gain, envelopes, transition curves, and runtime selector/action "
         "changes are not applied by the static renderer");
     return AcbRenderedCue{
-        .plan = std::move(*plan),
+        .plan = std::move(plan),
         .sample_rate = output_rate,
         .channels = output_channels,
         .pcm = std::move(output),
@@ -653,6 +962,20 @@ std::expected<void, std::string> extract_cue(
     const std::filesystem::path& output_path,
     const AcbCueRenderOptions& options) {
     auto rendered = render_cue(acb, cue_index, options);
+    if (!rendered) return std::unexpected(rendered.error());
+    return wav::WavContainer::write(
+        output_path.string(),
+        rendered->pcm,
+        rendered->sample_rate,
+        rendered->channels);
+}
+
+std::expected<void, std::string> extract_cue_plan(
+    const AcbContainer& acb,
+    AcbCuePlaybackPlan plan,
+    const std::filesystem::path& output_path,
+    const AcbCueRenderOptions& options) {
+    auto rendered = render_cue_plan(acb, std::move(plan), options);
     if (!rendered) return std::unexpected(rendered.error());
     return wav::WavContainer::write(
         output_path.string(),

@@ -285,7 +285,243 @@ namespace cricodecs::cli::detail {
         .entry_name = relative_path.filename(),
         .relative_path = relative_path,
         .details = {},
+        .cue_plan = std::nullopt,
     };
+}
+
+[[nodiscard]] std::string safe_cue_filename_component(std::string_view text) {
+    std::string result;
+    result.reserve(text.size());
+    for (const unsigned char ch : text) {
+        if (ch < 0x20 || ch == '/' || ch == '\\' || ch == ':' || ch == '*' ||
+            ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|') {
+            result.push_back('_');
+        } else {
+            result.push_back(static_cast<char>(ch));
+        }
+    }
+    while (!result.empty() && (result.back() == ' ' || result.back() == '.')) {
+        result.pop_back();
+    }
+    return result.empty() ? "cue" : result;
+}
+
+using CueSelectorMap = std::map<std::string, std::set<std::string>>;
+
+[[nodiscard]] CueSelectorMap canonical_cue_selectors(
+    const acb::AcbResolvedCuePlan& resolved) {
+    CueSelectorMap selectors;
+    const bool has_terminal_source = std::ranges::any_of(
+        resolved.sources,
+        [&](const auto& source) {
+            return source.source_cue_index == resolved.plan.cue_index;
+        });
+    for (const auto& source : resolved.sources) {
+        if (has_terminal_source &&
+            source.source_cue_index != resolved.plan.cue_index) {
+            continue;
+        }
+        for (const auto& selector : source.selector_values) {
+            if (!selector.name.empty() && !selector.value.empty()) {
+                selectors[selector.name].insert(selector.value);
+            }
+        }
+        for (const auto& path : source.paths) {
+            for (const auto& choice : path) {
+                if (!choice.selector_name.empty() &&
+                    !choice.selector_value.empty()) {
+                    selectors[choice.selector_name].insert(
+                        choice.selector_value);
+                }
+            }
+        }
+    }
+    return selectors;
+}
+
+[[nodiscard]] std::vector<std::filesystem::path> resolved_cue_filenames(
+    const acb::AcbCueSheetResolution& resolution) {
+    std::vector<std::string> bases;
+    std::vector<CueSelectorMap> selectors;
+    bases.reserve(resolution.plans.size());
+    selectors.reserve(resolution.plans.size());
+
+    std::map<std::string, std::vector<size_t>> groups;
+    for (size_t index = 0; index < resolution.plans.size(); ++index) {
+        const auto& resolved = resolution.plans[index];
+        auto base = safe_cue_filename_component(resolved.plan.cue_name);
+        groups[base].push_back(index);
+        bases.push_back(std::move(base));
+        selectors.push_back(canonical_cue_selectors(resolved));
+    }
+
+    std::vector<std::string> suffixes(resolution.plans.size());
+    for (const auto& group : groups | std::views::values) {
+        if (group.size() < 2) {
+            continue;
+        }
+
+        std::set<std::string> candidates;
+        for (const auto plan_index : group) {
+            for (const auto& [name, values] : selectors[plan_index]) {
+                if (values.size() == 1) {
+                    candidates.insert(name);
+                }
+            }
+        }
+
+        std::set<std::pair<size_t, size_t>> unresolved_pairs;
+        for (size_t lhs = 0; lhs < group.size(); ++lhs) {
+            for (size_t rhs = lhs + 1; rhs < group.size(); ++rhs) {
+                unresolved_pairs.emplace(lhs, rhs);
+            }
+        }
+
+        std::vector<std::string> selected;
+        while (!unresolved_pairs.empty()) {
+            size_t best_score = 0;
+            auto best = candidates.end();
+            for (auto candidate = candidates.begin();
+                 candidate != candidates.end();
+                 ++candidate) {
+                size_t score = 0;
+                for (const auto& [lhs, rhs] : unresolved_pairs) {
+                    const auto lhs_values =
+                        selectors[group[lhs]].find(*candidate);
+                    const auto rhs_values =
+                        selectors[group[rhs]].find(*candidate);
+                    if (lhs_values != selectors[group[lhs]].end() &&
+                        rhs_values != selectors[group[rhs]].end() &&
+                        lhs_values->second.size() == 1 &&
+                        rhs_values->second.size() == 1 &&
+                        *lhs_values->second.begin() !=
+                            *rhs_values->second.begin()) {
+                        ++score;
+                    }
+                }
+                if (score > best_score) {
+                    best_score = score;
+                    best = candidate;
+                }
+            }
+            if (best == candidates.end() || best_score == 0) {
+                break;
+            }
+
+            selected.push_back(*best);
+            std::erase_if(
+                unresolved_pairs,
+                [&](const auto& pair) {
+                    const auto& [lhs, rhs] = pair;
+                    const auto lhs_values =
+                        selectors[group[lhs]].find(*best);
+                    const auto rhs_values =
+                        selectors[group[rhs]].find(*best);
+                    return
+                        lhs_values != selectors[group[lhs]].end() &&
+                        rhs_values != selectors[group[rhs]].end() &&
+                        lhs_values->second.size() == 1 &&
+                        rhs_values->second.size() == 1 &&
+                        *lhs_values->second.begin() !=
+                            *rhs_values->second.begin();
+                });
+            candidates.erase(best);
+        }
+
+        for (size_t ordinal = 0; ordinal < group.size(); ++ordinal) {
+            const auto plan_index = group[ordinal];
+            for (const auto& selector_name : selected) {
+                const auto found = selectors[plan_index].find(selector_name);
+                if (found == selectors[plan_index].end() ||
+                    found->second.size() != 1) {
+                    continue;
+                }
+                suffixes[plan_index] += "__";
+                suffixes[plan_index] +=
+                    safe_cue_filename_component(selector_name);
+                suffixes[plan_index] += '-';
+                suffixes[plan_index] +=
+                    safe_cue_filename_component(*found->second.begin());
+            }
+            if (!unresolved_pairs.empty() || suffixes[plan_index].empty()) {
+                suffixes[plan_index] += "__variant-";
+                suffixes[plan_index] += std::to_string(ordinal + 1);
+            }
+        }
+
+        std::map<std::string, size_t> sanitized_suffix_counts;
+        for (const auto plan_index : group) {
+            ++sanitized_suffix_counts[suffixes[plan_index]];
+        }
+        for (size_t ordinal = 0; ordinal < group.size(); ++ordinal) {
+            const auto plan_index = group[ordinal];
+            if (sanitized_suffix_counts[suffixes[plan_index]] > 1) {
+                suffixes[plan_index] += "__variant-";
+                suffixes[plan_index] += std::to_string(ordinal + 1);
+            }
+        }
+    }
+
+    const size_t width = std::max<size_t>(
+        3, std::to_string(resolution.plans.size()).size());
+    std::vector<std::filesystem::path> filenames;
+    filenames.reserve(resolution.plans.size());
+    for (size_t index = 0; index < resolution.plans.size(); ++index) {
+        std::ostringstream name;
+        name << std::setw(static_cast<int>(width)) << std::setfill('0')
+             << index + 1 << '_' << bases[index] << suffixes[index] << ".wav";
+        filenames.emplace_back(std::move(name).str());
+    }
+    return filenames;
+}
+
+void append_cue_plan_details(
+    OutputItem& item,
+    const acb::AcbCuePlaybackPlan& plan) {
+    for (const auto& block : plan.blocks) {
+        std::string detail = "    block ";
+        detail += block.block_position
+            ? std::to_string(*block.block_position)
+            : "-";
+        if (block.block_index) {
+            detail += " [row ";
+            detail += std::to_string(*block.block_index);
+            detail += ']';
+        }
+        detail += ": ";
+        detail += block.name;
+        detail += ", LoopNum=";
+        detail += std::to_string(block.authored_loop_count);
+        detail += ", loops=";
+        detail += std::to_string(block.render_loop_count);
+        detail += ", duration=";
+        detail += std::to_string(block.duration_us);
+        detail += " us";
+        item.details.push_back(std::move(detail));
+        for (const auto& clip : block.clips) {
+            std::string clip_detail = "      clip waveform=";
+            clip_detail += std::to_string(clip.waveform_index);
+            if (clip.awb_wave_id) {
+                clip_detail += ", awb_id=";
+                clip_detail += std::to_string(*clip.awb_wave_id);
+            }
+            if (clip.awb_stream_index) {
+                clip_detail += ", awb_stream_index=";
+                clip_detail += std::to_string(*clip.awb_stream_index);
+            }
+            if (clip.awb_bank) {
+                clip_detail += ", awb_bank=";
+                clip_detail +=
+                    *clip.awb_bank == acb::AcbCueAwbBank::stream
+                    ? "stream"
+                    : "memory";
+            }
+            clip_detail += ", start=";
+            clip_detail += std::to_string(clip.start_time_us);
+            clip_detail += " us";
+            item.details.push_back(std::move(clip_detail));
+        }
+    }
 }
 
 [[nodiscard]] std::expected<std::vector<OutputItem>, std::string> collect_export_items(
@@ -341,95 +577,64 @@ namespace cricodecs::cli::detail {
                     .block_loop_overrides = options.cue_block_loop_overrides,
                     .hca_subkey = options.subkey,
                 };
-                const auto& cues = current.cue_graph().cues();
-                const auto append_cue = [&](uint32_t cue_index)
-                    -> std::expected<void, std::string> {
-                    if (cue_index >= cues.size()) {
-                        return std::unexpected(
-                            "ACB cue index is out of range: " +
-                            std::to_string(cue_index));
-                    }
-                    auto plan = acb::plan_cue_playback(
-                        current, cue_index, cue_options);
-                    if (!plan) return std::unexpected(plan.error());
-                    auto item = make_output_item(
-                        cue_index, acb::cue_filename(current, cue_index, true));
-                    if (options.list_only && !options.indexes.empty()) {
-                        for (const auto& block : plan->blocks) {
-                            std::string detail = "    block ";
-                            detail += block.block_position
-                                ? std::to_string(*block.block_position)
-                                : "-";
-                            if (block.block_index) {
-                                detail += " [row ";
-                                detail += std::to_string(*block.block_index);
-                                detail += ']';
-                            }
-                            detail += ": ";
-                            detail += block.name;
-                            detail += ", LoopNum=";
-                            detail += std::to_string(block.authored_loop_count);
-                            detail += ", loops=";
-                            detail += std::to_string(block.render_loop_count);
-                            detail += ", duration=";
-                            detail += std::to_string(block.duration_us);
-                            detail += " us";
-                            item.details.push_back(std::move(detail));
-                            for (const auto& clip : block.clips) {
-                                std::string clip_detail = "      clip waveform=";
-                                clip_detail += std::to_string(
-                                    clip.waveform_index);
-                                if (clip.awb_wave_id) {
-                                    clip_detail += ", awb_id=";
-                                    clip_detail += std::to_string(
-                                        *clip.awb_wave_id);
-                                }
-                                if (clip.awb_stream_index) {
-                                    clip_detail += ", awb_stream_index=";
-                                    clip_detail += std::to_string(
-                                        *clip.awb_stream_index);
-                                }
-                                if (clip.awb_bank) {
-                                    clip_detail += ", awb_bank=";
-                                    clip_detail +=
-                                        *clip.awb_bank ==
-                                                acb::AcbCueAwbBank::stream
-                                            ? "stream"
-                                            : "memory";
-                                }
-                                clip_detail += ", start=";
-                                clip_detail += std::to_string(
-                                    clip.start_time_us);
-                                clip_detail += " us";
-                                item.details.push_back(
-                                    std::move(clip_detail));
-                            }
+                auto resolution = acb::resolve_cue_sheet_playback(current);
+                if (!resolution) {
+                    return std::unexpected(resolution.error());
+                }
+                if (resolution->plans.empty()) {
+                    return std::unexpected(
+                        "ACB contains no statically resolvable cue plans");
+                }
+
+                const auto filenames = resolved_cue_filenames(*resolution);
+                items.reserve(resolution->plans.size());
+                for (size_t index = 0;
+                     index < resolution->plans.size();
+                     ++index) {
+                    auto& resolved = resolution->plans[index];
+                    auto item = make_output_item(index, filenames[index]);
+                    const bool selected_for_override =
+                        std::ranges::contains(options.indexes, index);
+                    const bool needs_replan =
+                        options.cue_stop_at_loop ||
+                        options.cue_empty_hold_policy_set ||
+                        options.cue_loop_count != 0 ||
+                        (!options.cue_block_loop_overrides.empty() &&
+                         selected_for_override);
+                    if (needs_replan) {
+                        const auto source = std::ranges::find_if(
+                            resolved.sources,
+                            [&](const auto& candidate) {
+                                return candidate.source_cue_index ==
+                                    resolved.plan.cue_index;
+                            });
+                        if (source == resolved.sources.end()) {
+                            return std::unexpected(
+                                "ACB cue export failed: resolved plan has no "
+                                "direct terminal-cue path");
                         }
+                        const std::span<const acb::AcbCueChoiceSelection> path =
+                            source->paths.empty()
+                            ? std::span<const acb::AcbCueChoiceSelection>{}
+                            : std::span<const acb::AcbCueChoiceSelection>{
+                                source->paths.front()};
+                        auto replanned = acb::plan_cue_playback(
+                            current,
+                            resolved.plan.cue_index,
+                            path,
+                            cue_options);
+                        if (!replanned) {
+                            return std::unexpected(replanned.error());
+                        }
+                        item.cue_plan = std::move(*replanned);
+                    } else {
+                        item.cue_plan = std::move(resolved.plan);
+                    }
+                    if (options.list_only &&
+                        std::ranges::contains(options.indexes, index)) {
+                        append_cue_plan_details(item, *item.cue_plan);
                     }
                     items.push_back(std::move(item));
-                    return {};
-                };
-                if (!options.indexes.empty()) {
-                    for (const auto cue_index : options.indexes) {
-                        auto appended = append_cue(
-                            static_cast<uint32_t>(cue_index));
-                        if (!appended) return std::unexpected(appended.error());
-                    }
-                } else {
-                    for (uint32_t cue_index = 0;
-                         cue_index < cues.size();
-                         ++cue_index) {
-                        if (acb::plan_cue_playback(
-                                current, cue_index, cue_options)) {
-                            items.push_back(make_output_item(
-                                cue_index,
-                                acb::cue_filename(current, cue_index, true)));
-                        }
-                    }
-                }
-                if (items.empty()) {
-                    return std::unexpected(
-                        "ACB contains no deterministically renderable cues");
                 }
                 return items;
             }
@@ -545,9 +750,13 @@ namespace cricodecs::cli::detail {
             if (options.cue_based) {
                 auto keycode = hca_keycode(options);
                 if (!keycode) return std::unexpected(keycode.error());
-                return acb::extract_cue(
+                if (!item.cue_plan) {
+                    return std::unexpected(
+                        "ACB cue export failed: resolved cue plan is missing");
+                }
+                return acb::extract_cue_plan(
                     current,
-                    static_cast<uint32_t>(item.index),
+                    *item.cue_plan,
                     output_path,
                     acb::AcbCueRenderOptions{
                         .infinite_block_loop_count = options.cue_loop_count,
@@ -790,6 +999,15 @@ void print_item_list(std::ostream& out, const std::vector<OutputItem>& items) {
     const bool single_item = selected->size() == 1;
     for (const auto& item : *selected) {
         const auto output_path = resolve_item_output_path(output_root, options.output_path, input_path, item, single_item);
+        std::error_code filesystem_error;
+        if (const auto parent = output_path.parent_path(); !parent.empty()) {
+            std::filesystem::create_directories(parent, filesystem_error);
+            if (filesystem_error) {
+                return std::unexpected(
+                    "could not create output directory: " +
+                    filesystem_error.message());
+            }
+        }
         if (auto result = write_export_item(loaded, item, output_path, options); !result) {
             return std::unexpected(result.error());
         }

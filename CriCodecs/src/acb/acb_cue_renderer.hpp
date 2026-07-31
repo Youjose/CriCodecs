@@ -14,6 +14,7 @@
 #include <expected>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -75,6 +76,56 @@ struct AcbCuePlaybackPlan {
     std::vector<std::string> diagnostics;
 };
 
+enum class AcbCueChoiceDomain : uint8_t {
+    sequence_track,
+    synth_reference,
+};
+
+/**
+ * One explicit runtime choice used to materialize a static cue path.
+ *
+ * occurrence distinguishes repeated visits to the same authored row. Selector
+ * names/values are populated when compact command metadata identifies them;
+ * random/sequential modes normally leave those strings empty.
+ */
+struct AcbCueChoiceSelection {
+    AcbCueChoiceDomain domain = AcbCueChoiceDomain::sequence_track;
+    uint32_t node_index = 0;
+    uint32_t occurrence = 0;
+    uint32_t option_index = 0;
+    uint8_t mode = 0;
+    std::string selector_name;
+    std::string selector_value;
+};
+
+struct AcbCuePlanVariant {
+    AcbCuePlaybackPlan plan;
+    /// Every authored choice path that normalizes to this audio plan.
+    std::vector<std::vector<AcbCueChoiceSelection>> paths;
+};
+
+struct AcbCueTerminalPath {
+    std::vector<AcbCueChoiceSelection> choices;
+    std::string error;
+};
+
+struct AcbCuePlanEnumeration {
+    uint32_t cue_index = 0;
+    /// Semantically unique playable plans for this cue.
+    std::vector<AcbCuePlanVariant> variants;
+    /// Non-choice terminal failures, retained for inspection/control cues.
+    std::vector<std::string> terminal_errors;
+    /// Choice-preserving terminal paths used by the higher-level action resolver.
+    std::vector<AcbCueTerminalPath> terminal_paths;
+    uint64_t explored_paths = 0;
+};
+
+struct AcbCueEnumerationOptions {
+    AcbCueRenderOptions render;
+    /// Hard guard against malformed or combinatorially explosive cue graphs.
+    uint64_t max_paths = 65'536;
+};
+
 struct AcbRenderedCue {
     AcbCuePlaybackPlan plan;
     uint32_t sample_rate = 0;
@@ -92,14 +143,61 @@ struct AcbRenderedCue {
     uint32_t cue_index,
     const AcbCueRenderOptions& options = {});
 
+[[nodiscard]] std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
+    const AcbCueGraph& graph,
+    uint32_t cue_index,
+    std::span<const AcbCueChoiceSelection> choices,
+    const AcbCueRenderOptions& options = {});
+
+[[nodiscard]] std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(
+    const AcbContainer& acb,
+    uint32_t cue_index,
+    std::span<const AcbCueChoiceSelection> choices,
+    const AcbCueRenderOptions& options = {});
+
+/**
+ * Enumerates possible static activations of one cue.
+ *
+ * Stateful modes such as Sequential, Shuffle, and RandomNoRepeat produce their
+ * possible next-track choices; this is not an emulation of history retained
+ * across repeated runtime cue invocations.
+ */
+[[nodiscard]] std::expected<AcbCuePlanEnumeration, std::string>
+enumerate_cue_playback(
+    const AcbCueGraph& graph,
+    uint32_t cue_index,
+    const AcbCueEnumerationOptions& options = {});
+
+[[nodiscard]] std::string cue_plan_semantic_signature(
+    const AcbCueGraph& graph,
+    const AcbCuePlaybackPlan& plan);
+
 [[nodiscard]] std::expected<AcbRenderedCue, std::string> render_cue(
     const AcbContainer& acb,
     uint32_t cue_index,
     const AcbCueRenderOptions& options = {});
 
+/**
+ * Renders an already-resolved static cue plan.
+ *
+ * The plan must have been produced from this ACB's cue graph. This overload is
+ * used after selector/action path enumeration so the chosen path is not
+ * discarded by replanning from only the cue index.
+ */
+[[nodiscard]] std::expected<AcbRenderedCue, std::string> render_cue_plan(
+    const AcbContainer& acb,
+    AcbCuePlaybackPlan plan,
+    const AcbCueRenderOptions& options = {});
+
 [[nodiscard]] std::expected<void, std::string> extract_cue(
     const AcbContainer& acb,
     uint32_t cue_index,
+    const std::filesystem::path& output_path,
+    const AcbCueRenderOptions& options = {});
+
+[[nodiscard]] std::expected<void, std::string> extract_cue_plan(
+    const AcbContainer& acb,
+    AcbCuePlaybackPlan plan,
     const std::filesystem::path& output_path,
     const AcbCueRenderOptions& options = {});
 

@@ -70,6 +70,7 @@ if(CRICODECS_INSTALL_CPP)
         acb/acb_container.hpp
         acb/acb_cue_graph.hpp
         acb/acb_cue_renderer.hpp
+        acb/acb_cue_resolver.hpp
         acx/acx_builder.hpp
         acx/acx_container.hpp
         adx/adx_codec.hpp
