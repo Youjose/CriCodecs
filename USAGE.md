@@ -31,6 +31,9 @@ cricodecs -m --json movie.usm
 # List entries without extracting
 cricodecs --list archive.cpk
 
+# List entries as structured JSON
+cricodecs --list --json archive.cpk
+
 # Extract raw encoded payloads rather than decoding audio
 cricodecs --raw archive.cpk -o raw_entries
 
@@ -40,6 +43,15 @@ cricodecs archive.cpk --index 2 --index 7 -o selected
 
 Output templates may use `?i` for an entry index, `?e` for an entry filename,
 and `?s` for the input filename.
+
+Structured listings use one schema across supported archives and containers:
+`format`, `mode`, `raw`, `item_count`, and an `items` array containing each
+export index, filename, and relative output path. In ACB cue mode, the same
+listing additionally contains authored/non-playable cue counts and each
+resolved plan's sources and selector paths. Add `--index N` to return only one
+item with its detailed blocks, waveform clips, and AWB provenance, or add
+`--verbose` to include those details for every listed item. Internal parser and
+renderer diagnostics are intentionally not emitted in listing JSON.
 
 ### Inspect and render ACB cues
 
@@ -52,6 +64,9 @@ ACB files have two useful extraction views:
   cue plans.
 
 ```sh
+# Authored cue, resolved-plan, non-playable cue, and waveform counts.
+cricodecs -m Music.acb
+
 # Flat waveform view.
 cricodecs --list Music.acb
 cricodecs Music.acb -o Music_waveforms
@@ -62,6 +77,9 @@ cricodecs --cue --list Music.acb
 # Show blocks, clips, timings, AWB IDs, and physical AWB stream indexes for
 # zero-based resolved-plan index 3.
 cricodecs --cue --list --index 3 Music.acb
+
+# Show detailed blocks and clips for every resolved plan.
+cricodecs --cue --list --verbose Music.acb
 
 # Render all unique static plans, or only plan index 3.
 cricodecs --cue Music.acb -o Music_cues

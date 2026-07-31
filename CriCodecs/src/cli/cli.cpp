@@ -264,12 +264,17 @@ int run(std::span<const std::string> args, std::ostream& out, std::ostream& err)
     }
 
     if (options->list_only) {
-        auto items = collect_export_items(*loaded, *options);
-        if (!items) {
-            err << items.error() << '\n';
+        auto listing = collect_export_items(*loaded, *options);
+        if (!listing) {
+            err << listing.error() << '\n';
             return 1;
         }
-        print_item_list(out, *items);
+        if (options->json) {
+            print_item_list_json(out, *listing);
+            out << '\n';
+        } else {
+            print_item_list(out, *listing);
+        }
         return 0;
     }
 

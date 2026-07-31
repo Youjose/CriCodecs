@@ -458,6 +458,15 @@ Metadata build_metadata(Format format, const LoadedDocument& document) {
                 add(metadata.fields, "version", packed_version_text(*version));
                 add(metadata.fields, "version_raw", hex_u32_text(*version));
             }
+            add(metadata.fields, "cue_count", current.cue_graph().cues().size());
+            add(metadata.fields, "cue_name_count", current.cue_graph().cue_names().size());
+            if (const auto resolution = acb::resolve_cue_sheet_playback(current)) {
+                add(metadata.fields, "resolved_cue_plan_count", resolution->plans.size());
+                add(metadata.fields, "non_playable_cue_count", resolution->non_playable_cues.size());
+            } else {
+                add_null(metadata.fields, "resolved_cue_plan_count");
+                add_null(metadata.fields, "non_playable_cue_count");
+            }
             add(metadata.fields, "waveform_count", current.waveform_count());
             add(metadata.fields, "has_embedded_awb", current.has_embedded_awb());
             add(metadata.fields, "has_companion_awb", current.companion_awb_path().has_value());

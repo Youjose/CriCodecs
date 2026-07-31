@@ -91,6 +91,7 @@ struct Options {
     bool quiet = false;
     bool help = false;
     bool list_only = false;
+    bool verbose = false;
     bool raw = false;
     bool encode = false;
     bool build = false;
@@ -141,6 +142,26 @@ struct OutputItem {
     std::filesystem::path relative_path;
     std::vector<std::string> details;
     std::optional<acb::AcbCuePlaybackPlan> cue_plan;
+    std::vector<acb::AcbCuePlanSource> cue_sources;
+    bool detailed = false;
+};
+
+enum class OutputListingMode {
+    entries,
+    cue_plans,
+};
+
+struct AcbCueListingSummary {
+    size_t authored_cue_count = 0;
+    std::vector<uint32_t> non_playable_cues;
+};
+
+struct OutputListing {
+    Format format;
+    OutputListingMode mode = OutputListingMode::entries;
+    bool raw = false;
+    std::vector<OutputItem> items;
+    std::optional<AcbCueListingSummary> acb_cues;
 };
 
 struct Failure {
@@ -238,11 +259,12 @@ void print_metadata_json(std::ostream& out, Format format, const LoadedDocument&
     const std::filesystem::path& output_path,
     const Options& options
 );
-[[nodiscard]] std::expected<std::vector<OutputItem>, std::string> collect_export_items(
+[[nodiscard]] std::expected<OutputListing, std::string> collect_export_items(
     LoadedResult& loaded,
     const Options& options
 );
-void print_item_list(std::ostream& out, const std::vector<OutputItem>& items);
+void print_item_list(std::ostream& out, const OutputListing& listing);
+void print_item_list_json(std::ostream& out, const OutputListing& listing);
 [[nodiscard]] std::expected<void, std::string> perform_audio_export_action(
     LoadedResult& loaded,
     const std::filesystem::path& output_path,

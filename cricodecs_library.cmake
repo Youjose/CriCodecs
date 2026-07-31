@@ -155,6 +155,7 @@ function(cricodecs_add_library target_name)
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_maker.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_common.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_export.cpp
+            ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_listing.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_metadata.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_parse.cpp
             ${CRICODECS_REPO_ROOT}/CriCodecs/src/cli/cli_probe.cpp

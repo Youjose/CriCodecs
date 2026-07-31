@@ -129,6 +129,10 @@ namespace cricodecs::cli::detail {
             options.list_only = true;
             continue;
         }
+        if (arg == "--verbose") {
+            options.verbose = true;
+            continue;
+        }
         if (arg == "-m") {
             options.metadata_only = true;
             continue;
@@ -548,8 +552,10 @@ namespace cricodecs::cli::detail {
         return std::unexpected(
             "cue block loop overrides require at least one selected cue `--index`");
     }
-    if (options.json && !options.metadata_only && !options.recover_key) {
-        return std::unexpected("`--json` requires `-m` or `--recover-key`");
+    if (options.json && !options.metadata_only && !options.list_only &&
+        !options.recover_key) {
+        return std::unexpected(
+            "`--json` requires `-m`, `--list`, or `--recover-key`");
     }
     if (options.metadata_only && (options.raw || options.list_only || !options.indexes.empty() || options.encrypt || options.decrypt)) {
         return std::unexpected("`-m` cannot be combined with export/list selection flags");
@@ -562,6 +568,9 @@ namespace cricodecs::cli::detail {
     }
     if (options.list_only && (options.encrypt || options.decrypt)) {
         return std::unexpected("`--list` cannot be combined with `--encrypt` or `--decrypt`");
+    }
+    if (options.verbose && !options.list_only) {
+        return std::unexpected("`--verbose` requires `--list`");
     }
     if ((options.encrypt || options.decrypt) && !options.indexes.empty()) {
         return std::unexpected("`--index` is not valid with `--encrypt` or `--decrypt`");
@@ -605,15 +614,16 @@ void print_usage(std::ostream& out, bool show_identity) {
         "      --compress       compress added/replaced CPK payloads\n"
         "      --raw            export raw contained/original payloads without audio decode\n"
         "      --list           list exportable items and exit\n"
+        "      --verbose        include details for every listed item\n"
         "  -m                   print metadata only\n"
-        "      --json           emit metadata or recovered-key output as JSON\n"
+        "      --json           emit metadata, listing, or recovered-key output as JSON\n"
         "      --encrypt        write encrypted output; encrypts CPK UTF tables and scrambles CVM metadata\n"
         "      --decrypt        write decrypted output; restores plain CPK UTF tables or CVM metadata\n"
         "      --recover-key    recover keys; requires -f hca, usm, adx, ahx, awb, or acb\n"
         "      --independent    recover multiple inputs independently instead of asserting one shared base key\n"
         "  -o, --output         override output path/root\n"
         "                        ?i = selected entry index, ?e = entry filename, ?s = input filename\n"
-        "      --index          export only a specific item index; repeatable\n"
+        "      --index          export or list only a specific item index; repeatable\n"
         "  -q, --quiet          suppress non-error console output\n"
         "  -f, --force-type     force input parsing; selects hca/usm/adx/ahx/awb/acb recovery domain with --recover-key\n"
         "      --key            format key string or numeric keycode; CVM uses it as the scramble key\n"

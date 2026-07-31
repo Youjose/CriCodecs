@@ -286,6 +286,8 @@ namespace cricodecs::cli::detail {
         .relative_path = relative_path,
         .details = {},
         .cue_plan = std::nullopt,
+        .cue_sources = {},
+        .detailed = false,
     };
 }
 
@@ -338,13 +340,23 @@ void append_cue_plan_details(
     }
 }
 
-[[nodiscard]] std::expected<std::vector<OutputItem>, std::string> collect_export_items(
+[[nodiscard]] std::expected<OutputListing, std::string> collect_export_items(
     LoadedResult& loaded,
     const Options& options
 ) {
-    return std::visit([&options](auto& current) -> std::expected<std::vector<OutputItem>, std::string> {
+    auto listing = std::visit([&options, format = loaded.format](
+        auto& current) -> std::expected<OutputListing, std::string> {
         using T = std::decay_t<decltype(current)>;
-        std::vector<OutputItem> items;
+        OutputListing listing{
+            .format = format,
+            .mode = options.cue_based
+                ? OutputListingMode::cue_plans
+                : OutputListingMode::entries,
+            .raw = options.raw,
+            .items = {},
+            .acb_cues = std::nullopt,
+        };
+        auto& items = listing.items;
 
         if constexpr (!std::same_as<T, acb::AcbContainer>) {
             if (options.cue_based) {
@@ -399,6 +411,10 @@ void append_cue_plan_details(
                     return std::unexpected(
                         "ACB contains no statically resolvable cue plans");
                 }
+                listing.acb_cues = AcbCueListingSummary{
+                    .authored_cue_count = current.cue_graph().cues().size(),
+                    .non_playable_cues = resolution->non_playable_cues,
+                };
 
                 const auto filenames = acb::cue_plan_filenames(*resolution);
                 items.reserve(resolution->plans.size());
@@ -444,13 +460,10 @@ void append_cue_plan_details(
                     } else {
                         item.cue_plan = std::move(resolved.plan);
                     }
-                    if (options.list_only &&
-                        std::ranges::contains(options.indexes, index)) {
-                        append_cue_plan_details(item, *item.cue_plan);
-                    }
+                    item.cue_sources = std::move(resolved.sources);
                     items.push_back(std::move(item));
                 }
-                return items;
+                return listing;
             }
             for (uint32_t index = 0; index < current.waveform_count(); ++index) {
                 auto relative_path = std::filesystem::path(current.waveform_filename(index, true));
@@ -523,8 +536,27 @@ void append_cue_plan_details(
             return std::unexpected("format does not expose exportable entries");
         }
 
-        return items;
+        return listing;
     }, loaded.document);
+    if (!listing || !options.list_only) {
+        return listing;
+    }
+
+    for (auto& item : listing->items) {
+        item.detailed =
+            options.verbose || std::ranges::contains(options.indexes, item.index);
+        if (item.detailed && item.cue_plan) {
+            append_cue_plan_details(item, *item.cue_plan);
+        }
+    }
+    if (!options.indexes.empty()) {
+        auto selected = select_items(std::move(listing->items), options);
+        if (!selected) {
+            return std::unexpected(selected.error());
+        }
+        listing->items = std::move(*selected);
+    }
+    return listing;
 }
 
 [[nodiscard]] std::expected<void, std::string> write_export_item(
@@ -786,15 +818,6 @@ void append_cue_plan_details(
     }, loaded.document);
 }
 
-void print_item_list(std::ostream& out, const std::vector<OutputItem>& items) {
-    for (const auto& item : items) {
-        out << item.index << ": " << item.relative_path.generic_string() << '\n';
-        for (const auto& detail : item.details) {
-            out << detail << '\n';
-        }
-    }
-}
-
 [[nodiscard]] std::expected<void, std::string> perform_multi_item_export(
     LoadedResult& loaded,
     const std::filesystem::path& input_path,
@@ -804,7 +827,7 @@ void print_item_list(std::ostream& out, const std::vector<OutputItem>& items) {
     if (!items) {
         return std::unexpected(items.error());
     }
-    auto selected = select_items(std::move(*items), options);
+    auto selected = select_items(std::move(items->items), options);
     if (!selected) {
         return std::unexpected(selected.error());
     }
