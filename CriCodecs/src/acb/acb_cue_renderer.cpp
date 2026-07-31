@@ -13,6 +13,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -555,6 +556,28 @@ struct DecodedWaveform {
     std::vector<int16_t> pcm;
 };
 
+struct DecodedSourceKey {
+    uint32_t index = 0;
+    awb::EntryCodec codec = awb::EntryCodec::Unknown;
+    AcbCueAwbBank bank = AcbCueAwbBank::memory;
+    bool physical_awb_entry = false;
+
+    friend bool operator<(
+        const DecodedSourceKey& lhs,
+        const DecodedSourceKey& rhs) noexcept {
+        return std::tie(
+            lhs.physical_awb_entry,
+            lhs.bank,
+            lhs.index,
+            lhs.codec) <
+            std::tie(
+                rhs.physical_awb_entry,
+                rhs.bank,
+                rhs.index,
+                rhs.codec);
+    }
+};
+
 uint64_t frames_for_us(uint64_t time_us, uint32_t sample_rate) {
     return (time_us * sample_rate + 500'000) / 1'000'000;
 }
@@ -812,12 +835,11 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
         hca_subkey = *subkey;
     }
 
-    std::map<uint32_t, DecodedWaveform> decoded;
+    // Logical waveform rows may reuse one physical AWB entry. Keep decoded PCM
+    // only for this plan so reuse is cheap without retaining a bank-sized cache.
+    std::map<DecodedSourceKey, DecodedWaveform> decoded;
     const auto decode_waveform = [&](uint32_t waveform_index)
         -> std::expected<std::reference_wrapper<const DecodedWaveform>, std::string> {
-        if (const auto it = decoded.find(waveform_index); it != decoded.end()) {
-            return std::cref(it->second);
-        }
         auto codec = acb.waveform_codec(waveform_index);
         if (!codec) return std::unexpected(codec.error());
         if (*codec != awb::EntryCodec::Hca && *codec != awb::EntryCodec::Adx) {
@@ -826,6 +848,22 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
                 std::to_string(waveform_index) + " uses unsupported codec `" +
                 std::string(awb::entry_codec_name(*codec)) + "`");
         }
+
+        DecodedSourceKey source{
+            .index = waveform_index,
+            .codec = *codec,
+        };
+        if (const auto entry = acb.waveform_awb_entry(waveform_index)) {
+            source.index = entry->awb_index;
+            source.bank = entry->stream_bank
+                ? AcbCueAwbBank::stream
+                : AcbCueAwbBank::memory;
+            source.physical_awb_entry = true;
+        }
+        if (const auto it = decoded.find(source); it != decoded.end()) {
+            return std::cref(it->second);
+        }
+
         auto data = acb.extract_waveform_data(waveform_index);
         if (!data) {
             return std::unexpected(
@@ -859,7 +897,7 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
                 std::unreachable();
         }
         const auto [it, inserted] = decoded.emplace(
-            waveform_index, std::move(waveform));
+            source, std::move(waveform));
         (void)inserted;
         return std::cref(it->second);
     };
@@ -888,7 +926,17 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
         return std::unexpected("ACB cue render failed: cue produced no decodable audio");
     }
 
-    for (const auto& block : plan.blocks) {
+    // The worst signed PCM16 contribution is -32768, so this many simultaneous
+    // layers still fit exactly in an int32 accumulator.
+    constexpr size_t max_int32_mix_layers =
+        static_cast<size_t>(std::numeric_limits<int32_t>::max()) /
+        static_cast<size_t>(-std::numeric_limits<int16_t>::min());
+    std::vector<size_t> block_sample_counts(plan.blocks.size(), 0);
+    size_t output_sample_count = 0;
+    size_t max_int32_mix_samples = 0;
+    size_t max_int64_mix_samples = 0;
+    for (size_t block_index = 0; block_index < plan.blocks.size(); ++block_index) {
+        const auto& block = plan.blocks[block_index];
         if (block.skipped_empty_hold) {
             continue;
         }
@@ -907,42 +955,145 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
             block_frames = frames_for_us(block.duration_us, output_rate);
         }
         if (block_frames >
-            std::numeric_limits<size_t>::max() / std::max<uint8_t>(output_channels, 1)) {
+            std::numeric_limits<size_t>::max() / output_channels) {
             return std::unexpected("ACB cue render failed: block PCM size overflows");
         }
+        const size_t block_samples =
+            static_cast<size_t>(block_frames) * output_channels;
+        const uint64_t total_plays =
+            static_cast<uint64_t>(block.render_loop_count) + 1;
+        if (block_samples >
+            (std::numeric_limits<size_t>::max() - output_sample_count) /
+                total_plays) {
+            return std::unexpected("ACB cue render failed: output PCM size overflows");
+        }
+        block_sample_counts[block_index] = block_samples;
+        output_sample_count += block_samples * total_plays;
+        if (block.clips.size() > 1) {
+            auto& max_mix_samples =
+                block.clips.size() <= max_int32_mix_layers
+                ? max_int32_mix_samples
+                : max_int64_mix_samples;
+            max_mix_samples = std::max(max_mix_samples, block_samples);
+        }
+    }
+    output.reserve(output_sample_count);
+    // Reuse one uninitialized scratch allocation for every layered block. Each
+    // block initializes all samples from its first clip before accumulating.
+    auto int32_mix_storage = max_int32_mix_samples == 0
+        ? nullptr
+        : std::make_unique_for_overwrite<int32_t[]>(max_int32_mix_samples);
+    auto int64_mix_storage = max_int64_mix_samples == 0
+        ? nullptr
+        : std::make_unique_for_overwrite<int64_t[]>(max_int64_mix_samples);
+    const auto block_start_sample = [&](int64_t start_time_us, size_t block_samples) {
+        const uint64_t start_frame =
+            frames_for_us(static_cast<uint64_t>(start_time_us), output_rate);
+        const size_t block_frames = block_samples / output_channels;
+        return start_frame >= block_frames
+            ? block_samples
+            : static_cast<size_t>(start_frame) * output_channels;
+    };
 
-        std::vector<int64_t> mixed(
-            static_cast<size_t>(block_frames) * output_channels, 0);
-        for (const auto& clip : block.clips) {
+    for (size_t block_index = 0; block_index < plan.blocks.size(); ++block_index) {
+        const auto& block = plan.blocks[block_index];
+        if (block.skipped_empty_hold) {
+            continue;
+        }
+        const size_t block_samples = block_sample_counts[block_index];
+        const size_t block_output_start = output.size();
+        if (block_samples == 0 || block.clips.empty()) {
+            output.insert(output.end(), block_samples, int16_t{0});
+        } else if (block.clips.size() == 1) {
+            const auto& clip = block.clips.front();
             auto waveform = decode_waveform(clip.waveform_index);
             if (!waveform) return std::unexpected(waveform.error());
             const auto& audio = waveform->get();
-            const size_t start_sample = static_cast<size_t>(
-                frames_for_us(static_cast<uint64_t>(clip.start_time_us), output_rate) *
-                output_channels);
-            const size_t count = std::min(
-                audio.pcm.size(), mixed.size() - std::min(start_sample, mixed.size()));
-            for (size_t sample = 0; sample < count; ++sample) {
-                mixed[start_sample + sample] += audio.pcm[sample];
-            }
-        }
+            const size_t start_sample =
+                block_start_sample(clip.start_time_us, block_samples);
+            const size_t prefix_samples = start_sample;
+            const size_t audio_samples = std::min(
+                audio.pcm.size(), block_samples - prefix_samples);
+            output.insert(output.end(), prefix_samples, int16_t{0});
+            output.insert(
+                output.end(),
+                audio.pcm.begin(),
+                audio.pcm.begin() + static_cast<std::ptrdiff_t>(audio_samples));
+            output.insert(
+                output.end(),
+                block_samples - prefix_samples - audio_samples,
+                int16_t{0});
+        } else {
+            const auto mix_clips = [&]<typename MixSample>(MixSample* mixed)
+                -> std::expected<void, std::string> {
+                const auto initialize_clip = [&](const AcbCueClipPlan& clip)
+                    -> std::expected<void, std::string> {
+                    auto waveform = decode_waveform(clip.waveform_index);
+                    if (!waveform) return std::unexpected(waveform.error());
+                    const auto& audio = waveform->get();
+                    const size_t start_sample =
+                        block_start_sample(clip.start_time_us, block_samples);
+                    const size_t prefix_samples = start_sample;
+                    const size_t count = std::min(
+                        audio.pcm.size(),
+                        block_samples - prefix_samples);
+                    std::fill_n(mixed, prefix_samples, MixSample{0});
+                    // A widening store avoids a zero-plus-first-clip
+                    // read-modify-write dependency in the hot mixing loop.
+                    std::transform(
+                        audio.pcm.begin(),
+                        audio.pcm.begin() + static_cast<std::ptrdiff_t>(count),
+                        mixed + prefix_samples,
+                        [](int16_t sample) {
+                            return static_cast<MixSample>(sample);
+                        });
+                    std::fill(
+                        mixed + prefix_samples + count,
+                        mixed + block_samples,
+                        MixSample{0});
+                    return {};
+                };
+                if (auto initialized = initialize_clip(block.clips.front());
+                    !initialized) {
+                    return initialized;
+                }
 
-        std::vector<int16_t> rendered_block;
-        rendered_block.reserve(mixed.size());
-        for (const auto sample : mixed) {
-            rendered_block.push_back(saturate_sample(sample));
+                for (size_t clip_index = 1;
+                     clip_index < block.clips.size();
+                     ++clip_index) {
+                    const auto& clip = block.clips[clip_index];
+                    auto waveform = decode_waveform(clip.waveform_index);
+                    if (!waveform) return std::unexpected(waveform.error());
+                    const auto& audio = waveform->get();
+                    const size_t start_sample =
+                        block_start_sample(clip.start_time_us, block_samples);
+                    const size_t count = std::min(
+                        audio.pcm.size(), block_samples - start_sample);
+                    for (size_t sample = 0; sample < count; ++sample) {
+                        mixed[start_sample + sample] += audio.pcm[sample];
+                    }
+                }
+                output.resize(block_output_start + block_samples);
+                for (size_t sample = 0; sample < block_samples; ++sample) {
+                    output[block_output_start + sample] =
+                        saturate_sample(mixed[sample]);
+                }
+                return {};
+            };
+
+            auto mixed = block.clips.size() <= max_int32_mix_layers
+                ? mix_clips.template operator()<int32_t>(int32_mix_storage.get())
+                : mix_clips.template operator()<int64_t>(int64_mix_storage.get());
+            if (!mixed) {
+                return std::unexpected(mixed.error());
+            }
         }
         const uint64_t total_plays =
             static_cast<uint64_t>(block.render_loop_count) + 1;
-        if (
-            rendered_block.size() >
-                (std::numeric_limits<size_t>::max() - output.size()) /
-                    total_plays) {
-            return std::unexpected("ACB cue render failed: output PCM size overflows");
-        }
-        output.reserve(output.size() + rendered_block.size() * total_plays);
-        for (uint64_t play = 0; play < total_plays; ++play) {
-            output.insert(output.end(), rendered_block.begin(), rendered_block.end());
+        for (uint64_t play = 1; play < total_plays; ++play) {
+            for (size_t sample = 0; sample < block_samples; ++sample) {
+                output.push_back(output[block_output_start + sample]);
+            }
         }
     }
 
