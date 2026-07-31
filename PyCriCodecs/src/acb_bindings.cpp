@@ -1,8 +1,13 @@
 #include "binding_helpers.hpp"
 
 #include <filesystem>
+#include <map>
+
+#include <nanobind/stl/map.h>
 
 #include "../../CriCodecs/src/acb/acb_container.hpp"
+#include "../../CriCodecs/src/acb/acb_cue_renderer.hpp"
+#include "../../CriCodecs/src/wav/wav_container.hpp"
 
 namespace cricodecs::python {
 namespace {
@@ -52,6 +57,89 @@ namespace {
     return waveform;
 }
 
+[[nodiscard]] cricodecs::acb::AcbCueRenderOptions cue_options(
+    uint32_t loop_count,
+    bool advance_after_infinite,
+    uint64_t hca_keycode,
+    const nb::object& hca_subkey,
+    bool include_empty_holds,
+    const nb::object& block_loop_counts) {
+    cricodecs::acb::AcbCueRenderOptions options{
+        .infinite_block_loop_count = loop_count,
+        .advance_after_infinite_block = advance_after_infinite,
+        .include_empty_infinite_blocks = include_empty_holds,
+        .hca_keycode = hca_keycode,
+        .hca_subkey = hca_subkey.is_none()
+            ? std::nullopt
+            : std::optional<uint16_t>(nb::cast<uint16_t>(hca_subkey)),
+    };
+    if (!block_loop_counts.is_none()) {
+        const auto values =
+            nb::cast<std::map<uint32_t, uint32_t>>(block_loop_counts);
+        options.block_loop_overrides.reserve(values.size());
+        for (const auto& [block_position, block_loop_count] : values) {
+            options.block_loop_overrides.push_back({
+                .block_position = block_position,
+                .loop_count = block_loop_count,
+            });
+        }
+    }
+    return options;
+}
+
+[[nodiscard]] nb::object cue_plan_object(
+    const cricodecs::acb::AcbCuePlaybackPlan& plan) {
+    nb::object result = simple_namespace();
+    result.attr("cue_index") = plan.cue_index;
+    result.attr("cue_id") = plan.cue_id;
+    result.attr("cue_name") = plan.cue_name;
+    nb::list blocks;
+    for (const auto& block : plan.blocks) {
+        nb::object block_object = simple_namespace();
+        block_object.attr("block_position") = block.block_position
+            ? nb::cast(*block.block_position)
+            : nb::none();
+        block_object.attr("block_index") = block.block_index
+            ? nb::cast(*block.block_index)
+            : nb::none();
+        block_object.attr("name") = block.name;
+        block_object.attr("duration_us") = block.duration_us;
+        block_object.attr("authored_loop_count") = block.authored_loop_count;
+        block_object.attr("render_loop_count") = block.render_loop_count;
+        block_object.attr("forced_advance") = block.forced_advance;
+        block_object.attr("skipped_empty_hold") = block.skipped_empty_hold;
+        nb::list clips;
+        for (const auto& clip : block.clips) {
+            nb::object clip_object = simple_namespace();
+            clip_object.attr("waveform_index") = clip.waveform_index;
+            clip_object.attr("start_time_us") = clip.start_time_us;
+            clip_object.attr("awb_wave_id") = clip.awb_wave_id
+                ? nb::cast(*clip.awb_wave_id)
+                : nb::none();
+            clip_object.attr("awb_stream_index") = clip.awb_stream_index
+                ? nb::cast(*clip.awb_stream_index)
+                : nb::none();
+            clip_object.attr("awb_bank") = clip.awb_bank
+                ? nb::cast(
+                      *clip.awb_bank ==
+                              cricodecs::acb::AcbCueAwbBank::stream
+                          ? "stream"
+                          : "memory")
+                : nb::none();
+            clips.append(clip_object);
+        }
+        block_object.attr("clips") = clips;
+        blocks.append(block_object);
+    }
+    result.attr("blocks") = blocks;
+    nb::list diagnostics;
+    for (const auto& diagnostic : plan.diagnostics) {
+        diagnostics.append(diagnostic);
+    }
+    result.attr("diagnostics") = diagnostics;
+    return result;
+}
+
 } // namespace
 
 void bind_acb_module(nb::module_& module) {
@@ -88,6 +176,9 @@ void bind_acb_module(nb::module_& module) {
             return std::string(self.name());
         })
         .def_prop_ro("waveform_count", &cricodecs::acb::AcbContainer::waveform_count)
+        .def_prop_ro("cue_count", [](const cricodecs::acb::AcbContainer& self) {
+            return self.cue_graph().cues().size();
+        })
         .def_prop_ro("has_embedded_awb", &cricodecs::acb::AcbContainer::has_embedded_awb)
         .def_prop_ro("companion_awb_path", [](const cricodecs::acb::AcbContainer& self) -> nb::object {
             const auto path = self.companion_awb_path();
@@ -102,6 +193,7 @@ void bind_acb_module(nb::module_& module) {
             info.attr("source_path") = path_or_none(self.source_path());
             info.attr("name") = std::string(self.name());
             info.attr("waveform_count") = self.waveform_count();
+            info.attr("cue_count") = self.cue_graph().cues().size();
             nb::list waveforms;
             for (uint32_t index = 0; index < self.waveform_count(); ++index) {
                 waveforms.append(waveform_info_object(self, index));
@@ -206,6 +298,159 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("include_index_prefix") = true
         )
         .def(
+            "cue_filename",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               bool include_index_prefix) {
+                return cricodecs::acb::cue_filename(
+                    self, index, include_index_prefix);
+            },
+            nb::arg("index"),
+            nb::arg("include_index_prefix") = true
+        )
+        .def(
+            "cue_plan",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts) {
+                auto plan = unwrap_expected(cricodecs::acb::plan_cue_playback(
+                    self,
+                    index,
+                    cue_options(
+                        loop_count,
+                        advance_after_infinite,
+                        0,
+                        nb::none(),
+                        include_empty_holds,
+                        block_loop_counts)));
+                return cue_plan_object(plan);
+            },
+            nb::arg("index"),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none()
+        )
+        .def(
+            "cue_wav_bytes",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               uint64_t hca_keycode,
+               const nb::object& hca_subkey,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts) {
+                auto rendered = unwrap_expected(cricodecs::acb::render_cue(
+                    self,
+                    index,
+                    cue_options(
+                        loop_count,
+                        advance_after_infinite,
+                        hca_keycode,
+                        hca_subkey,
+                        include_empty_holds,
+                        block_loop_counts)));
+                auto wav = unwrap_expected(cricodecs::wav::WavContainer::build_bytes(
+                    rendered.pcm,
+                    rendered.sample_rate,
+                    rendered.channels));
+                return to_python_bytes(wav);
+            },
+            nb::arg("index"),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("hca_keycode") = 0,
+            nb::arg("hca_subkey") = nb::none(),
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none()
+        )
+        .def(
+            "extract_cue",
+            [](const cricodecs::acb::AcbContainer& self,
+               uint32_t index,
+               const nb::object& output_path,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               uint64_t hca_keycode,
+               const nb::object& hca_subkey,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts) {
+                unwrap_expected(cricodecs::acb::extract_cue(
+                    self,
+                    index,
+                    require_python_path(output_path, "output_path"),
+                    cue_options(
+                        loop_count,
+                        advance_after_infinite,
+                        hca_keycode,
+                        hca_subkey,
+                        include_empty_holds,
+                        block_loop_counts)));
+            },
+            nb::arg("index"),
+            nb::arg("output_path"),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("hca_keycode") = 0,
+            nb::arg("hca_subkey") = nb::none(),
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none()
+        )
+        .def(
+            "extract_cues",
+            [](const cricodecs::acb::AcbContainer& self,
+               const nb::object& output_dir,
+               uint32_t loop_count,
+               bool advance_after_infinite,
+               uint64_t hca_keycode,
+               const nb::object& hca_subkey,
+               bool include_empty_holds,
+               const nb::object& block_loop_counts) {
+                const auto root = require_python_path(output_dir, "output_dir");
+                std::error_code filesystem_error;
+                std::filesystem::create_directories(root, filesystem_error);
+                if (filesystem_error) {
+                    raise_value_error(
+                        "ACB cue extract failed: could not create output directory: " +
+                        filesystem_error.message());
+                }
+                const auto options = cue_options(
+                    loop_count,
+                    advance_after_infinite,
+                    hca_keycode,
+                    hca_subkey,
+                    include_empty_holds,
+                    block_loop_counts);
+                nb::list paths;
+                for (uint32_t cue_index = 0;
+                     cue_index < self.cue_graph().cues().size();
+                     ++cue_index) {
+                    if (!cricodecs::acb::plan_cue_playback(
+                            self, cue_index, options)) {
+                        continue;
+                    }
+                    const auto path =
+                        root / cricodecs::acb::cue_filename(
+                            self, cue_index, true);
+                    unwrap_expected(cricodecs::acb::extract_cue(
+                        self, cue_index, path, options));
+                    paths.append(path.generic_string());
+                }
+                return paths;
+            },
+            nb::arg("output_dir"),
+            nb::arg("loop_count") = 0,
+            nb::arg("advance_after_infinite") = true,
+            nb::arg("hca_keycode") = 0,
+            nb::arg("hca_subkey") = nb::none(),
+            nb::arg("include_empty_holds") = true,
+            nb::arg("block_loop_counts") = nb::none()
+        )
+        .def(
             "extract_waveform_data",
             [](const cricodecs::acb::AcbContainer& self, uint32_t index, uint64_t aac_keycode) {
                 return to_python_bytes(unwrap_expected(self.extract_waveform_data(index, aac_keycode)));
@@ -271,7 +516,7 @@ void bind_acb_module(nb::module_& module) {
             nb::arg("aac_keycode") = 0
         );
 
-    install_attr_repr(module, "Acb", {"source_path", "name", "waveform_count", "has_embedded_awb", "companion_awb_path", "has_aac_waveforms"});
+    install_attr_repr(module, "Acb", {"source_path", "name", "waveform_count", "cue_count", "has_embedded_awb", "companion_awb_path", "has_aac_waveforms"});
     install_attr_repr(module, "WaveformAwbEntry", {"waveform_index", "wave_id", "awb_index", "stream_bank"});
 
     module.def(

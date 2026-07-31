@@ -42,6 +42,69 @@ namespace cricodecs::cli::detail {
             options.trim_after_loop = true;
             continue;
         }
+        if (arg == "--cue") {
+            options.cue_based = true;
+            continue;
+        }
+        if (arg == "--cue-stop-at-loop" || arg == "--cue-stop-at-infinite") {
+            options.cue_stop_at_loop = true;
+            continue;
+        }
+        if (arg == "--cue-skip-empty-holds") {
+            options.cue_skip_empty_holds = true;
+            options.cue_empty_hold_policy_set = true;
+            continue;
+        }
+        if (arg == "--cue-include-empty-holds") {
+            options.cue_skip_empty_holds = false;
+            options.cue_empty_hold_policy_set = true;
+            continue;
+        }
+        if (arg == "--cue-loop-count") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u32(*value, "--cue-loop-count");
+            if (!parsed) return std::unexpected(parsed.error());
+            options.cue_loop_count = *parsed;
+            continue;
+        }
+        if (arg == "--cue-infinite-plays") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto parsed = parse_u32(*value, "--cue-infinite-plays");
+            if (!parsed) return std::unexpected(parsed.error());
+            if (*parsed == 0) {
+                return std::unexpected(
+                    "`--cue-infinite-plays` must be at least one");
+            }
+            options.cue_loop_count = *parsed - 1;
+            continue;
+        }
+        if (arg == "--cue-block-loop-count" || arg == "--cue-block-plays") {
+            auto value = require_value(arg);
+            if (!value) return std::unexpected(value.error());
+            auto pair = parse_pair_value(*value, arg);
+            if (!pair) return std::unexpected(pair.error());
+            auto block_position =
+                parse_u32(pair->first, std::string(arg) + " block position");
+            if (!block_position) {
+                return std::unexpected(block_position.error());
+            }
+            auto loop_count =
+                parse_u32(pair->second, std::string(arg) + " loop count");
+            if (!loop_count) return std::unexpected(loop_count.error());
+            if (arg == "--cue-block-plays" && *loop_count == 0) {
+                return std::unexpected(
+                    "`--cue-block-plays` play count must be at least one");
+            }
+            options.cue_block_loop_overrides.push_back({
+                .block_position = *block_position,
+                .loop_count = arg == "--cue-block-plays"
+                    ? *loop_count - 1
+                    : *loop_count,
+            });
+            continue;
+        }
         if (arg == "--encrypt") {
             options.encrypt = true;
             continue;
@@ -471,6 +534,20 @@ namespace cricodecs::cli::detail {
     if ((options.encrypt || options.decrypt) && options.raw) {
         return std::unexpected("`--raw` cannot be combined with `--encrypt` or `--decrypt`");
     }
+    if (options.raw && options.cue_based) {
+        return std::unexpected("`--raw` cannot be combined with cue-based extraction");
+    }
+    if ((options.cue_stop_at_loop ||
+         options.cue_empty_hold_policy_set ||
+         options.cue_loop_count != 0 ||
+         !options.cue_block_loop_overrides.empty()) &&
+        !options.cue_based) {
+        return std::unexpected("cue loop policy options require `--cue`");
+    }
+    if (!options.cue_block_loop_overrides.empty() && options.indexes.empty()) {
+        return std::unexpected(
+            "cue block loop overrides require at least one selected cue `--index`");
+    }
     if (options.json && !options.metadata_only && !options.recover_key) {
         return std::unexpected("`--json` requires `-m` or `--recover-key`");
     }
@@ -497,7 +574,7 @@ void print_usage(std::ostream& out, bool show_identity) {
         out << "CriCodecs " << build_identity() << '\n';
     }
     out <<
-        "Usage: cricodecs <input> [-e] [--encode|--build] [--raw] [--list] [--encrypt|--decrypt] [-m] [--json] [-q] [-f TYPE] [-o PATH]\n"
+        "Usage: cricodecs <input> [-e] [--encode|--build] [--raw|--cue] [--list] [--encrypt|--decrypt] [-m] [--json] [-q] [-f TYPE] [-o PATH]\n"
         "       cricodecs --recover-key -f hca|usm|adx|ahx|awb|acb <input> [input ...] [--json] [-q]\n"
         "                 [--index N] [--key VALUE] [--subkey VALUE] [--cipher-type VALUE] [--aac-keycode VALUE]\n"
         "                 [--encoding NAME] [--alpha PATH] [--audio PATH] [--audio-channel 0..255] [--profile NAME] [--header-version VALUE]\n"
@@ -546,6 +623,14 @@ void print_usage(std::ostream& out, bool show_identity) {
         "      --encoding       text encoding override where applicable\n"
         "      --version        show version/build information\n"
         "  -h, --help           show this help text\n"
+        "\n"
+        "ACB cue extraction:\n"
+        "      --cue            render deterministic cue paths instead of flat AWB waveforms\n"
+        "      --cue --list     list renderable cue indexes; add --index N to show its blocks\n"
+        "      --cue-loop-count N  loop each authored infinite audio block N times (default 0)\n"
+        "      --cue-block-loop-count P=N  set loops for block position P; requires --index\n"
+        "      --cue-stop-at-loop  stop after the first rendered infinite block instead of advancing\n"
+        "      --cue-skip-empty-holds  omit waveform-less infinite holds (included once by default)\n"
         "\n"
         "Valid force types:\n"
         "  aax acb acx adx afs ahx aix awb cpk csb cvm hca sfd usm utf\n";

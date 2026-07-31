@@ -284,6 +284,7 @@ namespace cricodecs::cli::detail {
         .index = index,
         .entry_name = relative_path.filename(),
         .relative_path = relative_path,
+        .details = {},
     };
 }
 
@@ -294,6 +295,13 @@ namespace cricodecs::cli::detail {
     return std::visit([&options](auto& current) -> std::expected<std::vector<OutputItem>, std::string> {
         using T = std::decay_t<decltype(current)>;
         std::vector<OutputItem> items;
+
+        if constexpr (!std::same_as<T, acb::AcbContainer>) {
+            if (options.cue_based) {
+                return std::unexpected(
+                    "cue-based extraction is only supported for ACB inputs");
+            }
+        }
 
         if constexpr (std::same_as<T, afs::AfsContainer>) {
             for (const auto& entry : current.entries()) {
@@ -324,6 +332,107 @@ namespace cricodecs::cli::detail {
                 items.push_back(make_output_item(index, relative_path));
             }
         } else if constexpr (std::same_as<T, acb::AcbContainer>) {
+            if (options.cue_based) {
+                const acb::AcbCueRenderOptions cue_options{
+                    .infinite_block_loop_count = options.cue_loop_count,
+                    .advance_after_infinite_block = !options.cue_stop_at_loop,
+                    .include_empty_infinite_blocks =
+                        !options.cue_skip_empty_holds,
+                    .block_loop_overrides = options.cue_block_loop_overrides,
+                    .hca_subkey = options.subkey,
+                };
+                const auto& cues = current.cue_graph().cues();
+                const auto append_cue = [&](uint32_t cue_index)
+                    -> std::expected<void, std::string> {
+                    if (cue_index >= cues.size()) {
+                        return std::unexpected(
+                            "ACB cue index is out of range: " +
+                            std::to_string(cue_index));
+                    }
+                    auto plan = acb::plan_cue_playback(
+                        current, cue_index, cue_options);
+                    if (!plan) return std::unexpected(plan.error());
+                    auto item = make_output_item(
+                        cue_index, acb::cue_filename(current, cue_index, true));
+                    if (options.list_only && !options.indexes.empty()) {
+                        for (const auto& block : plan->blocks) {
+                            std::string detail = "    block ";
+                            detail += block.block_position
+                                ? std::to_string(*block.block_position)
+                                : "-";
+                            if (block.block_index) {
+                                detail += " [row ";
+                                detail += std::to_string(*block.block_index);
+                                detail += ']';
+                            }
+                            detail += ": ";
+                            detail += block.name;
+                            detail += ", LoopNum=";
+                            detail += std::to_string(block.authored_loop_count);
+                            detail += ", loops=";
+                            detail += std::to_string(block.render_loop_count);
+                            detail += ", duration=";
+                            detail += std::to_string(block.duration_us);
+                            detail += " us";
+                            item.details.push_back(std::move(detail));
+                            for (const auto& clip : block.clips) {
+                                std::string clip_detail = "      clip waveform=";
+                                clip_detail += std::to_string(
+                                    clip.waveform_index);
+                                if (clip.awb_wave_id) {
+                                    clip_detail += ", awb_id=";
+                                    clip_detail += std::to_string(
+                                        *clip.awb_wave_id);
+                                }
+                                if (clip.awb_stream_index) {
+                                    clip_detail += ", awb_stream_index=";
+                                    clip_detail += std::to_string(
+                                        *clip.awb_stream_index);
+                                }
+                                if (clip.awb_bank) {
+                                    clip_detail += ", awb_bank=";
+                                    clip_detail +=
+                                        *clip.awb_bank ==
+                                                acb::AcbCueAwbBank::stream
+                                            ? "stream"
+                                            : "memory";
+                                }
+                                clip_detail += ", start=";
+                                clip_detail += std::to_string(
+                                    clip.start_time_us);
+                                clip_detail += " us";
+                                item.details.push_back(
+                                    std::move(clip_detail));
+                            }
+                        }
+                    }
+                    items.push_back(std::move(item));
+                    return {};
+                };
+                if (!options.indexes.empty()) {
+                    for (const auto cue_index : options.indexes) {
+                        auto appended = append_cue(
+                            static_cast<uint32_t>(cue_index));
+                        if (!appended) return std::unexpected(appended.error());
+                    }
+                } else {
+                    for (uint32_t cue_index = 0;
+                         cue_index < cues.size();
+                         ++cue_index) {
+                        if (acb::plan_cue_playback(
+                                current, cue_index, cue_options)) {
+                            items.push_back(make_output_item(
+                                cue_index,
+                                acb::cue_filename(current, cue_index, true)));
+                        }
+                    }
+                }
+                if (items.empty()) {
+                    return std::unexpected(
+                        "ACB contains no deterministically renderable cues");
+                }
+                return items;
+            }
             for (uint32_t index = 0; index < current.waveform_count(); ++index) {
                 auto relative_path = std::filesystem::path(current.waveform_filename(index, true));
                 if (!options.raw) {
@@ -433,17 +542,36 @@ namespace cricodecs::cli::detail {
             }
             return write_bytes_file(output_path, *payload);
         } else if constexpr (std::same_as<T, acb::AcbContainer>) {
+            if (options.cue_based) {
+                auto keycode = hca_keycode(options);
+                if (!keycode) return std::unexpected(keycode.error());
+                return acb::extract_cue(
+                    current,
+                    static_cast<uint32_t>(item.index),
+                    output_path,
+                    acb::AcbCueRenderOptions{
+                        .infinite_block_loop_count = options.cue_loop_count,
+                        .advance_after_infinite_block =
+                            !options.cue_stop_at_loop,
+                        .include_empty_infinite_blocks =
+                            !options.cue_skip_empty_holds,
+                        .block_loop_overrides =
+                            options.cue_block_loop_overrides,
+                        .hca_keycode = *keycode,
+                        .hca_subkey = options.subkey,
+                    });
+            }
             auto payload = current.extract_waveform_data(static_cast<uint32_t>(item.index), options.aac_keycode.value_or(0));
             if (!payload) {
                 return std::unexpected(payload.error());
             }
             if (!options.raw) {
                 auto fallback_subkey = [&]() -> std::optional<uint16_t> {
-                    auto awb = current.load_awb();
-                    if (!awb || awb->subkey() == 0) {
+                    auto subkey = current.awb_subkey();
+                    if (!subkey || *subkey == 0) {
                         return std::nullopt;
                     }
-                    return awb->subkey();
+                    return *subkey;
                 }();
                 auto decoded = decode_audio_payload_to_wav(*payload, output_path, options, fallback_subkey);
                 if (!decoded) {
@@ -638,6 +766,9 @@ namespace cricodecs::cli::detail {
 void print_item_list(std::ostream& out, const std::vector<OutputItem>& items) {
     for (const auto& item : items) {
         out << item.index << ": " << item.relative_path.generic_string() << '\n';
+        for (const auto& detail : item.details) {
+            out << detail << '\n';
+        }
     }
 }
 

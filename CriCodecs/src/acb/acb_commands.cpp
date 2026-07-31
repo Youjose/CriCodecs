@@ -42,6 +42,7 @@ std::string_view command_payload_kind_name(AcbCommandPayloadKind kind) noexcept 
         case AcbCommandPayloadKind::target_reference:    return "target_reference";
         case AcbCommandPayloadKind::be_u16:              return "be_u16";
         case AcbCommandPayloadKind::be_i16:              return "be_i16";
+        case AcbCommandPayloadKind::be_u32:              return "be_u32";
         case AcbCommandPayloadKind::be_u16_pair:         return "be_u16_pair";
         case AcbCommandPayloadKind::be_u16_pair_u8:      return "be_u16_pair_u8";
         case AcbCommandPayloadKind::be_f32:              return "be_f32";
@@ -60,7 +61,10 @@ std::string_view command_payload_kind_name(AcbCommandPayloadKind kind) noexcept 
     return "raw";
 }
 
-std::expected<std::vector<AcbCommand>, std::string> parse_command_stream(std::span<const uint8_t> data) {
+std::expected<std::vector<AcbCommand>, std::string> parse_command_stream(
+    std::span<const uint8_t> data,
+    AcbCommandDispatcher dispatcher
+) {
     std::vector<AcbCommand> commands;
 
     size_t pos = 0;
@@ -79,7 +83,8 @@ std::expected<std::vector<AcbCommand>, std::string> parse_command_stream(std::sp
 
         commands.push_back(AcbCommand{
             .code = code,
-            .family = classify_command(code),
+            .dispatcher = dispatcher,
+            .family = classify_command(dispatcher, code),
             .payload = data.subspan(pos, size),
         });
 
@@ -94,25 +99,22 @@ std::expected<std::vector<AcbCommand>, std::string> parse_command_stream(std::sp
 }
 
 std::optional<AcbCommandTarget> command_target_reference(const AcbCommand& command) noexcept {
-    if (!is_waveform_reference_command(command.code) || command.payload.size() < 4) {
+    if (!is_target_reference_command(command.code) || command.payload.size() < 4) {
         return std::nullopt;
     }
 
     const uint16_t raw_type = io::read_be<uint16_t>(command.payload, 0);
-    const auto type = static_cast<AcbCommandTargetType>(raw_type);
-    switch (type) {
-        case AcbCommandTargetType::waveform:
-        case AcbCommandTargetType::synth:
-        case AcbCommandTargetType::sequence:
-            return AcbCommandTarget{
-                .type = type,
-                .index = io::read_be<uint16_t>(command.payload, 2),
-            };
-        case AcbCommandTargetType::none:
-            return std::nullopt;
+    if (raw_type == 0) {
+        return std::nullopt;
     }
 
-    return std::nullopt;
+    // Preserve the raw reference domain even when it postdates the currently
+    // known SDK dispatcher. Graph assembly can resolve a known type or expose
+    // a precise unresolved edge instead of dropping the event.
+    return AcbCommandTarget{
+        .type = static_cast<AcbCommandTargetType>(raw_type),
+        .index = io::read_be<uint16_t>(command.payload, 2),
+    };
 }
 
 } // namespace cricodecs::acb

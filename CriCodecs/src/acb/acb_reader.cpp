@@ -67,22 +67,6 @@ bool visit_u16_index_list(std::span<const uint8_t> data, uint16_t count_limit, V
     return true;
 }
 
-std::expected<std::string, std::string> decode_cri_string(
-    std::string_view raw,
-    const text::EncodingOptions& encoding,
-    std::string_view context
-) {
-    auto decoded = text::decode_to_utf8(
-        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()),
-        encoding
-    );
-    if (!decoded) {
-        return std::unexpected(std::string(context) + ": " + decoded.error());
-    }
-    return *decoded;
-}
-
-
 } // namespace
 
 std::optional<std::reference_wrapper<const UtfTable>> AcbContainer::load_subtable(
@@ -215,6 +199,18 @@ std::expected<void, std::string> AcbContainer::finish_load_from_source() {
     }
     preload_waveforms();
     preload_cue_names();
+
+    auto graph = AcbCueGraph::load(m_source, m_encoding);
+    if (!graph) {
+        return std::unexpected("ACB cue graph load failed: " + graph.error());
+    }
+    m_cue_graph = std::move(*graph);
+
+    auto views = m_cue_graph.waveform_cue_views();
+    if (!views) {
+        return std::unexpected("ACB cue graph view failed: " + views.error());
+    }
+    m_waveform_cue_views = std::move(*views);
     resolve_all_names();
     return {};
 }
@@ -348,47 +344,33 @@ void AcbContainer::resolve_waveform_name(uint32_t waveform_index,
 void AcbContainer::resolve_all_names() {
     m_wave_names.clear();
     m_name_map.clear();
-    if (!m_sub.cue_name_table) {
+    if (m_waveform_cue_views.size() != m_waveforms.size()) {
         return;
     }
-
-    auto& cue_name_table = *m_sub.cue_name_table;
-    const int c_CueName = cue_name_table.find_column("CueName");
-    const int c_CueIndex = cue_name_table.find_column("CueIndex");
-    if (c_CueName < 0 || c_CueIndex < 0) {
-        return;
-    }
-
-    std::vector<CueNameRow> cue_names;
-    cue_names.reserve(cue_name_table.row_count());
-    for (uint32_t cue_row = 0; cue_row < cue_name_table.row_count(); ++cue_row) {
-        auto cue_name = cue_name_table.get_string(cue_row, static_cast<uint32_t>(c_CueName));
-        auto cue_index = cue_name_table.get<uint16_t>(cue_row, static_cast<uint32_t>(c_CueIndex));
-        if (!cue_name || !cue_index) {
-            continue;
+    const auto& cue_names = m_cue_graph.cue_names();
+    const auto collect_names = [&](bool raw) {
+        std::vector<std::string> names(m_waveform_cue_views.size());
+        for (const auto& view : m_waveform_cue_views) {
+            auto& name = names[view.waveform_index];
+            for (const auto name_row : view.preferred_cue_name_rows) {
+                if (name_row >= cue_names.size()) continue;
+                const auto& part = raw
+                    ? cue_names[name_row].name_raw
+                    : cue_names[name_row].name;
+                if (part.empty()) continue;
+                if (!name.empty()) name += "; ";
+                name += part;
+            }
         }
-
-        auto decoded = decode_cri_string(*cue_name, m_encoding, "ACB CueName decode failed");
-        if (!decoded) {
-            continue;
-        }
-
-        cue_names.push_back(CueNameRow{
-            .cue_index = *cue_index,
-            .name = std::move(*decoded),
-            .name_raw = std::string(*cue_name),
-        });
-    }
+        return names;
+    };
+    m_waveform_names = collect_names(false);
+    m_waveform_names_raw = collect_names(true);
 
     for (uint32_t waveform_index = 0; waveform_index < m_waveforms.size(); ++waveform_index) {
         const auto& waveform = m_waveforms[waveform_index];
         const bool is_memory_target = uses_memory_bank_for_associated_awb(waveform);
         const uint16_t wave_id = waveform_id_for_bank(waveform, is_memory_target);
-        const int target_port = is_memory_target || waveform.port_no == 0xFFFF
-            ? -1
-            : static_cast<int>(waveform.port_no);
-
-        resolve_waveform_name(waveform_index, is_memory_target, wave_id, target_port, cue_names);
 
         auto resolved = waveform_name(waveform_index);
         if (resolved.empty()) {
@@ -626,6 +608,14 @@ bool AcbContainer::load_command_tlvs(std::span<const uint8_t> data) {
                 load_waveform_check(target->index);
                 break;
             case AcbCommandTargetType::none:
+            case AcbCommandTargetType::outside_link:
+            case AcbCommandTargetType::direct_synth:
+            case AcbCommandTargetType::direct_sequence:
+            case AcbCommandTargetType::block_sequence:
+            case AcbCommandTargetType::direct_block_sequence:
+            case AcbCommandTargetType::special_11:
+            case AcbCommandTargetType::special_12:
+            default:
                 break;
         }
     }

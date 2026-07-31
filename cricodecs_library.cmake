@@ -96,6 +96,9 @@ function(cricodecs_add_library target_name)
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_builder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_commands.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_container.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_cue_graph.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_cue_graph_views.cpp
+        ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_cue_renderer.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/acb/acb_reader.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx/ahx_decoder.cpp
         ${CRICODECS_REPO_ROOT}/CriCodecs/src/ahx/ahx_encoder.cpp

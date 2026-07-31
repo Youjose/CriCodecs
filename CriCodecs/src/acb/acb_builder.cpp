@@ -63,6 +63,14 @@ std::expected<awb::AwbContainer, std::string> AcbContainer::load_awb() const {
     return std::move(*loaded);
 }
 
+std::expected<uint16_t, std::string> AcbContainer::awb_subkey() const {
+    auto awb = associated_awb();
+    if (!awb) {
+        return std::unexpected(awb.error());
+    }
+    return awb->get().subkey();
+}
+
 std::expected<std::reference_wrapper<const awb::AwbContainer>, std::string> AcbContainer::associated_awb() const {
     if (!m_associated_awb) {
         auto loaded = load_awb();

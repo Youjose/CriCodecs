@@ -22,6 +22,7 @@
 #include <span>
 #include <expected>
 #include <optional>
+#include "acb_cue_graph.hpp"
 #include "../utf/utf_table.hpp"
 #include "../awb/awb_container.hpp"
 #include "../utilities/text_encoding.hpp"
@@ -139,6 +140,7 @@ public:
     [[nodiscard]] bool has_embedded_awb() const;
     [[nodiscard]] std::optional<std::filesystem::path> companion_awb_path() const;
     [[nodiscard]] std::expected<awb::AwbContainer, std::string> load_awb() const;
+    [[nodiscard]] std::expected<uint16_t, std::string> awb_subkey() const;
     /// Resolve a waveform row through its AWB ID; row and AWB indices need not match.
     [[nodiscard]] std::expected<WaveformAwbEntry, std::string> waveform_awb_entry(
         uint32_t index,
@@ -178,6 +180,10 @@ public:
         uint64_t aac_keycode = 0) const;
     [[nodiscard]] uint32_t waveform_count() const { return static_cast<uint32_t>(m_waveforms.size()); }
     [[nodiscard]] const WaveformInfo& waveform(uint32_t index) const { return m_waveforms[index]; }
+    [[nodiscard]] const AcbCueGraph& cue_graph() const noexcept { return m_cue_graph; }
+    [[nodiscard]] const std::vector<AcbWaveformCueView>& waveform_cue_views() const noexcept {
+        return m_waveform_cue_views;
+    }
     [[nodiscard]] const utf::UtfTable& header_table() const noexcept { return m_header; }
     [[nodiscard]] std::vector<AcbSubtableInfo> subtable_info() const;
     [[nodiscard]] std::optional<std::reference_wrapper<const utf::UtfTable>> subtable(std::string_view name) const;
@@ -275,6 +281,8 @@ private:
     std::vector<WaveNameInfo> m_wave_names;
     std::vector<std::string> m_waveform_names;
     std::vector<std::string> m_waveform_names_raw;
+    AcbCueGraph m_cue_graph;
+    std::vector<AcbWaveformCueView> m_waveform_cue_views;
 
     // Name lookup
     std::flat_map<uint16_t, std::string> m_name_map;

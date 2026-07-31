@@ -26,6 +26,7 @@
 
 #include "../aax/aax_container.hpp"
 #include "../acb/acb_container.hpp"
+#include "../acb/acb_cue_renderer.hpp"
 #include "../acx/acx_builder.hpp"
 #include "../acx/acx_container.hpp"
 #include "../adx/adx_codec.hpp"
@@ -100,6 +101,12 @@ struct Options {
     bool show_version = false;
     bool ms_stereo = false;
     bool trim_after_loop = false;
+    bool cue_based = false;
+    bool cue_stop_at_loop = false;
+    bool cue_skip_empty_holds = false;
+    bool cue_empty_hold_policy_set = false;
+    uint32_t cue_loop_count = 0;
+    std::vector<acb::AcbCueBlockLoopOverride> cue_block_loop_overrides;
     std::optional<Format> force_type;
     std::optional<std::filesystem::path> output_path;
     std::optional<std::string> encoding;
@@ -131,6 +138,7 @@ struct OutputItem {
     size_t index = 0;
     std::filesystem::path entry_name;
     std::filesystem::path relative_path;
+    std::vector<std::string> details;
 };
 
 struct Failure {

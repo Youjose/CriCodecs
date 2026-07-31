@@ -68,6 +68,8 @@ if(CRICODECS_INSTALL_CPP)
         aax/aax_container.hpp
         acb/acb_commands.hpp
         acb/acb_container.hpp
+        acb/acb_cue_graph.hpp
+        acb/acb_cue_renderer.hpp
         acx/acx_builder.hpp
         acx/acx_container.hpp
         adx/adx_codec.hpp

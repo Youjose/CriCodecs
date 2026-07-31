@@ -24,6 +24,21 @@
 
 namespace cricodecs::acb {
 
+/**
+ * CRI uses separate interpreters for authored track-event/action programs and
+ * compact Sequence/Track/Synth parameter-pallet programs. Opcode values are
+ * meaningful only within the interpreter selected by the containing table.
+ */
+enum class AcbCommandDispatcher : uint8_t {
+    serialized_event,
+    compact_parameter,
+    /**
+     * Older ACBs use one CommandTable for rows referenced as either track
+     * events or compact Sequence/Track/Synth parameter programs.
+     */
+    legacy_shared,
+};
+
 enum class AcbCommandFamily : uint8_t {
     terminator,
     target_reference,
@@ -46,6 +61,7 @@ enum class AcbCommandPayloadKind : uint8_t {
     target_reference,
     be_u16,
     be_i16,
+    be_u32,
     be_u16_pair,
     be_u16_pair_u8,
     be_f32,
@@ -66,6 +82,13 @@ enum class AcbCommandTargetType : uint16_t {
     waveform = 1,
     synth = 2,
     sequence = 3,
+    outside_link = 5,
+    direct_synth = 6,
+    direct_sequence = 7,
+    block_sequence = 8,
+    direct_block_sequence = 9,
+    special_11 = 11,
+    special_12 = 12,
 };
 
 enum class AcbCommandCode : uint16_t {
@@ -97,11 +120,13 @@ enum class AcbCommandCode : uint16_t {
     compact_float_parameter_89 = 69,
     compact_set_parameter_100 = 70,
     compact_curve_parameter_144 = 71,
+    compact_add_runtime_counter = 72,
     compact_set_parameter_92 = 74,
     compact_set_parameter_93 = 75,
     compact_set_parameter_94 = 78,
     cue_limit_information = 79,
     compact_runtime_counter_80 = 80,
+    compact_runtime_flag_81 = 81,
     compact_set_parameter_147 = 82,
     compact_set_parameter_11 = 83,
     compact_set_parameter_11_flag = 84,
@@ -112,8 +137,11 @@ enum class AcbCommandCode : uint16_t {
     compact_curve_parameter_0_range = 89,
     compact_set_parameter_160 = 90,
     compact_runtime_flag_93 = 93,
-    compact_parameter_pair_100 = 100,
+    sequence_wait_item = 98,
+    selector_name = 99,
+    selector_condition = 100,
     compact_parameter_pair_101 = 101,
+    compact_runtime_flag_103 = 103,
     compact_set_parameter_96 = 108,
     compact_runtime_flag_110 = 110,
     bus_send_by_name = 111,
@@ -133,10 +161,12 @@ enum class AcbCommandCode : uint16_t {
     compact_float_parameter_146 = 146,
     compact_float_parameter_147 = 147,
     compact_float_pair_148 = 148,
+    compact_unknown_161 = 161,
 
+    sequence_start_milliseconds = 997,
     sequence_start_random = 998,
     sequence_start = 999,
-    note_off = 1000,
+    note_off = 996,
     sequence_callback_with_id = 1251,
     sequence_callback_with_string = 1252,
     sequence_callback_with_id_and_string = 1253,
@@ -146,12 +176,24 @@ enum class AcbCommandCode : uint16_t {
     set_synth_or_waveform = 2002,
     note_on_with_no = 2003,
     note_on_with_duration = 2004,
+    timing_fraction = 2005,
 
     midi_event = 4000,
     transition_track = 4051,
+    start_action_variant = 7099,
     start_action = 7100,
     stop_action = 7101,
-    mute_track_action = 7102,
+    mute_action = 7102,
+    set_selector_label = 7104,
+    playback_parameter = 7107,
+    pause_action = 7108,
+    resume_action = 7109,
+    stop_action_parameterized = 7110,
+    pause_action_variant = 7111,
+    resume_action_variant = 7112,
+    set_next_block = 7113,
+    action_7114 = 7114,
+    set_selector_label_targeted = 7115,
 };
 
 struct AcbCommandDefinition {
@@ -169,15 +211,19 @@ struct AcbCommandTarget {
 
 struct AcbCommand {
     uint16_t code = 0;
+    AcbCommandDispatcher dispatcher = AcbCommandDispatcher::serialized_event;
     AcbCommandFamily family = AcbCommandFamily::unknown;
     std::span<const uint8_t> payload;
 };
 
-[[nodiscard]] constexpr bool is_waveform_reference_command(uint16_t code) noexcept {
+[[nodiscard]] constexpr bool is_target_reference_command(uint16_t code) noexcept {
     return code == 2000 || code == 2003;
 }
 
-[[nodiscard]] constexpr AcbCommandDefinition command_definition(uint16_t code) noexcept {
+[[nodiscard]] constexpr AcbCommandDefinition command_definition(
+    AcbCommandDispatcher dispatcher,
+    uint16_t code
+) noexcept {
     if (code == 0) {
         return {
             .code = code,
@@ -188,7 +234,8 @@ struct AcbCommand {
         };
     }
 
-    if (is_waveform_reference_command(code)) {
+    if (dispatcher != AcbCommandDispatcher::compact_parameter &&
+        is_target_reference_command(code)) {
         return {
             .code = code,
             .family = AcbCommandFamily::target_reference,
@@ -198,7 +245,9 @@ struct AcbCommand {
         };
     }
 
-    switch (code) {
+    if (dispatcher == AcbCommandDispatcher::compact_parameter ||
+        (dispatcher == AcbCommandDispatcher::legacy_shared && code < 0x03E4)) {
+        switch (code) {
         case 5:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_i16, "compact_set_parameter_3", 2};
         case 8:
@@ -251,6 +300,8 @@ struct AcbCommand {
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::u8, "compact_set_parameter_100", 1};
         case 71:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_curve_parameter_144", 4};
+        case 72:
+            return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_add_runtime_counter", 1};
         case 74:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_92", 2};
         case 75:
@@ -261,6 +312,8 @@ struct AcbCommand {
             return {code, AcbCommandFamily::cue_limit, AcbCommandPayloadKind::be_u16_pair_u8, "cue_limit_information", 5};
         case 80:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8_pair, "compact_runtime_counter_80", 2};
+        case 81:
+            return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_runtime_flag_81", 1};
         case 82:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::u8, "compact_set_parameter_147", 1};
         case 83:
@@ -281,10 +334,18 @@ struct AcbCommand {
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_160", 2};
         case 93:
             return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_runtime_flag_93", 1};
+        case 98:
+            // CriSolv consumes this as a 10-byte sequence wait item. This is a
+            // different command domain from serialized-event opcode 98.
+            return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::sequence_wait_timer, "sequence_wait_item", 10};
+        case 99:
+            return {code, AcbCommandFamily::selector, AcbCommandPayloadKind::be_u16, "selector_name", 2};
         case 100:
-            return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_100", 4};
+            return {code, AcbCommandFamily::selector, AcbCommandPayloadKind::be_u16_pair, "selector_condition", 4};
         case 101:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16_pair, "compact_parameter_pair_101", 4};
+        case 103:
+            return {code, AcbCommandFamily::compact_runtime, AcbCommandPayloadKind::u8, "compact_runtime_flag_103", 1};
         case 108:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_u16, "compact_set_parameter_96", 2};
         case 110:
@@ -323,6 +384,16 @@ struct AcbCommand {
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_f32, "compact_float_parameter_147", 4};
         case 148:
             return {code, AcbCommandFamily::runtime_parameter, AcbCommandPayloadKind::be_f32_pair, "compact_float_pair_148", 8};
+        case 161:
+            // Seen as a zero-payload command in newer fixtures but absent from
+            // the SDK 3.46 compact dispatcher. Preserve it version-neutrally.
+            return {code, AcbCommandFamily::unknown, AcbCommandPayloadKind::none, "compact_command_161", 0};
+        default:
+            return {code, AcbCommandFamily::unknown, AcbCommandPayloadKind::raw, "unknown_compact", std::nullopt};
+        }
+    }
+
+    switch (code) {
         case 0x03E4:
             return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::variable, "note_off", std::nullopt};
         case 0x03E5:
@@ -338,12 +409,13 @@ struct AcbCommand {
         case 0x04B1:
             return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::variable, "sequence_timing_list", std::nullopt};
         case 0x07D1:
-            return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::variable, "wait_time_ms", std::nullopt};
+            return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::be_u32, "wait_milliseconds", 4};
         case 0x07D4:
-        case 0x07D5:
         case 0x07D6:
         case 0x2430:
             return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::variable, "timing_control", std::nullopt};
+        case 0x07D5:
+            return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::be_i16, "wait_submillisecond_adjustment", 2};
         case 0x0062:
         case 0x04E2:
         case 0x04E3:
@@ -366,41 +438,69 @@ struct AcbCommand {
         case 0x07D3:
         case 0x2401:
             return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "action", std::nullopt};
-        case 0x1BC0:
-        case 0x1BC1:
-        case 0x1BC2:
-        case 0x1BC3:
-        case 0x1BC4:
-        case 0x1BC5:
-        case 0x1BC6:
-        case 0x1BC7:
-        case 0x1BC8:
-        case 0x1BC9:
-        case 0x1BCA:
+        case 0x0FA0:
+            return {code, AcbCommandFamily::midi, AcbCommandPayloadKind::none, "midi_event_marker", 0};
+        case 0x0FD2:
+            // AtomCraft build_timed_acb_track_event emits this zero-payload
+            // marker at the authored event end time. CriSolv then finalizes
+            // the timed track event and related block-transition behavior.
+            return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::none, "end_track_event", 0};
+        case 0x0FD3:
+            return {code, AcbCommandFamily::timing, AcbCommandPayloadKind::raw, "transition_track", std::nullopt};
+        case 7099:
+            // Alternate AcOoActionStart encoding emitted by AtomCraft for a
+            // resolved authored start target.
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "start_action_variant", std::nullopt};
+        case 7100:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::none, "start_action", 0};
+        case 7101:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::none, "stop_action", 0};
+        case 7102:
+            // AtomCraft AcOoActionMute. Payload variants are retained raw
+            // until their authored fields are mapped across SDK versions.
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "mute_action", std::nullopt};
+        case 7103:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "action_7103", std::nullopt};
+        case 7104:
+            // AtomCraft AcOoActionSetSelectorLabel authoring serializer.
+            return {code, AcbCommandFamily::selector, AcbCommandPayloadKind::be_u16_pair, "set_selector_label", 4};
+        case 7105:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "action_7105", std::nullopt};
+        case 7106:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "action_7106", std::nullopt};
+        case 7107:
+            // AtomCraft AcOoActionPlaybackParam authoring serializer. Every
+            // local old/new fixture uses its 12-byte parameter/curve record.
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::parameter_record_12, "playback_parameter", 12};
+        case 7108:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "pause_action", std::nullopt};
+        case 7109:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "resume_action", std::nullopt};
+        case 7110:
+            // Alternate AcOoActionStop form. CriSolv reads u16/u8/u8; exact
+            // submode terminology remains unknown.
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "stop_action_parameterized", 4};
+        case 7113:
+            // AtomCraft AcOoActionNextDestinationBlock authoring serializer.
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::be_u16, "set_next_block", 2};
+        case 7111:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "pause_action_variant", std::nullopt};
+        case 7112:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "resume_action_variant", std::nullopt};
+        case 7114:
+            return {code, AcbCommandFamily::action, AcbCommandPayloadKind::raw, "action_7114", std::nullopt};
+        case 7115:
+            // Newer target-addressed selector-label form, inferred from named
+            // targets and StringValue rows in Music.acb.
+            return {code, AcbCommandFamily::selector, AcbCommandPayloadKind::be_u16, "set_selector_label_targeted", 2};
         case 0x2328:
         case 0x2329:
         case 0x2400:
         case 0x2404:
         case 0x2406:
         case 0x2427:
-            return {code, AcbCommandFamily::selector, AcbCommandPayloadKind::raw, "selector", std::nullopt};
+            return {code, AcbCommandFamily::official_handled, AcbCommandPayloadKind::raw, "official_handled", std::nullopt};
         case 0x0F9F:
-        case 0x0FA0:
-        case 0x0FD2:
-        case 0x1BBB:
-        case 0x1BBC:
-        case 0x1BBD:
-        case 0x1BBE:
-        case 0x1BBF:
-            if (code == 7100) {
-                return {code, AcbCommandFamily::action, AcbCommandPayloadKind::none, "start_action", 0};
-            }
-            if (code == 7101) {
-                return {code, AcbCommandFamily::action, AcbCommandPayloadKind::none, "stop_action", 0};
-            }
-            if (code == 7102) {
-                return {code, AcbCommandFamily::action, AcbCommandPayloadKind::none, "mute_track_action", 0};
-            }
             return {code, AcbCommandFamily::midi, AcbCommandPayloadKind::raw, "midi", std::nullopt};
         default:
             break;
@@ -413,17 +513,24 @@ struct AcbCommand {
     return {code, AcbCommandFamily::unknown, AcbCommandPayloadKind::raw, "unknown", std::nullopt};
 }
 
-[[nodiscard]] constexpr AcbCommandFamily classify_command(uint16_t code) noexcept {
-    return command_definition(code).family;
+[[nodiscard]] constexpr AcbCommandFamily classify_command(
+    AcbCommandDispatcher dispatcher,
+    uint16_t code
+) noexcept {
+    return command_definition(dispatcher, code).family;
 }
 
 [[nodiscard]] std::string_view command_family_name(AcbCommandFamily family) noexcept;
 [[nodiscard]] std::string_view command_payload_kind_name(AcbCommandPayloadKind kind) noexcept;
-[[nodiscard]] constexpr std::string_view command_code_name(uint16_t code) noexcept {
-    return command_definition(code).name;
+[[nodiscard]] constexpr std::string_view command_code_name(
+    AcbCommandDispatcher dispatcher,
+    uint16_t code
+) noexcept {
+    return command_definition(dispatcher, code).name;
 }
 [[nodiscard]] std::expected<std::vector<AcbCommand>, std::string> parse_command_stream(
-    std::span<const uint8_t> data);
+    std::span<const uint8_t> data,
+    AcbCommandDispatcher dispatcher = AcbCommandDispatcher::serialized_event);
 [[nodiscard]] std::optional<AcbCommandTarget> command_target_reference(const AcbCommand& command) noexcept;
 
 } // namespace cricodecs::acb
