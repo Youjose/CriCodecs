@@ -31,6 +31,7 @@ class QComboBox;
 class QDialog;
 class QEvent;
 class QFrame;
+class QFormLayout;
 template <typename T>
 class QFutureWatcher;
 class QImage;
@@ -158,6 +159,11 @@ private:
     void consume_materialize_result();
     void start_entry_preview(EntrySummary entry);
     void start_entry_preview_now(EntrySummary entry);
+    void show_acb_cue(uint32_t cue_index);
+    void refresh_acb_cue_route_choices();
+    void start_acb_cue_preview();
+    void apply_current_entry_view_mode();
+    void update_entry_view_mode_labels(bool cue_view);
     void show_entry_inspector(const EntrySummary& entry);
     void consume_preview_result();
     void show_document(const LoadedDocument* document);
@@ -240,6 +246,10 @@ private:
     [[nodiscard]] std::vector<ExtractionTarget> selected_entry_targets() const;
     [[nodiscard]] std::vector<ExtractionTarget> selected_nested_entry_targets() const;
     [[nodiscard]] std::vector<ExtractionTarget> current_preview_entry_targets() const;
+    [[nodiscard]] std::optional<ExtractionTarget>
+    acb_cue_extraction_target(
+        uint32_t cue_index,
+        std::optional<uint32_t> route_index = std::nullopt) const;
     [[nodiscard]] std::vector<HcaRecoverySource> selected_file_recovery_sources() const;
     [[nodiscard]] std::vector<HcaRecoverySource> all_file_recovery_sources() const;
     [[nodiscard]] std::vector<HcaRecoverySource> selected_entry_recovery_sources() const;
@@ -304,6 +314,7 @@ private:
         uint64_t raw_total_size = 0;
         QByteArray preview_bytes;
         bool hex_truncated = false;
+        bool acb_cue_preview = false;
         uint64_t request_id = 0;
     };
 
@@ -419,6 +430,10 @@ private:
     QLabel* m_nested_subtitle = nullptr;
     QGridLayout* m_nested_info_grid = nullptr;
     QWidget* m_nested_info_panel = nullptr;
+    QWidget* m_acb_cue_controls = nullptr;
+    QFormLayout* m_acb_cue_selector_form = nullptr;
+    QComboBox* m_acb_cue_route_combo = nullptr;
+    QCheckBox* m_acb_include_empty_holds = nullptr;
     QWidget* m_preview_key_panel = nullptr;
     QLabel* m_preview_key_label = nullptr;
     QLineEdit* m_preview_key_input = nullptr;
@@ -466,6 +481,7 @@ private:
     QMenu* m_edit_menu = nullptr;
     QAction* m_decryption_keys_action = nullptr;
     QAction* m_extract_mux_outputs_action = nullptr;
+    QAction* m_extract_acb_cues_action = nullptr;
     QAction* m_light_theme_action = nullptr;
     QAction* m_dark_theme_action = nullptr;
     QAction* m_always_show_access_keys_action = nullptr;
@@ -537,6 +553,14 @@ private:
     std::filesystem::path m_video_temp_dir;
     std::vector<std::filesystem::path> m_deferred_video_temp_dirs;
     std::unique_ptr<QTemporaryDir> m_audio_temp_dir;
+    std::shared_ptr<const modules::acb::CueSheetView> m_acb_cue_sheet;
+    std::filesystem::path m_acb_cue_source_path;
+    std::optional<uint32_t> m_current_acb_cue_index = std::nullopt;
+    std::optional<uint32_t> m_acb_last_cue_index = std::nullopt;
+    std::optional<uint32_t> m_acb_last_waveform_index = std::nullopt;
+    std::vector<std::pair<std::string, QComboBox*>> m_acb_selector_controls;
+    bool m_showing_acb_cues = false;
+    bool m_pending_acb_cue_preview = false;
     std::optional<EntrySummary> m_pending_preview_entry = std::nullopt;
     std::optional<std::pair<std::filesystem::path, int>> m_pending_mux_preview = std::nullopt;
     std::optional<EntrySummary> m_current_preview_entry = std::nullopt;
@@ -547,6 +571,7 @@ private:
     bool m_ffmpeg_path_checked = false;
     DecryptionKeys m_decryption_keys;
     bool m_allow_mux_extract_outputs = true;
+    bool m_extract_acb_cue_outputs = false;
     KeyPanelKind m_doc_key_kind = KeyPanelKind::None;
     KeyPanelKind m_preview_key_kind = KeyPanelKind::None;
 };

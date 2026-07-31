@@ -76,6 +76,15 @@ struct AcbCuePlaybackPlan {
     std::vector<std::string> diagnostics;
 };
 
+/** Exact frame range occupied by one rendered block iteration. */
+struct AcbRenderedBlockRange {
+    /// Index into AcbRenderedCue::plan.blocks.
+    uint32_t plan_block_index = 0;
+    /// Interleaved-PCM-independent frame offsets in the rendered cue.
+    uint64_t start_sample = 0;
+    uint64_t end_sample = 0;
+};
+
 enum class AcbCueChoiceDomain : uint8_t {
     sequence_track,
     synth_reference,
@@ -131,6 +140,8 @@ struct AcbRenderedCue {
     uint32_t sample_rate = 0;
     uint8_t channels = 0;
     std::vector<int16_t> pcm;
+    /// One entry per non-skipped block, covering its first rendered iteration.
+    std::vector<AcbRenderedBlockRange> block_ranges;
 };
 
 [[nodiscard]] std::expected<AcbCuePlaybackPlan, std::string> plan_cue_playback(

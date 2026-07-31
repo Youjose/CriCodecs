@@ -309,6 +309,14 @@ bool MainWindow::has_background_work() const {
 }
 
 bool MainWindow::reload_current_document_with_keys() {
+    // An ACB cue render uses the already-loaded cue graph. Re-render the exact
+    // selected route with the new session key instead of replacing the browser
+    // document and losing the cue/selector state.
+    if (m_showing_acb_cues && m_current_acb_cue_index.has_value()) {
+        refresh_current_preview();
+        return true;
+    }
+
     if (m_file_view == nullptr || !m_file_view->currentIndex().isValid()) {
         return false;
     }

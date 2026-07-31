@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -11,6 +12,10 @@
 #include <vector>
 
 namespace cristudio {
+
+namespace modules::acb {
+struct CueSheetView;
+}
 
 struct DecryptionKeys {
     enum class AdxMode : uint8_t {
@@ -85,6 +90,7 @@ struct LoadedDocument {
     std::vector<std::string> entry_columns;
     std::vector<std::string> entry_column_types;
     std::vector<EntrySummary> entries;
+    std::shared_ptr<const modules::acb::CueSheetView> acb_cue_sheet;
     bool summary_loaded = true;
 };
 
@@ -191,6 +197,7 @@ struct ExtractionEvent {
 
 struct ExtractionOptions {
     bool include_mux_outputs = true;
+    bool render_acb_cues = false;
     int mux_audio_choice = 0;
     std::filesystem::path ffmpeg_path;
     std::stop_token stop_token;
@@ -200,12 +207,18 @@ struct ExtractionOptions {
 struct ExtractionTarget {
     enum class Kind : uint8_t {
         Document,
-        Entry
+        Entry,
+        AcbCue,
     };
 
     Kind kind = Kind::Document;
     LoadedDocument document;
     EntrySummary entry;
+    std::filesystem::path acb_path;
+    uint32_t acb_cue_index = 0;
+    std::string acb_plan_signature;
+    std::string acb_output_name;
+    bool acb_include_empty_holds = false;
 };
 
 struct ExtractionReport {

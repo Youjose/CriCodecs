@@ -1,5 +1,6 @@
 #include "shared/i18n.hpp"
 #include "modules/acb/acb_browse.hpp"
+#include "modules/acb/acb_cue_view.hpp"
 
 #include "shared/document_helpers.hpp"
 
@@ -69,6 +70,8 @@ LoadedDocument summarize(const std::filesystem::path& path, const cricodecs::acb
         };
         doc.entries.push_back(std::move(entry));
     }
+    doc.acb_cue_sheet = std::make_shared<const CueSheetView>(
+        build_cue_sheet_view(path, acb));
     return doc;
 }
 

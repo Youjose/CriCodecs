@@ -4694,7 +4694,27 @@ Wrapper bytes: %8</source>
       <extracomment>metadata; catalog id cristudio.documentloader.969ae617310c</extracomment>
       <translation>視訊串流</translation>
     </message>
-  </context>
+      <message>
+        <source>could not create ACB cue output directory: </source>
+        <extracomment>message; catalog id cristudio.documentloader.d8fea7d502d2</extracomment>
+        <translation>無法建立 ACB Cue 輸出目錄：</translation>
+    </message>
+    <message>
+        <source>raw extraction is unavailable for a rendered ACB cue</source>
+        <extracomment>message; catalog id cristudio.documentloader.b62a67c2b703</extracomment>
+        <translation>算繪後的 ACB Cue 不支援原始擷取</translation>
+    </message>
+    <message>
+        <source>selected ACB cue path is no longer available</source>
+        <extracomment>message; catalog id cristudio.documentloader.654dc91688bc</extracomment>
+        <translation>所選 ACB Cue 路徑已無法使用</translation>
+    </message>
+    <message>
+        <source>ACB contains no statically resolvable cue plans</source>
+        <extracomment>message; catalog id cristudio.documentloader.c851784dd59a</extracomment>
+        <translation>ACB 不包含可靜態解析的 Cue 方案</translation>
+    </message>
+</context>
   <context>
     <name>Editor.AaxPatterns</name>
     <message>
@@ -11220,7 +11240,12 @@ Full log
       <extracomment>other; catalog id cristudio.mainwindow.background.80f5c3d480e8</extracomment>
       <translation>USM/SFD 混流輸出：%1</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/background.cpp" line="116"/>
+        <source>ACB cue renders: %1</source>
+        <translation>ACB Cue 算繪：%1</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.BrowserView</name>
     <message>
@@ -12399,7 +12424,67 @@ Full log
       <extracomment>tooltip; catalog id cristudio.mainwindow.chrome.3af93af40ae6</extracomment>
       <translation>音量</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/chrome.cpp" line="2375"/>
+        <source>About CriStudio</source>
+        <translation>關於 CriStudio</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2396"/>
+        <source>Powered by CriCodecs %1.</source>
+        <translation>由 CriCodecs %1 提供支援。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2402"/>
+        <source>CriStudio is the desktop interface for inspecting, decoding, and building CRI middleware formats with the native CriCodecs library.</source>
+        <translation>CriStudio 是使用原生 CriCodecs 函式庫檢查、解碼及建置 CRI 中介軟體格式的桌面介面。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2411"/>
+        <source>Repository and issue tracker: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt;</source>
+        <translation>程式碼儲存庫與問題追蹤：&lt;a href="%1"&gt;%1&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2421"/>
+        <source>For bugs, feature requests, or other problems, please open an issue in the repository.</source>
+        <translation>若要回報錯誤、提出功能需求或反映其他問題，請在程式碼儲存庫中建立 Issue。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2431"/>
+        <source>Open Repository</source>
+        <translation>開啟程式碼儲存庫</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1298"/>
+        <source>Choose a statically renderable cue path</source>
+        <translation>選擇可靜態算繪的 Cue 路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1302"/>
+        <source>Playback path</source>
+        <translation>播放路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1305"/>
+        <source>Include silent hold blocks</source>
+        <translation>包含靜音保持區塊</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1311"/>
+        <source>Render authored empty infinite holds as one finite silence block</source>
+        <translation>將已編排的空白無限保持算繪為一個有限靜音區塊</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1315"/>
+        <source>Include silent ACB hold blocks in cue preview</source>
+        <translation>在 Cue 預覽中包含靜音 ACB 保持區塊</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2214"/>
+        <source>Extract ACBs as &amp;Rendered Cues</source>
+        <translation>將 ACB 擷取為算繪後的 Cue(&amp;R)</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.EditorActions</name>
     <message>
@@ -17761,4 +17846,225 @@ Shown bytes: %3
       <translation>WAV 預覽失敗： </translation>
     </message>
   </context>
+<context>
+    <name>Acb.CueView</name>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="26"/>
+        <source>Playable</source>
+        <translation>可播放</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="27"/>
+        <source>Multiple paths</source>
+        <translation>多條路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="28"/>
+        <source>Control / runtime only</source>
+        <translation>僅控制 / 僅執行階段</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="29"/>
+        <source>Cue</source>
+        <translation>Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="30"/>
+        <source>Kind</source>
+        <translation>類型</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="31"/>
+        <source>Paths</source>
+        <translation>路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="32"/>
+        <source>Status</source>
+        <translation>狀態</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="33"/>
+        <source>Plan resolution unavailable</source>
+        <translation>無法解析播放路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="34"/>
+        <source>ACB cue preview load failed: </source>
+        <translation>ACB Cue 預覽載入失敗：</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="35"/>
+        <source>The selected cue path is no longer available</source>
+        <translation>所選 Cue 路徑已無法使用</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="38"/>
+        <source>ACB rendered cue</source>
+        <translation>已算繪的 ACB Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="39"/>
+        <source>Static cue path preview</source>
+        <translation>靜態 Cue 路徑預覽</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="40"/>
+        <source>option</source>
+        <translation>選項</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="41"/>
+        <source>Start</source>
+        <translation>開始</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="42"/>
+        <source>Path</source>
+        <translation>路徑</translation>
+    </message>
+</context>
+<context>
+    <name>MainWindow.AcbCuePreview</name>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="17"/>
+        <source>Cue</source>
+        <translation>Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="18"/>
+        <source>Tree</source>
+        <translation>樹狀檢視</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="20"/>
+        <source>List</source>
+        <translation>清單</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="32"/>
+        <source>Playback path</source>
+        <translation>播放路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="48"/>
+        <source>Show authored ACB cues</source>
+        <translation>顯示已編排的 ACB Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="51"/>
+        <source>Show archive entries as %1</source>
+        <translation>以%1方式顯示封存項目</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="41"/>
+        <source>Cue index</source>
+        <translation>Cue 索引</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="42"/>
+        <source>Cue ID</source>
+        <translation>Cue ID</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="43"/>
+        <source>Reference</source>
+        <translation>參照</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="44"/>
+        <source>Playable paths</source>
+        <translation>可播放路徑</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="45"/>
+        <source>Commands</source>
+        <translation>命令</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="46"/>
+        <source>Target cue</source>
+        <translation>目標 Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="47"/>
+        <source>Action chain</source>
+        <translation>動作鏈</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="48"/>
+        <source>Selectors</source>
+        <translation>選擇器</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="49"/>
+        <source>Runtime choices</source>
+        <translation>執行階段選項</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="50"/>
+        <source>Status</source>
+        <translation>狀態</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="168"/>
+        <source>Authored ACB cue</source>
+        <translation>已編排的 ACB Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="204"/>
+        <source>Cue selector %1</source>
+        <translation>Cue 選擇器 %1</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="387"/>
+        <source>Block</source>
+        <translation>區塊</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="391"/>
+        <source>Waveform</source>
+        <translation>波形</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="396"/>
+        <source>AWB stream</source>
+        <translation>AWB 串流</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="400"/>
+        <source>Bank</source>
+        <translation>儲存庫</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="404"/>
+        <source>Start</source>
+        <translation>開始</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="408"/>
+        <source>Duration</source>
+        <translation>時長</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="459"/>
+        <source>Rendering cue preview...</source>
+        <translation>正在算繪 Cue 預覽...</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="465"/>
+        <source>Cue preview started [%1]: %2</source>
+        <translation>Cue 預覽已開始 [%1]：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="494"/>
+        <source>Cue preview failed: %1 [%2]</source>
+        <translation>Cue 預覽失敗：%1 [%2]</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="501"/>
+        <source>Cue preview failed with an unknown exception</source>
+        <translation>Cue 預覽因不明例外而失敗</translation>
+    </message>
+</context>
 </TS>

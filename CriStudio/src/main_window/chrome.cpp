@@ -8,6 +8,8 @@
 #include "../path_text.hpp"
 #include "../shared/translation_manager.hpp"
 
+#include <cricodecs/version.hpp>
+
 #include <QCoreApplication>
 #include <QAbstractAnimation>
 #include <QAbstractItemModel>
@@ -19,10 +21,13 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCursor>
+#include <QDesktopServices>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QEvent>
 #include <QFontDatabase>
 #include <QFutureWatcher>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QHeaderView>
 #include <QItemSelectionModel>
@@ -37,6 +42,7 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QSettings>
@@ -54,6 +60,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeView>
+#include <QUrl>
 #include <QVariantAnimation>
 #include <QVideoWidget>
 #include <QHBoxLayout>
@@ -877,22 +884,7 @@ void MainWindow::retranslate_ui() {
         m_file_sort->setItemText(2, QCoreApplication::translate("MainWindow.Chrome", "Smallest"));
         m_file_sort->setItemText(3, QCoreApplication::translate("MainWindow.Chrome", "Largest"));
     }
-    if (m_entry_view_mode != nullptr && m_entry_view_mode->count() >= 2) {
-        m_entry_view_mode->setItemText(0, QCoreApplication::translate("MainWindow.Chrome", "Tree"));
-        m_entry_view_mode->setItemText(1, QCoreApplication::translate("MainWindow.Chrome", "List"));
-    }
-    {
-        for (auto* button : findChildren<QToolButton*>(QStringLiteral("EntryViewModeSegment"))) {
-            const bool list_mode = button->property("modeValue").toInt() == 1;
-            const auto mode = list_mode
-                ? QCoreApplication::translate("MainWindow.Chrome", "List")
-                : QCoreApplication::translate("MainWindow.Chrome", "Tree");
-            button->setText(mode);
-            button->setToolTip(
-                QCoreApplication::translate("MainWindow.Chrome", "Show entries as %1").arg(mode.toLower())
-            );
-        }
-    }
+    update_entry_view_mode_labels(m_acb_cue_sheet != nullptr);
     if (m_audio_play_button != nullptr) {
         const bool playing = m_audio_player != nullptr &&
             m_audio_player->playbackState() == QMediaPlayer::PlayingState;
@@ -1291,6 +1283,40 @@ void MainWindow::build_ui() {
     m_nested_info_grid->setHorizontalSpacing(16);
     m_nested_info_grid->setVerticalSpacing(5);
     m_nested_info_panel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    m_acb_cue_controls = new QWidget(m_nested_panel);
+    m_acb_cue_controls->setObjectName(QStringLiteral("AcbCueControls"));
+    auto* cue_controls_layout = new QVBoxLayout(m_acb_cue_controls);
+    cue_controls_layout->setContentsMargins(0, 0, 0, 0);
+    cue_controls_layout->setSpacing(6);
+    m_acb_cue_selector_form = new QFormLayout();
+    m_acb_cue_selector_form->setContentsMargins(0, 0, 0, 0);
+    m_acb_cue_selector_form->setHorizontalSpacing(12);
+    m_acb_cue_selector_form->setVerticalSpacing(5);
+    cue_controls_layout->addLayout(m_acb_cue_selector_form);
+    m_acb_cue_route_combo = new QComboBox(m_acb_cue_controls);
+    m_acb_cue_route_combo->setObjectName(QStringLiteral("AcbCueRouteCombo"));
+    m_acb_cue_route_combo->setToolTip(QCoreApplication::translate(
+        "MainWindow.Chrome",
+        "Choose a statically renderable cue path"));
+    m_acb_cue_selector_form->addRow(
+        QCoreApplication::translate("MainWindow.Chrome", "Playback path"),
+        m_acb_cue_route_combo);
+    m_acb_include_empty_holds = new QCheckBox(
+        QCoreApplication::translate(
+            "MainWindow.Chrome",
+            "Include silent hold blocks"),
+        m_acb_cue_controls);
+    m_acb_include_empty_holds->setObjectName(
+        QStringLiteral("AcbIncludeEmptyHolds"));
+    m_acb_include_empty_holds->setToolTip(QCoreApplication::translate(
+        "MainWindow.Chrome",
+        "Render authored empty infinite holds as one finite silence block"));
+    m_acb_include_empty_holds->setAccessibleName(
+        QCoreApplication::translate(
+            "MainWindow.Chrome",
+            "Include silent ACB hold blocks in cue preview"));
+    cue_controls_layout->addWidget(m_acb_include_empty_holds);
+    m_acb_cue_controls->hide();
     m_preview_key_panel = make_key_panel(m_preview_key_label, m_preview_key_input, m_preview_key_base_input, m_preview_key_apply, m_nested_panel);
     m_preview_tabs = new QTabWidget(m_nested_panel);
     m_preview_tabs->setObjectName(QStringLiteral("PreviewTabs"));
@@ -1485,6 +1511,7 @@ void MainWindow::build_ui() {
     preview_actions->addStretch(1);
     nested_layout->addLayout(preview_actions);
     nested_layout->addWidget(m_nested_info_panel);
+    nested_layout->addWidget(m_acb_cue_controls);
     nested_layout->addWidget(m_preview_key_panel);
     nested_layout->addWidget(m_preview_tabs, 8);
     nested_layout->addStretch(1);
@@ -1801,6 +1828,10 @@ void MainWindow::build_ui() {
         if (m_entry_model == nullptr || m_entry_view == nullptr) {
             return;
         }
+        if (m_acb_cue_sheet != nullptr) {
+            apply_current_entry_view_mode();
+            return;
+        }
         const auto flat = index == 1;
         if (flat && m_entry_model->has_custom_columns()) {
             return;
@@ -1813,6 +1844,21 @@ void MainWindow::build_ui() {
             m_entry_view->expandToDepth(6);
         }
     });
+    connect(
+        m_acb_cue_route_combo,
+        qOverload<int>(&QComboBox::currentIndexChanged),
+        this,
+        [this] {
+            refresh_acb_cue_route_choices();
+            start_acb_cue_preview();
+        });
+    connect(
+        m_acb_include_empty_holds,
+        &QCheckBox::toggled,
+        this,
+        [this] {
+            start_acb_cue_preview();
+        });
     connect(m_audio_play_button, &QToolButton::clicked, this, [this] {
         if (m_audio_player == nullptr || m_audio_source_path.isEmpty()) {
             return;
@@ -1957,7 +2003,9 @@ void MainWindow::build_ui() {
 
             const auto source = m_entry_proxy->mapToSource(current);
             if (const auto* summary = m_entry_model->summary_at(source); summary != nullptr) {
-                if (summary->has_source) {
+                if (summary->source_format == "ACB Cue") {
+                    show_acb_cue(summary->source_index);
+                } else if (summary->has_source) {
                     start_entry_preview(*summary);
                 } else if (!summary->inspector_entries.empty()) {
                     show_entry_inspector(*summary);
@@ -1995,6 +2043,10 @@ void MainWindow::build_ui() {
     bind_ui_text(m_doc_extract_raw_button, "accessibleName", "Raw extract selected loaded file");
     bind_ui_text(m_entry_filter, "placeholderText", "Search entries");
     bind_ui_text(m_entry_view_mode, "toolTip", "Choose archive entry view mode");
+    bind_ui_text(m_acb_cue_route_combo, "toolTip", "Choose a statically renderable cue path");
+    bind_ui_text(m_acb_include_empty_holds, "text", "Include silent hold blocks");
+    bind_ui_text(m_acb_include_empty_holds, "toolTip", "Render authored empty infinite holds as one finite silence block");
+    bind_ui_text(m_acb_include_empty_holds, "accessibleName", "Include silent ACB hold blocks in cue preview");
     bind_ui_text(m_entry_up_button, "text", "Up");
     bind_ui_text(m_entry_up_button, "toolTip", "Go to the parent archive folder");
     bind_ui_text(m_entry_up_button, "accessibleName", "Go to parent archive folder");
@@ -2158,6 +2210,19 @@ void MainWindow::build_menus() {
     connect(m_extract_mux_outputs_action, &QAction::toggled, this, [this](bool checked) {
         m_allow_mux_extract_outputs = checked;
     });
+    m_extract_acb_cues_action = m_edit_menu->addAction(
+        QCoreApplication::translate(
+            "MainWindow.Chrome",
+            "Extract ACBs as &Rendered Cues"));
+    m_extract_acb_cues_action->setCheckable(true);
+    m_extract_acb_cues_action->setChecked(m_extract_acb_cue_outputs);
+    connect(
+        m_extract_acb_cues_action,
+        &QAction::toggled,
+        this,
+        [this](bool checked) {
+            m_extract_acb_cue_outputs = checked;
+        });
 
     auto* view_menu = menuBar()->addMenu(QCoreApplication::translate("MainWindow.Chrome", "&View"));
     auto* theme_group = new QActionGroup(this);
@@ -2303,7 +2368,75 @@ void MainWindow::build_menus() {
     });
     auto* about_action = help_menu->addAction(QCoreApplication::translate("MainWindow.Chrome", "&About CriStudio"));
     connect(about_action, &QAction::triggered, this, [this] {
-        statusBar()->showMessage(app_title() + QCoreApplication::translate("MainWindow.Chrome", " uses the native CriCodecs core."), 8000);
+        constexpr auto repository_url = "https://github.com/Youjose/CriCodecs";
+
+        QDialog dialog(this);
+        dialog.setObjectName(QStringLiteral("AboutCriStudioDialog"));
+        dialog.setWindowTitle(QCoreApplication::translate("MainWindow.Chrome", "About CriStudio"));
+        dialog.setWindowIcon(windowIcon());
+        dialog.setModal(true);
+        dialog.setMinimumWidth(480);
+
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->setContentsMargins(24, 22, 24, 18);
+        layout->setSpacing(12);
+
+        auto* title = new QLabel(app_title(), &dialog);
+        auto title_font = title->font();
+        title_font.setPointSizeF(title_font.pointSizeF() * 1.25);
+        title_font.setWeight(QFont::DemiBold);
+        title->setFont(title_font);
+        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(title);
+
+        const auto core_version = QString::fromLatin1(
+            cricodecs::version.data(),
+            static_cast<qsizetype>(cricodecs::version.size()));
+        auto* core = new QLabel(
+            QCoreApplication::translate("MainWindow.Chrome", "Powered by CriCodecs %1.").arg(core_version),
+            &dialog);
+        core->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(core);
+
+        auto* description = new QLabel(
+            QCoreApplication::translate(
+                "MainWindow.Chrome",
+                "CriStudio is the desktop interface for inspecting, decoding, and building CRI middleware formats with the native CriCodecs library."),
+            &dialog);
+        description->setWordWrap(true);
+        description->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(description);
+
+        auto* repository = new QLabel(
+            QCoreApplication::translate("MainWindow.Chrome", "Repository and issue tracker: <a href=\"%1\">%1</a>")
+                .arg(QString::fromLatin1(repository_url)),
+            &dialog);
+        repository->setTextFormat(Qt::RichText);
+        repository->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        repository->setOpenExternalLinks(true);
+        repository->setWordWrap(true);
+        layout->addWidget(repository);
+
+        auto* issues = new QLabel(
+            QCoreApplication::translate(
+                "MainWindow.Chrome",
+                "For bugs, feature requests, or other problems, please open an issue in the repository."),
+            &dialog);
+        issues->setWordWrap(true);
+        issues->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(issues);
+
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+        auto* repository_button = buttons->addButton(
+            QCoreApplication::translate("MainWindow.Chrome", "Open Repository"),
+            QDialogButtonBox::ActionRole);
+        connect(repository_button, &QPushButton::clicked, &dialog, [repository_url] {
+            QDesktopServices::openUrl(QUrl(QString::fromLatin1(repository_url)));
+        });
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(buttons);
+
+        dialog.exec();
     });
 
     bind_ui_text(file_menu->menuAction(), "text", "&File");
@@ -2335,6 +2468,7 @@ void MainWindow::build_menus() {
     bind_ui_text(m_edit_menu->menuAction(), "text", "&Edit");
     bind_ui_text(m_decryption_keys_action, "text", "&Cryptography Keys");
     bind_ui_text(m_extract_mux_outputs_action, "text", "Extract USM/SFD &Mux Outputs");
+    bind_ui_text(m_extract_acb_cues_action, "text", "Extract ACBs as &Rendered Cues");
     bind_ui_text(view_menu->menuAction(), "text", "&View");
     bind_ui_text(m_light_theme_action, "text", "&Light Mode");
     bind_ui_text(m_dark_theme_action, "text", "&Dark Mode");

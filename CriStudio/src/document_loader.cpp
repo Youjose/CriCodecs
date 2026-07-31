@@ -3,6 +3,7 @@
 
 #include "modules/aax/aax_browse.hpp"
 #include "modules/acb/acb_browse.hpp"
+#include "modules/acb/acb_cue_extract.hpp"
 #include "modules/acx/acx_browse.hpp"
 #include "modules/afs/afs_browse.hpp"
 #include "modules/adx/adx_browse.hpp"
@@ -195,6 +196,18 @@ void extract_document_into_report(
     ExtractionReport& report
 ) {
     if (extraction_canceled(report, options)) {
+        return;
+    }
+    if (mode == ExtractionMode::Decoded && options.render_acb_cues &&
+        lower_ascii(document_format_id(document)) == "acb") {
+        modules::acb::extract_cue_sheet_into_report(
+            document,
+            output_dir /
+                without_extension(safe_document_name(document)),
+            keys,
+            options,
+            context.output_paths,
+            report);
         return;
     }
     if (is_archive_like_document(document)) {
@@ -1019,6 +1032,16 @@ ExtractionReport extract_targets(
             break;
         case ExtractionTarget::Kind::Entry:
             extract_entry_into_report(target.entry, output_dir, mode, keys, options, context, report);
+            break;
+        case ExtractionTarget::Kind::AcbCue:
+            modules::acb::extract_cue_target_into_report(
+                target,
+                output_dir,
+                mode,
+                keys,
+                options,
+                context.output_paths,
+                report);
             break;
         }
         if (extraction_canceled(report, options)) {

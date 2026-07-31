@@ -1,7 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent LinguistTools)
 include(GNUInstallDirs)
 
-set(CRISTUDIO_VERSION "1.1.1" CACHE STRING "CriStudio release version")
+set(CRISTUDIO_VERSION "1.2.0" CACHE STRING "CriStudio release version")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" cristudio_numeric_version "${CRISTUDIO_VERSION}")
 if(NOT cristudio_numeric_version)
     message(FATAL_ERROR "CRISTUDIO_VERSION must begin with major.minor.patch")
@@ -52,6 +52,8 @@ qt_add_executable(CriStudio
     src/main_window/usm_key_recovery.cpp
     src/main_window/adx_key_recovery.cpp
     src/main_window/aac_key_recovery.cpp
+    src/main_window/acb_cue_browser.cpp
+    src/main_window/acb_cue_preview.cpp
     src/main_window.cpp
     src/main_window/editor_actions.cpp
     src/main_window/key_panel.cpp
@@ -65,6 +67,8 @@ qt_add_executable(CriStudio
     src/modules/aax/aax_edit.cpp
     src/modules/aax/aax_preview.cpp
     src/modules/acb/acb_browse.cpp
+    src/modules/acb/acb_cue_extract.cpp
+    src/modules/acb/acb_cue_view.cpp
     src/modules/acb/acb_edit.cpp
     src/modules/acb/acb_edit_ui.cpp
     src/modules/acx/acx_browse.cpp

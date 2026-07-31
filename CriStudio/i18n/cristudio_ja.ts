@@ -4694,7 +4694,27 @@ Wrapper bytes: %8</source>
       <extracomment>metadata; catalog id cristudio.documentloader.969ae617310c</extracomment>
       <translation>ビデオストリーム</translation>
     </message>
-  </context>
+      <message>
+        <source>could not create ACB cue output directory: </source>
+        <extracomment>message; catalog id cristudio.documentloader.d8fea7d502d2</extracomment>
+        <translation>ACBキュー出力ディレクトリを作成できませんでした: </translation>
+    </message>
+    <message>
+        <source>raw extraction is unavailable for a rendered ACB cue</source>
+        <extracomment>message; catalog id cristudio.documentloader.b62a67c2b703</extracomment>
+        <translation>レンダリング済みACBキューのRAW抽出は利用できません</translation>
+    </message>
+    <message>
+        <source>selected ACB cue path is no longer available</source>
+        <extracomment>message; catalog id cristudio.documentloader.654dc91688bc</extracomment>
+        <translation>選択したACBキューパスは利用できなくなりました</translation>
+    </message>
+    <message>
+        <source>ACB contains no statically resolvable cue plans</source>
+        <extracomment>message; catalog id cristudio.documentloader.c851784dd59a</extracomment>
+        <translation>ACBに静的に解決可能なキュープランがありません</translation>
+    </message>
+</context>
   <context>
     <name>Editor.AaxPatterns</name>
     <message>
@@ -11220,7 +11240,12 @@ Full log
       <extracomment>other; catalog id cristudio.mainwindow.background.80f5c3d480e8</extracomment>
       <translation>USM/SFD mux 出力: %1</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/background.cpp" line="116"/>
+        <source>ACB cue renders: %1</source>
+        <translation>ACBキューレンダリング: %1</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.BrowserView</name>
     <message>
@@ -12399,7 +12424,67 @@ Full log
       <extracomment>tooltip; catalog id cristudio.mainwindow.chrome.3af93af40ae6</extracomment>
       <translation>音量</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/chrome.cpp" line="2375"/>
+        <source>About CriStudio</source>
+        <translation>CriStudio について</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2396"/>
+        <source>Powered by CriCodecs %1.</source>
+        <translation>CriCodecs %1 を使用しています。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2402"/>
+        <source>CriStudio is the desktop interface for inspecting, decoding, and building CRI middleware formats with the native CriCodecs library.</source>
+        <translation>CriStudio は、ネイティブ CriCodecs ライブラリを使用して CRI ミドルウェア形式を検査、デコード、構築するためのデスクトップインターフェースです。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2411"/>
+        <source>Repository and issue tracker: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt;</source>
+        <translation>リポジトリと課題トラッカー: &lt;a href="%1"&gt;%1&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2421"/>
+        <source>For bugs, feature requests, or other problems, please open an issue in the repository.</source>
+        <translation>不具合、機能要望、その他の問題は、リポジトリで Issue を作成してください。</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2431"/>
+        <source>Open Repository</source>
+        <translation>リポジトリを開く</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1298"/>
+        <source>Choose a statically renderable cue path</source>
+        <translation>静的にレンダリング可能なキューパスを選択</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1302"/>
+        <source>Playback path</source>
+        <translation>再生パス</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1305"/>
+        <source>Include silent hold blocks</source>
+        <translation>無音ホールドブロックを含める</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1311"/>
+        <source>Render authored empty infinite holds as one finite silence block</source>
+        <translation>定義済みの空の無限ホールドを1つの有限無音ブロックとしてレンダリング</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1315"/>
+        <source>Include silent ACB hold blocks in cue preview</source>
+        <translation>キュープレビューに無音のACBホールドブロックを含める</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2214"/>
+        <source>Extract ACBs as &amp;Rendered Cues</source>
+        <translation>ACBをレンダリング済みキューとして抽出(&amp;R)</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.EditorActions</name>
     <message>
@@ -17761,4 +17846,225 @@ Shown bytes: %3
       <translation>WAV のプレビューに失敗しました: </translation>
     </message>
   </context>
+<context>
+    <name>Acb.CueView</name>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="26"/>
+        <source>Playable</source>
+        <translation>再生可能</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="27"/>
+        <source>Multiple paths</source>
+        <translation>複数のパス</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="28"/>
+        <source>Control / runtime only</source>
+        <translation>制御専用 / ランタイム専用</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="29"/>
+        <source>Cue</source>
+        <translation>キュー</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="30"/>
+        <source>Kind</source>
+        <translation>種類</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="31"/>
+        <source>Paths</source>
+        <translation>パス</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="32"/>
+        <source>Status</source>
+        <translation>状態</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="33"/>
+        <source>Plan resolution unavailable</source>
+        <translation>パスの解決を利用できません</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="34"/>
+        <source>ACB cue preview load failed: </source>
+        <translation>ACBキュープレビューの読み込みに失敗しました: </translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="35"/>
+        <source>The selected cue path is no longer available</source>
+        <translation>選択したキューパスは利用できなくなりました</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="38"/>
+        <source>ACB rendered cue</source>
+        <translation>レンダリング済みACBキュー</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="39"/>
+        <source>Static cue path preview</source>
+        <translation>静的キューパスのプレビュー</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="40"/>
+        <source>option</source>
+        <translation>オプション</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="41"/>
+        <source>Start</source>
+        <translation>開始</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="42"/>
+        <source>Path</source>
+        <translation>パス</translation>
+    </message>
+</context>
+<context>
+    <name>MainWindow.AcbCuePreview</name>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="17"/>
+        <source>Cue</source>
+        <translation>キュー</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="18"/>
+        <source>Tree</source>
+        <translation>ツリー</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="20"/>
+        <source>List</source>
+        <translation>リスト</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="32"/>
+        <source>Playback path</source>
+        <translation>再生パス</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="48"/>
+        <source>Show authored ACB cues</source>
+        <translation>定義済みACBキューを表示</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="51"/>
+        <source>Show archive entries as %1</source>
+        <translation>アーカイブエントリを%1として表示</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="41"/>
+        <source>Cue index</source>
+        <translation>キューインデックス</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="42"/>
+        <source>Cue ID</source>
+        <translation>キューID</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="43"/>
+        <source>Reference</source>
+        <translation>参照</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="44"/>
+        <source>Playable paths</source>
+        <translation>再生可能なパス</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="45"/>
+        <source>Commands</source>
+        <translation>コマンド</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="46"/>
+        <source>Target cue</source>
+        <translation>対象キュー</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="47"/>
+        <source>Action chain</source>
+        <translation>アクションチェーン</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="48"/>
+        <source>Selectors</source>
+        <translation>セレクター</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="49"/>
+        <source>Runtime choices</source>
+        <translation>ランタイム選択</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="50"/>
+        <source>Status</source>
+        <translation>状態</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="168"/>
+        <source>Authored ACB cue</source>
+        <translation>定義済みACBキュー</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="204"/>
+        <source>Cue selector %1</source>
+        <translation>キューセレクター %1</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="387"/>
+        <source>Block</source>
+        <translation>ブロック</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="391"/>
+        <source>Waveform</source>
+        <translation>波形</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="396"/>
+        <source>AWB stream</source>
+        <translation>AWBストリーム</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="400"/>
+        <source>Bank</source>
+        <translation>バンク</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="404"/>
+        <source>Start</source>
+        <translation>開始</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="408"/>
+        <source>Duration</source>
+        <translation>長さ</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="459"/>
+        <source>Rendering cue preview...</source>
+        <translation>キュープレビューをレンダリング中...</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="465"/>
+        <source>Cue preview started [%1]: %2</source>
+        <translation>キュープレビューを開始しました [%1]: %2</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="494"/>
+        <source>Cue preview failed: %1 [%2]</source>
+        <translation>キュープレビューに失敗しました: %1 [%2]</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="501"/>
+        <source>Cue preview failed with an unknown exception</source>
+        <translation>不明な例外によりキュープレビューに失敗しました</translation>
+    </message>
+</context>
 </TS>

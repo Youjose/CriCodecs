@@ -905,6 +905,8 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
     uint32_t output_rate = 0;
     uint8_t output_channels = 0;
     std::vector<int16_t> output;
+    std::vector<AcbRenderedBlockRange> block_ranges;
+    block_ranges.reserve(plan.blocks.size());
     for (const auto& block : plan.blocks) {
         for (const auto& clip : block.clips) {
             auto waveform = decode_waveform(clip.waveform_index);
@@ -1002,6 +1004,12 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
         }
         const size_t block_samples = block_sample_counts[block_index];
         const size_t block_output_start = output.size();
+        block_ranges.push_back({
+            .plan_block_index = static_cast<uint32_t>(block_index),
+            .start_sample = block_output_start / output_channels,
+            .end_sample =
+                (block_output_start + block_samples) / output_channels,
+        });
         if (block_samples == 0 || block.clips.empty()) {
             output.insert(output.end(), block_samples, int16_t{0});
         } else if (block.clips.size() == 1) {
@@ -1105,6 +1113,7 @@ std::expected<AcbRenderedCue, std::string> render_cue_plan(
         .sample_rate = output_rate,
         .channels = output_channels,
         .pcm = std::move(output),
+        .block_ranges = std::move(block_ranges),
     };
 }
 

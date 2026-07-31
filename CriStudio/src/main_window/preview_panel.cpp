@@ -3,6 +3,7 @@
 
 #include "../editor/hex_patterns.hpp"
 #include "../editor/hex_preview_widget.hpp"
+#include "../modules/acb/acb_cue_view.hpp"
 #include "../path_text.hpp"
 #include "../shared/document_helpers.hpp"
 #include "preview_helpers.hpp"
@@ -66,6 +67,10 @@ void MainWindow::start_entry_preview(EntrySummary entry) {
 }
 
 void MainWindow::start_entry_preview_now(EntrySummary entry) {
+    m_pending_acb_cue_preview = false;
+    if (m_acb_cue_controls != nullptr) {
+        m_acb_cue_controls->hide();
+    }
     m_pending_mux_preview = std::nullopt;
     m_document_raw_reader.reset();
     m_document_raw_path.reset();
@@ -236,6 +241,10 @@ void MainWindow::start_entry_preview_now(EntrySummary entry) {
 }
 
 void MainWindow::show_entry_inspector(const EntrySummary& entry) {
+    m_pending_acb_cue_preview = false;
+    if (m_acb_cue_controls != nullptr) {
+        m_acb_cue_controls->hide();
+    }
     ++m_preview_request_id;
     m_pending_preview_entry = std::nullopt;
     m_current_preview_entry = std::nullopt;
@@ -351,6 +360,14 @@ void MainWindow::consume_preview_result() {
         }
     }
 
+    if (m_pending_acb_cue_preview && m_showing_acb_cues &&
+        m_current_acb_cue_index.has_value()) {
+        m_pending_acb_cue_preview = false;
+        discard_result_files();
+        start_acb_cue_preview();
+        return;
+    }
+
     if (result.request_id != m_preview_request_id) {
         discard_result_files();
         return;
@@ -442,8 +459,10 @@ void MainWindow::consume_preview_result() {
         m_nested_body->hide();
         configure_video_preview(*result.video);
     } else if (result.audio) {
-        m_nested_subtitle->setText(utf8_to_qstring(result.audio->format));
-        m_nested_entry_view->hide();
+        if (!result.acb_cue_preview) {
+            m_nested_subtitle->setText(utf8_to_qstring(result.audio->format));
+            m_nested_entry_view->hide();
+        }
         m_nested_image_scroll->hide();
         configure_audio_preview(*result.audio);
     } else if (!result.hex_dump.isEmpty()) {
@@ -475,12 +494,17 @@ void MainWindow::consume_preview_result() {
         }
     } else {
         reset_audio_preview();
-        m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Preview unavailable"));
+        if (!result.acb_cue_preview) {
+            m_nested_subtitle->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Preview unavailable"));
+        }
         show_unavailable_media_preview(
             result.message.isEmpty()
                 ? QCoreApplication::translate("MainWindow.PreviewPanel", "Preview unavailable")
                 : result.message
         );
+        if (result.acb_cue_preview) {
+            refresh_acb_cue_route_choices();
+        }
     }
 }
 
@@ -490,6 +514,12 @@ void MainWindow::show_document(const LoadedDocument* document) {
         m_pending_preview_entry = std::nullopt;
         m_pending_mux_preview = std::nullopt;
         m_current_preview_entry = std::nullopt;
+        m_acb_cue_sheet.reset();
+        m_acb_cue_source_path.clear();
+        m_current_acb_cue_index = std::nullopt;
+        m_showing_acb_cues = false;
+        m_pending_acb_cue_preview = false;
+        update_entry_view_mode_labels(false);
         set_preview_entry_actions_visible(false);
         clear_preview_panel();
         m_doc_title->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "No file selected"));
@@ -530,6 +560,16 @@ void MainWindow::show_document(const LoadedDocument* document) {
     m_current_preview_entry = std::nullopt;
     set_preview_entry_actions_visible(false);
     clear_preview_panel();
+    if (m_acb_cue_source_path != document->path) {
+        m_acb_last_cue_index = std::nullopt;
+        m_acb_last_waveform_index = std::nullopt;
+    }
+    m_acb_cue_sheet = document->acb_cue_sheet;
+    m_acb_cue_source_path = document->path;
+    m_current_acb_cue_index = std::nullopt;
+    m_showing_acb_cues = false;
+    m_pending_acb_cue_preview = false;
+    update_entry_view_mode_labels(m_acb_cue_sheet != nullptr);
     m_doc_title->setText(utf8_to_qstring(document->display_name));
     m_doc_subtitle->setText(utf8_to_qstring(localized_document_format(*document)));
     if (!document->summary_loaded) {
@@ -608,23 +648,11 @@ void MainWindow::show_document(const LoadedDocument* document) {
             m_preview_tabs->setCurrentIndex(0);
         }
     }
-    const auto has_custom_columns = !document->entry_columns.empty();
-    const auto flat_mode = m_entry_view_mode != nullptr &&
-        m_entry_view_mode->currentIndex() == 1 &&
-        !has_custom_columns;
-    m_entry_model->set_entries_view(
-        document->entries,
-        document->entry_columns,
-        document->entry_column_types,
-        flat_mode,
-        {}
-    );
-    if (m_entry_view_mode != nullptr) {
-        m_entry_view_mode->setEnabled(!has_custom_columns);
-    }
-    m_entry_view->setRootIsDecorated(!m_entry_model->flat_mode() && !m_entry_model->has_custom_columns());
-    update_entry_path_bar();
-    const auto has_entries = !document->entries.empty();
+    apply_current_entry_view_mode();
+    const auto has_entries =
+        !document->entries.empty() ||
+        (m_acb_cue_sheet != nullptr &&
+         !m_acb_cue_sheet->entries.empty());
     if (m_doc_extract_button != nullptr) {
         m_doc_extract_button->setText(has_entries ? QCoreApplication::translate("MainWindow.PreviewPanel", "Extract All") : QCoreApplication::translate("MainWindow.PreviewPanel", "Extract"));
     }
@@ -746,6 +774,9 @@ void MainWindow::populate_document_raw_tab(const LoadedDocument& document, bool 
 }
 
 void MainWindow::show_preview_document(const LoadedDocument& document) {
+    if (m_acb_cue_controls != nullptr) {
+        m_acb_cue_controls->hide();
+    }
     if (m_toggle_preview_action != nullptr) {
         m_toggle_preview_action->setChecked(true);
     }
@@ -797,6 +828,9 @@ void MainWindow::clear_preview_panel() {
     m_document_raw_reader.reset();
     m_document_raw_path.reset();
     set_preview_entry_actions_visible(false);
+    if (m_acb_cue_controls != nullptr) {
+        m_acb_cue_controls->hide();
+    }
     if (m_nested_title != nullptr) {
         m_nested_title->setText(QCoreApplication::translate("MainWindow.PreviewPanel", "Entry preview"));
         m_nested_title->setVisible(m_preview_panel_button != nullptr && m_preview_panel_button->isChecked());
@@ -967,7 +1001,10 @@ void MainWindow::toggle_preview_panel() {
         m_nested_panel->setMinimumWidth(0);
         m_nested_panel->show();
         set_preview_entry_actions_visible(
-            m_current_preview_entry.has_value() && m_current_preview_entry->has_source
+            (m_current_preview_entry.has_value() &&
+             m_current_preview_entry->has_source) ||
+            (m_showing_acb_cues &&
+             m_current_acb_cue_index.has_value())
         );
         if (m_splitter != nullptr) {
             const auto sizes = m_splitter->sizes();
@@ -998,6 +1035,12 @@ void MainWindow::toggle_preview_panel() {
 }
 
 void MainWindow::refresh_current_preview() {
+    if (m_showing_acb_cues && m_current_acb_cue_index.has_value()) {
+        reset_audio_preview();
+        start_acb_cue_preview();
+        return;
+    }
+
     // Replay the exact nested/archive entry whose preview is visible. Parent and
     // nested views can both retain a current row, so consulting either view
     // first may switch the preview when a key is applied.

@@ -4698,7 +4698,27 @@ Bytes del contenedor: %8</translation>
       <extracomment>metadata; catalog id cristudio.documentloader.969ae617310c</extracomment>
       <translation>Flujo de video</translation>
     </message>
-  </context>
+      <message>
+        <source>could not create ACB cue output directory: </source>
+        <extracomment>message; catalog id cristudio.documentloader.d8fea7d502d2</extracomment>
+        <translation>no se pudo crear el directorio de salida de cues ACB: </translation>
+    </message>
+    <message>
+        <source>raw extraction is unavailable for a rendered ACB cue</source>
+        <extracomment>message; catalog id cristudio.documentloader.b62a67c2b703</extracomment>
+        <translation>la extracción sin procesar no está disponible para un cue ACB renderizado</translation>
+    </message>
+    <message>
+        <source>selected ACB cue path is no longer available</source>
+        <extracomment>message; catalog id cristudio.documentloader.654dc91688bc</extracomment>
+        <translation>la ruta del cue ACB seleccionada ya no está disponible</translation>
+    </message>
+    <message>
+        <source>ACB contains no statically resolvable cue plans</source>
+        <extracomment>message; catalog id cristudio.documentloader.c851784dd59a</extracomment>
+        <translation>El ACB no contiene planes de cue resolubles estáticamente</translation>
+    </message>
+</context>
   <context>
     <name>Editor.AaxPatterns</name>
     <message>
@@ -11229,7 +11249,12 @@ Registro completo
       <extracomment>other; catalog id cristudio.mainwindow.background.80f5c3d480e8</extracomment>
       <translation>Salidas mux USM/SFD: %1</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/background.cpp" line="116"/>
+        <source>ACB cue renders: %1</source>
+        <translation>Renderizados de cues ACB: %1</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.BrowserView</name>
     <message>
@@ -12417,7 +12442,67 @@ Registro completo
       <extracomment>tooltip; catalog id cristudio.mainwindow.chrome.3af93af40ae6</extracomment>
       <translation>Volumen</translation>
     </message>
-  </context>
+      <message>
+        <location filename="../src/main_window/chrome.cpp" line="2375"/>
+        <source>About CriStudio</source>
+        <translation>Acerca de CriStudio</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2396"/>
+        <source>Powered by CriCodecs %1.</source>
+        <translation>Con tecnología de CriCodecs %1.</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2402"/>
+        <source>CriStudio is the desktop interface for inspecting, decoding, and building CRI middleware formats with the native CriCodecs library.</source>
+        <translation>CriStudio es la interfaz de escritorio para inspeccionar, decodificar y crear formatos de middleware CRI con la biblioteca nativa CriCodecs.</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2411"/>
+        <source>Repository and issue tracker: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt;</source>
+        <translation>Repositorio y seguimiento de incidencias: &lt;a href="%1"&gt;%1&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2421"/>
+        <source>For bugs, feature requests, or other problems, please open an issue in the repository.</source>
+        <translation>Para informar de errores, solicitar funciones u otros problemas, abra una incidencia en el repositorio.</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2431"/>
+        <source>Open Repository</source>
+        <translation>Abrir repositorio</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1298"/>
+        <source>Choose a statically renderable cue path</source>
+        <translation>Elegir una ruta de cue renderizable de forma estática</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1302"/>
+        <source>Playback path</source>
+        <translation>Ruta de reproducción</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1305"/>
+        <source>Include silent hold blocks</source>
+        <translation>Incluir bloques de espera silenciosos</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1311"/>
+        <source>Render authored empty infinite holds as one finite silence block</source>
+        <translation>Renderizar las esperas infinitas vacías definidas como un bloque de silencio finito</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="1315"/>
+        <source>Include silent ACB hold blocks in cue preview</source>
+        <translation>Incluir bloques de espera ACB silenciosos en la vista previa del cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/chrome.cpp" line="2214"/>
+        <source>Extract ACBs as &amp;Rendered Cues</source>
+        <translation>Extraer ACB como cues &amp;renderizados</translation>
+    </message>
+</context>
   <context>
     <name>MainWindow.EditorActions</name>
     <message>
@@ -17787,4 +17872,225 @@ Bytes mostrados: %3
       <translation>Error en la vista previa WAV: </translation>
     </message>
   </context>
+<context>
+    <name>Acb.CueView</name>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="26"/>
+        <source>Playable</source>
+        <translation>Reproducible</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="27"/>
+        <source>Multiple paths</source>
+        <translation>Varias rutas</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="28"/>
+        <source>Control / runtime only</source>
+        <translation>Solo control / tiempo de ejecución</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="29"/>
+        <source>Cue</source>
+        <translation>Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="30"/>
+        <source>Kind</source>
+        <translation>Tipo</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="31"/>
+        <source>Paths</source>
+        <translation>Rutas</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="32"/>
+        <source>Status</source>
+        <translation>Estado</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="33"/>
+        <source>Plan resolution unavailable</source>
+        <translation>Resolución de rutas no disponible</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="34"/>
+        <source>ACB cue preview load failed: </source>
+        <translation>Error al cargar la vista previa del cue ACB: </translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="35"/>
+        <source>The selected cue path is no longer available</source>
+        <translation>La ruta de cue seleccionada ya no está disponible</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="38"/>
+        <source>ACB rendered cue</source>
+        <translation>Cue ACB renderizado</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="39"/>
+        <source>Static cue path preview</source>
+        <translation>Vista previa de ruta de cue estática</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="40"/>
+        <source>option</source>
+        <translation>opción</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="41"/>
+        <source>Start</source>
+        <translation>Inicio</translation>
+    </message>
+    <message>
+        <location filename="../src/modules/acb/acb_cue_view.cpp" line="42"/>
+        <source>Path</source>
+        <translation>Ruta</translation>
+    </message>
+</context>
+<context>
+    <name>MainWindow.AcbCuePreview</name>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="17"/>
+        <source>Cue</source>
+        <translation>Cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="18"/>
+        <source>Tree</source>
+        <translation>Árbol</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="20"/>
+        <source>List</source>
+        <translation>Lista</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="32"/>
+        <source>Playback path</source>
+        <translation>Ruta de reproducción</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="48"/>
+        <source>Show authored ACB cues</source>
+        <translation>Mostrar cues ACB definidos</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_browser.cpp" line="51"/>
+        <source>Show archive entries as %1</source>
+        <translation>Mostrar entradas del archivo como %1</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="41"/>
+        <source>Cue index</source>
+        <translation>Índice de cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="42"/>
+        <source>Cue ID</source>
+        <translation>ID de cue</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="43"/>
+        <source>Reference</source>
+        <translation>Referencia</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="44"/>
+        <source>Playable paths</source>
+        <translation>Rutas reproducibles</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="45"/>
+        <source>Commands</source>
+        <translation>Comandos</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="46"/>
+        <source>Target cue</source>
+        <translation>Cue de destino</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="47"/>
+        <source>Action chain</source>
+        <translation>Cadena de acciones</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="48"/>
+        <source>Selectors</source>
+        <translation>Selectores</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="49"/>
+        <source>Runtime choices</source>
+        <translation>Opciones de ejecución</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="50"/>
+        <source>Status</source>
+        <translation>Estado</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="168"/>
+        <source>Authored ACB cue</source>
+        <translation>Cue ACB definido</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="204"/>
+        <source>Cue selector %1</source>
+        <translation>Selector de cue %1</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="387"/>
+        <source>Block</source>
+        <translation>Bloque</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="391"/>
+        <source>Waveform</source>
+        <translation>Forma de onda</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="396"/>
+        <source>AWB stream</source>
+        <translation>Flujo AWB</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="400"/>
+        <source>Bank</source>
+        <translation>Banco</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="404"/>
+        <source>Start</source>
+        <translation>Inicio</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="408"/>
+        <source>Duration</source>
+        <translation>Duración</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="459"/>
+        <source>Rendering cue preview...</source>
+        <translation>Renderizando vista previa del cue...</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="465"/>
+        <source>Cue preview started [%1]: %2</source>
+        <translation>Vista previa del cue iniciada [%1]: %2</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="494"/>
+        <source>Cue preview failed: %1 [%2]</source>
+        <translation>Error en la vista previa del cue: %1 [%2]</translation>
+    </message>
+    <message>
+        <location filename="../src/main_window/acb_cue_preview.cpp" line="501"/>
+        <source>Cue preview failed with an unknown exception</source>
+        <translation>La vista previa del cue falló con una excepción desconocida</translation>
+    </message>
+</context>
 </TS>

@@ -1,6 +1,7 @@
 #include "../main_window.hpp"
 
 #include "../editor_workspace.hpp"
+#include "../modules/acb/acb_cue_view.hpp"
 #include "../shared/document_preview_router.hpp"
 #include "ui_helpers.hpp"
 
@@ -10,6 +11,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QClipboard>
+#include <QCheckBox>
 #include <QGridLayout>
 #include <QHeaderView>
 #include <QItemSelectionModel>
@@ -471,11 +473,27 @@ std::vector<ExtractionTarget> MainWindow::selected_entry_targets() const {
         if (!source.isValid()) {
             continue;
         }
-        if (const auto* summary = m_entry_model->summary_at(source); summary != nullptr && summary->has_source) {
-            targets.push_back(ExtractionTarget{
-                .kind = ExtractionTarget::Kind::Entry,
-                .entry = *summary,
-            });
+        if (const auto* summary = m_entry_model->summary_at(source);
+            summary != nullptr) {
+            if (summary->source_format == "ACB Cue") {
+                const auto route_index =
+                    m_current_acb_cue_index == summary->source_index &&
+                        m_acb_cue_route_combo != nullptr &&
+                        m_acb_cue_route_combo->currentIndex() >= 0
+                    ? std::optional<uint32_t>{
+                          m_acb_cue_route_combo->currentData().toUInt()}
+                    : std::nullopt;
+                if (auto target = acb_cue_extraction_target(
+                        summary->source_index,
+                        route_index)) {
+                    targets.push_back(std::move(*target));
+                }
+            } else if (summary->has_source) {
+                targets.push_back(ExtractionTarget{
+                    .kind = ExtractionTarget::Kind::Entry,
+                    .entry = *summary,
+                });
+            }
         }
     }
     return targets;
@@ -504,6 +522,15 @@ std::vector<ExtractionTarget> MainWindow::selected_nested_entry_targets() const 
 }
 
 std::vector<ExtractionTarget> MainWindow::current_preview_entry_targets() const {
+    if (m_showing_acb_cues && m_current_acb_cue_index.has_value() &&
+        m_acb_cue_route_combo != nullptr &&
+        m_acb_cue_route_combo->currentIndex() >= 0) {
+        if (auto target = acb_cue_extraction_target(
+                *m_current_acb_cue_index,
+                m_acb_cue_route_combo->currentData().toUInt())) {
+            return {std::move(*target)};
+        }
+    }
     if (!m_current_preview_entry || !m_current_preview_entry->has_source) {
         return {};
     }
@@ -511,6 +538,39 @@ std::vector<ExtractionTarget> MainWindow::current_preview_entry_targets() const 
         .kind = ExtractionTarget::Kind::Entry,
         .entry = *m_current_preview_entry,
     }};
+}
+
+std::optional<ExtractionTarget> MainWindow::acb_cue_extraction_target(
+    uint32_t cue_index,
+    std::optional<uint32_t> route_index) const {
+    if (m_acb_cue_sheet == nullptr ||
+        cue_index >= m_acb_cue_sheet->cues.size()) {
+        return std::nullopt;
+    }
+    const auto& cue = m_acb_cue_sheet->cues[cue_index];
+    if (cue.routes.empty()) {
+        return std::nullopt;
+    }
+    const auto selected_route = route_index.value_or(0);
+    if (selected_route >= cue.routes.size()) {
+        return std::nullopt;
+    }
+    const auto plan_index = cue.routes[selected_route].plan_index;
+    if (plan_index >= m_acb_cue_sheet->plans.size()) {
+        return std::nullopt;
+    }
+    const auto& plan = m_acb_cue_sheet->plans[plan_index];
+    return ExtractionTarget{
+        .kind = ExtractionTarget::Kind::AcbCue,
+        .acb_path = m_acb_cue_source_path,
+        .acb_cue_index = cue.cue_index,
+        .acb_plan_signature = plan.semantic_signature,
+        .acb_output_name = plan.output_name,
+        .acb_include_empty_holds =
+            m_current_acb_cue_index == cue_index &&
+            m_acb_include_empty_holds != nullptr &&
+            m_acb_include_empty_holds->isChecked(),
+    };
 }
 
 std::vector<HcaRecoverySource> MainWindow::selected_file_recovery_sources() const {
@@ -969,6 +1029,18 @@ void MainWindow::show_entry_context_menu(const QPoint& position) {
     menu.addSeparator();
     auto* extract = menu.addAction(make_action_icon(ActionGlyph::Extract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry"));
     auto* extract_raw = menu.addAction(make_action_icon(ActionGlyph::RawExtract), QCoreApplication::translate("MainWindow.BrowserView", "Extract Entry Raw"));
+    const bool selected_acb_cue = std::ranges::any_of(
+        m_entry_view->selectionModel()->selectedRows(),
+        [this](const QModelIndex& selected) {
+            const auto source = m_entry_proxy->mapToSource(selected);
+            const auto* selected_summary = source.isValid()
+                ? m_entry_model->summary_at(source)
+                : nullptr;
+            return selected_summary != nullptr &&
+                selected_summary->source_format == "ACB Cue";
+        });
+    extract->setEnabled(!selected_entry_targets().empty());
+    extract_raw->setEnabled(!selected_acb_cue);
     auto* recover_hca_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover HCA Keys"));
     recover_hca_keys->setVisible(!selected_entry_recovery_sources().empty());
     auto* recover_usm_keys = menu.addAction(make_action_icon(ActionGlyph::RecoverKey), QCoreApplication::translate("MainWindow.BrowserView", "Recover USM Keys"));
@@ -1244,7 +1316,9 @@ void MainWindow::activate_current_entry() {
     if (summary == nullptr) {
         return;
     }
-    if (summary->has_source) {
+    if (summary->source_format == "ACB Cue") {
+        show_acb_cue(summary->source_index);
+    } else if (summary->has_source) {
         start_entry_preview(*summary);
     } else if (!summary->inspector_entries.empty()) {
         show_entry_inspector(*summary);
@@ -1258,7 +1332,9 @@ void MainWindow::set_preview_entry_actions_visible(bool visible) {
         m_preview_extract_button->setVisible(show);
     }
     if (m_preview_extract_raw_button != nullptr) {
-        m_preview_extract_raw_button->setVisible(show);
+        m_preview_extract_raw_button->setVisible(
+            show && !(m_showing_acb_cues &&
+                      m_current_acb_cue_index.has_value()));
     }
     if (m_preview_recover_key_button != nullptr) {
         const bool supports_hca = expanded && !current_preview_recovery_sources().empty();

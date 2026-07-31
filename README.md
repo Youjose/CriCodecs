@@ -69,6 +69,20 @@ Key recovery is available for supported HCA, ADX, AHX, USM, AWB, and ACB
 inputs. Multi-file recovery runs in the background and ranks a bounded set of
 candidates rather than blocking the interface.
 
+For ACB files, Browse changes the archive switch to **Cue / List**. Cue keeps
+every authored cue visible, exposes selector and static path choices, shows
+block, waveform, AWB ID/stream, timing, action-chain, and command counts, and
+automatically renders the selected static path in the normal audio
+preview without a separate render action.
+Authored audio-bearing infinite blocks use the normal selectable loop-range
+control; empty infinite holds are omitted unless explicitly included as finite
+silence. List remains the flat waveform view and extraction surface.
+
+Decoded ACB extraction remains waveform-based by default. Enable **Edit >
+Extract ACBs as Rendered Cues** to replace those flat outputs with the
+deduplicated static cue renders and their selector-qualified filenames. In Cue
+view, **Extract Entry** exports the currently selected cue path directly.
+
 ### Format coverage
 
 | Area | Formats |

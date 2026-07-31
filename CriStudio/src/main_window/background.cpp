@@ -77,6 +77,11 @@ QString extraction_target_label_local(const ExtractionTarget& target) {
         return archive_basename_local(strip_mux_prefix_local(utf8_to_qstring(target.entry.name.empty()
             ? target.entry.type
             : target.entry.name)));
+    case ExtractionTarget::Kind::AcbCue:
+        return archive_basename_local(
+            utf8_to_qstring(target.acb_output_name.empty()
+                ? std::string("ACB cue")
+                : target.acb_output_name));
     }
     return QStringLiteral("(unknown)");
 }
@@ -85,7 +90,8 @@ QString extraction_plan_text_local(
     const std::vector<ExtractionTarget>& targets,
     ExtractionMode mode,
     const QString& output_dir,
-    bool include_mux_outputs
+    bool include_mux_outputs,
+    bool render_acb_cues
 ) {
     size_t document_count = 0;
     size_t entry_count = 0;
@@ -107,6 +113,7 @@ QString extraction_plan_text_local(
         lines << QCoreApplication::translate("MainWindow.Background", "Archive entries queued by selected documents: %1").arg(archive_entry_count);
     }
     lines << QCoreApplication::translate("MainWindow.Background", "USM/SFD mux outputs: %1").arg(include_mux_outputs ? QStringLiteral("enabled") : QStringLiteral("disabled"));
+    lines << QCoreApplication::translate("MainWindow.Background", "ACB cue renders: %1").arg(render_acb_cues ? QStringLiteral("enabled") : QStringLiteral("disabled"));
     lines << QString{};
     lines << QCoreApplication::translate("MainWindow.Background", "First targets:");
     const auto shown = std::min<size_t>(targets.size(), 12);
@@ -264,7 +271,12 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
     if (output_dir_text.isEmpty()) {
         return;
     }
-    const auto plan = extraction_plan_text_local(targets, mode, output_dir_text, m_allow_mux_extract_outputs);
+    const auto plan = extraction_plan_text_local(
+        targets,
+        mode,
+        output_dir_text,
+        m_allow_mux_extract_outputs,
+        m_extract_acb_cue_outputs);
     const auto answer = QMessageBox::question(
         this,
         mode == ExtractionMode::Raw ? QCoreApplication::translate("MainWindow.Background", "Raw Extraction Plan") : QCoreApplication::translate("MainWindow.Background", "Extraction Plan"),
@@ -293,6 +305,7 @@ void MainWindow::start_extraction(std::vector<ExtractionTarget> targets, Extract
     const auto keys = m_decryption_keys;
     ExtractionOptions options;
     options.include_mux_outputs = m_allow_mux_extract_outputs;
+    options.render_acb_cues = m_extract_acb_cue_outputs;
     options.mux_audio_choice = mux_audio_choice.value_or(0);
     options.stop_token = m_extract_stop_source.get_token();
     if (options.include_mux_outputs) {
