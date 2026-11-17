@@ -270,6 +270,44 @@ void bind_usm_module(nb::module_& module) {
         .def_rw("channel_no", &cricodecs::usm::UsmBuildInput::SubtitleTrack::channel_no)
         .def_rw("filename", &cricodecs::usm::UsmBuildInput::SubtitleTrack::filename);
 
+    nb::class_<cricodecs::usm::UsmCuePoint>(module, "UsmCuePoint")
+        .def(nb::init<>())
+        .def("__init__", [](
+            cricodecs::usm::UsmCuePoint* self,
+            std::string name,
+            uint64_t time,
+            int32_t cue_type
+        ) {
+            new (self) cricodecs::usm::UsmCuePoint{
+                .name = std::move(name),
+                .time = time,
+                .cue_type = cue_type,
+                .parameter = {},
+            };
+        },
+            nb::arg("name"),
+            nb::arg("time"),
+            nb::arg("cue_type") = 0
+        )
+        .def_rw("name", &cricodecs::usm::UsmCuePoint::name)
+        .def_rw("time", &cricodecs::usm::UsmCuePoint::time)
+        .def_rw("cue_type", &cricodecs::usm::UsmCuePoint::cue_type)
+        .def_rw("parameter", &cricodecs::usm::UsmCuePoint::parameter);
+
+    nb::class_<cricodecs::usm::UsmCueMetadata>(module, "UsmCueMetadata")
+        .def(nb::init<>())
+        .def("__init__", [](
+            cricodecs::usm::UsmCueMetadata* self,
+            std::vector<cricodecs::usm::UsmCuePoint> points
+        ) {
+            new (self) cricodecs::usm::UsmCueMetadata{
+                .points = std::move(points),
+            };
+        },
+            nb::arg("points") = std::vector<cricodecs::usm::UsmCuePoint>{}
+        )
+        .def_rw("points", &cricodecs::usm::UsmCueMetadata::points);
+
     nb::class_<cricodecs::usm::UsmBuildInput>(module, "UsmMuxConfig")
         .def(nb::init<>())
         .def("__init__", [](
@@ -326,6 +364,7 @@ void bind_usm_module(nb::module_& module) {
         .def_rw("alpha_filename", &cricodecs::usm::UsmBuildInput::alpha_filename)
         .def_rw("audio_tracks", &cricodecs::usm::UsmBuildInput::audio_tracks)
         .def_rw("subtitle_tracks", &cricodecs::usm::UsmBuildInput::subtitle_tracks)
+        .def_rw("cue_metadata", &cricodecs::usm::UsmBuildInput::cue_metadata)
         .def_rw("encrypt_audio", &cricodecs::usm::UsmBuildInput::encrypt_audio)
         .def_prop_rw("key", [](const cricodecs::usm::UsmBuildInput& self) -> nb::object {
             return self.key == 0 ? nb::none() : nb::cast(self.key);
@@ -334,6 +373,9 @@ void bind_usm_module(nb::module_& module) {
         });
 
     nb::class_<cricodecs::usm::UsmReader>(module, "Usm")
+        .def("cue_metadata", [](const cricodecs::usm::UsmReader& self) {
+            return unwrap_expected(self.cue_metadata());
+        })
         .def_static(
             "load",
             [](const nb::object& source, const nb::object& encoding, const nb::object& key) {

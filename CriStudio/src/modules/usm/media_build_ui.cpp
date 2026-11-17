@@ -112,6 +112,9 @@ MediaBuildConfig::ExistingUsmTrack::Kind stream_kind(cricodecs::usm::UsmChunkTyp
     if (stream_id == cricodecs::usm::UsmChunkType::SBT) {
         return MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle;
     }
+    if (stream_id == cricodecs::usm::UsmChunkType::CUE) {
+        return MediaBuildConfig::ExistingUsmTrack::Kind::Cue;
+    }
     if (stream_id == cricodecs::usm::UsmChunkType::SFV) {
         return MediaBuildConfig::ExistingUsmTrack::Kind::Video;
     }
@@ -131,6 +134,8 @@ QString track_kind_text(MediaBuildConfig::ExistingUsmTrack::Kind kind) {
         return QStringLiteral("Audio");
     case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
         return QStringLiteral("Subtitle");
+    case MediaBuildConfig::ExistingUsmTrack::Kind::Cue:
+        return QCoreApplication::translate("Usm.MediaBuildUi", "CUE metadata");
     case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported:
         return QStringLiteral("Unsupported");
     }
@@ -562,6 +567,11 @@ std::expected<std::optional<MediaBuildConfig>, QString> choose_media_build_confi
                 );
                 unsupported->setWordWrap(true);
                 stream_form->addRow(unsupported);
+                stream_layout->addWidget(stream_group);
+                existing_controls.push_back(std::move(controls));
+                continue;
+            }
+            if (controls.base.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Cue) {
                 stream_layout->addWidget(stream_group);
                 existing_controls.push_back(std::move(controls));
                 continue;

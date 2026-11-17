@@ -493,6 +493,23 @@ SBT language IDs are numeric subtitle slots; the available SDK documentation
 does not define a universal locale mapping. ASS imports can preserve per-cue
 IDs from Dialogue names such as `lang5`.
 
+Cue metadata can be added as timed points. Each point's name is stored as the
+CUE `name` data, with its time in milliseconds and cue type in `CUEPOINT_INFO`:
+
+```python
+cue = usm.UsmCueMetadata()
+cue.points = [
+    usm.UsmCuePoint("Rumble=2000.000_80.000_80.000_6", 1, 1),
+    usm.UsmCuePoint("Trigger=stopVideoRendering", 110343, 1),
+]
+config.cue_metadata = [cue]
+usm.mux(config, "movie_with_cues.usm")
+print(usm.load("movie_with_cues.usm").cue_metadata())
+```
+
+When CriStudio rebuilds an existing USM, its `@CUE` chunks are copied without
+rewriting their contents.
+
 ### Recover keys
 
 ```python

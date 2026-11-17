@@ -213,6 +213,13 @@ std::expected<UsmBuildPlan, std::string> plan_build_impl(const UsmBuildInput& in
             );
         }
     }
+    std::array<bool, 256> cue_channels{};
+    for (const auto& stream : input.cue_streams) {
+        if (stream.stream_id != UsmChunkType::CUE || cue_channels[stream.channel_no]) {
+            return std::unexpected("USM build failed: invalid or duplicate CUE stream entry");
+        }
+        cue_channels[stream.channel_no] = true;
+    }
 
     auto audio_channels = resolve_track_channels(
         std::span<const UsmBuildInput::AudioTrack>(input.audio_tracks),
@@ -1056,6 +1063,49 @@ UsmChunk build_video_seekinfo_chunk(
     return make_chunk(stream_type, UsmPayloadType::Metadata, 0, 0, 30, payload);
 }
 
+std::expected<UsmChunk, std::string> build_cue_metadata_chunk(
+    const UsmCueMetadata& metadata,
+    const text::EncodingOptions& encoding
+) {
+    utf::UtfTable table = utf::UtfTable::create("CUEPOINT_INFO");
+    table.set_data_alignment(8);
+    const auto row = utf::ColumnFlag::Name | utf::ColumnFlag::Row;
+    table.add_column("name", utf::ColumnType::VLData, row);
+    table.add_column("time", utf::ColumnType::UInt64, row);
+    table.add_column("cue_type", utf::ColumnType::SInt32, row);
+    const bool has_parameters = std::ranges::any_of(metadata.points, [](const auto& point) {
+        return !point.parameter.empty();
+    });
+    table.add_column("parameter", utf::ColumnType::VLData, has_parameters ? row : utf::ColumnFlag::Name);
+
+    for (const auto& point : metadata.points) {
+        auto name = text::encode_cri_string(point.name, encoding);
+        if (!name) {
+            return std::unexpected("USM build failed: could not encode CUE name: " + name.error());
+        }
+        name->insert(name->end(), 2, 0);
+        const auto row_index = table.add_row();
+        if (auto result = table.set(row_index, "name", std::move(*name)); !result) {
+            return std::unexpected("USM build failed: could not set CUE name: " + result.error());
+        }
+        table.set(row_index, "time", point.time).value();
+        table.set(row_index, "cue_type", point.cue_type).value();
+        if (has_parameters) {
+            table.set(row_index, "parameter", point.parameter).value();
+        }
+    }
+
+    const auto payload = table.build();
+    return make_chunk(
+        UsmChunkType::CUE,
+        UsmPayloadType::Metadata,
+        0,
+        0,
+        30,
+        payload
+    );
+}
+
 UsmChunk build_video_header_chunk(
     const VideoBuildInfo& video,
     uint32_t metadata_count,
@@ -1184,6 +1234,7 @@ UsmChunk build_crid_chunk(
     const VideoBuildInfo* alpha,
     const std::vector<AudioBuildInfo>& audios,
     const std::vector<SubtitleBuildInfo>& subtitles,
+    const std::vector<UsmStreamInfo>& cue_streams,
     uint32_t total_size
 ) {
     utf::UtfTable table = utf::UtfTable::create("CRIUSF_DIR_STREAM");
@@ -1212,6 +1263,9 @@ UsmChunk build_crid_chunk(
     for (const auto& subtitle : subtitles) {
         total_avbps += subtitle.avbps;
     }
+    for (const auto& cue : cue_streams) {
+        total_avbps += cue.avbps;
+    }
 
     append_crid_row(table, video.fmtver, usm_name, total_size, 0, 0xFFFF, 1, root_minbuf, total_avbps);
     append_crid_row(table, video.fmtver, video.filename, video.filesize,
@@ -1229,6 +1283,11 @@ UsmChunk build_crid_chunk(
         append_crid_row(table, video.fmtver, subtitle.filename, subtitle.filesize,
                         static_cast<uint32_t>(UsmChunkType::SBT), subtitle.channel_no, 1,
                         subtitle.avbps / 16u, subtitle.avbps);
+    }
+    for (const auto& cue : cue_streams) {
+        append_crid_row(table, cue.fmtver, cue.filename_raw.empty() ? cue.filename : cue.filename_raw,
+                        cue.filesize, static_cast<uint32_t>(UsmChunkType::CUE), cue.channel_no,
+                        cue.minchk, cue.minbuf, cue.avbps);
     }
 
     auto payload = table.build();
@@ -1396,6 +1455,36 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
             audio.metadata_chunks.end()
         );
     }
+    for (const auto& metadata : input.cue_metadata) {
+        auto chunk = build_cue_metadata_chunk(metadata, input.encoding);
+        if (!chunk) {
+            return std::unexpected(chunk.error());
+        }
+        prestream_chunks.push_back(std::move(*chunk));
+    }
+    for (const auto& bytes : input.cue_metadata_chunks) {
+        auto views = chunk_views(std::span<const uint8_t>(bytes));
+        auto view = views.begin();
+        if (view == views.end()) {
+            return std::unexpected("USM build failed: preserved CUE metadata is not one complete @CUE chunk");
+        }
+        const auto source_chunk = *view;
+        if (source_chunk.chunk_type() != UsmChunkType::CUE ||
+            source_chunk.full_bytes().size() != bytes.size() ||
+            source_chunk.header().data_offset() != 0) {
+            return std::unexpected("USM build failed: preserved CUE metadata is not one complete @CUE chunk");
+        }
+        UsmChunk chunk{
+            .header = source_chunk.header(),
+            .payload = std::vector<uint8_t>(source_chunk.payload().begin(), source_chunk.payload().end()),
+            .padding = std::vector<uint8_t>(source_chunk.padding().begin(), source_chunk.padding().end()),
+        };
+        ++view;
+        if (view != views.end()) {
+            return std::unexpected("USM build failed: preserved CUE metadata contains multiple chunks");
+        }
+        prestream_chunks.push_back(std::move(chunk));
+    }
     append_end_markers(metadata_end_marker);
 
     size_t content_chunk_count = video->chunks.size();
@@ -1522,6 +1611,7 @@ std::expected<std::vector<uint8_t>, std::string> build_impl(
         alpha.has_value() ? &*alpha : nullptr,
         audios,
         subtitles,
+        input.cue_streams,
         total_size
     );
     if (crid_chunk.header.magic == 0) {

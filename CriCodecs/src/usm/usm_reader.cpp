@@ -237,6 +237,81 @@ std::expected<UsmStreamInfo, std::string> make_stream_info(
 
 } // namespace
 
+std::expected<UsmCueMetadata, std::string> parse_cue_metadata(
+    const UsmChunk& chunk,
+    const text::EncodingOptions& encoding
+) {
+    if (chunk.chunk_type() != UsmChunkType::CUE || chunk.payload_type() != UsmPayloadType::Metadata) {
+        return std::unexpected("USM CUE parse failed: expected an @CUE metadata chunk");
+    }
+    auto table = chunk.load_utf_payload();
+    if (!table) {
+        return std::unexpected("USM CUE parse failed: " + table.error());
+    }
+    if (table->table_name() != "CUEPOINT_INFO") {
+        return std::unexpected("USM CUE parse failed: expected a CUEPOINT_INFO table");
+    }
+    const int parameter_column = table->find_column("parameter");
+    if (parameter_column >= 0 &&
+        table->column(static_cast<uint32_t>(parameter_column)).type != utf::ColumnType::VLData) {
+        return std::unexpected("USM CUE parse failed: parameter column is not data");
+    }
+    UsmCueMetadata metadata;
+    metadata.points.reserve(table->row_count());
+    for (uint32_t row = 0; row < table->row_count(); ++row) {
+        auto name = table->get_data(row, "name");
+        auto time = table->get<uint64_t>(row, "time");
+        auto cue_type = table->get<int32_t>(row, "cue_type");
+        if (!name || !time || !cue_type) {
+            return std::unexpected("USM CUE parse failed: invalid cue row " + std::to_string(row));
+        }
+        while (!name->empty() && name->back() == 0) {
+            *name = name->first(name->size() - 1);
+        }
+        if (text::contains_nul(*name)) {
+            return std::unexpected("USM CUE parse failed: cue name contains an embedded NUL");
+        }
+        auto decoded = text::decode_to_utf8(*name, encoding);
+        if (!decoded) {
+            return std::unexpected("USM CUE parse failed: could not decode cue name: " + decoded.error());
+        }
+        UsmCuePoint point{
+            .name = std::move(*decoded),
+            .time = *time,
+            .cue_type = *cue_type,
+            .parameter = {},
+        };
+        if (parameter_column >= 0) {
+            const auto& column = table->column(static_cast<uint32_t>(parameter_column));
+            if (utf::has_flag(column.flag, utf::ColumnFlag::Row) ||
+                utf::has_flag(column.flag, utf::ColumnFlag::Default)) {
+                auto parameter = table->get_data(row, static_cast<uint32_t>(parameter_column));
+                if (!parameter) {
+                    return std::unexpected("USM CUE parse failed: invalid parameter: " + parameter.error());
+                }
+                point.parameter.assign(parameter->begin(), parameter->end());
+            }
+        }
+        metadata.points.push_back(std::move(point));
+    }
+    return metadata;
+}
+
+std::expected<std::vector<UsmCueMetadata>, std::string> UsmReader::cue_metadata() const {
+    std::vector<UsmCueMetadata> result;
+    for (const auto& chunk : m_chunks) {
+        if (chunk.chunk_type() != UsmChunkType::CUE || chunk.payload_type() != UsmPayloadType::Metadata) {
+            continue;
+        }
+        auto metadata = parse_cue_metadata(chunk, m_encoding);
+        if (!metadata) {
+            return std::unexpected(metadata.error());
+        }
+        result.push_back(std::move(*metadata));
+    }
+    return result;
+}
+
 std::string_view audio_codec_name(uint8_t codec) noexcept {
     return audio_codec_name(static_cast<UsmAudioCodec>(codec));
 }

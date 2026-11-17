@@ -82,6 +82,7 @@ struct MediaBuildConfig {
             Alpha,
             Audio,
             Subtitle,
+            Cue,
             Unsupported,
         };
 

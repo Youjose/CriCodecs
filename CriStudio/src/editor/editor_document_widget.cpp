@@ -1685,6 +1685,29 @@ private:
             .index = detail->index,
             .layer = detail->layer,
         };
+        if (m_transform_kind == TransformKind::Usm && m_usm && selection.payload_kind == 10 &&
+            selection.index >= 0 && static_cast<size_t>(selection.index) < m_usm->chunks().size()) {
+            const auto& chunk = m_usm->chunks()[static_cast<size_t>(selection.index)];
+            if (chunk.chunk_type() == cricodecs::usm::UsmChunkType::CUE &&
+                chunk.payload_type() == cricodecs::usm::UsmPayloadType::Metadata) {
+                auto metadata = cricodecs::usm::parse_cue_metadata(chunk);
+                if (!metadata) {
+                    show_detail_preview(utf8_to_qstring(metadata.error()));
+                    return;
+                }
+                LoadedDocument document;
+                document.format = "CUE metadata";
+                document.entry_columns = {"Time (ms)", "Type", "Name"};
+                document.entry_column_types = {"u64", "i32", "string"};
+                for (const auto& point : metadata->points) {
+                    EntrySummary entry;
+                    entry.cells = {std::to_string(point.time), std::to_string(point.cue_type), point.name};
+                    document.entries.push_back(std::move(entry));
+                }
+                show_document_preview(document, chunk.payload);
+                return;
+            }
+        }
         if (m_transform_kind == TransformKind::Usm && selection.index >= 0 &&
             (selection.payload_kind == 3 || selection.payload_kind == 10)) {
             dismiss_editor_media_preview();
