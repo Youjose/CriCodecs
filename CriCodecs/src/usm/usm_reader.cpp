@@ -303,6 +303,11 @@ std::expected<std::vector<UsmCueMetadata>, std::string> UsmReader::cue_metadata(
         if (chunk.chunk_type() != UsmChunkType::CUE || chunk.payload_type() != UsmPayloadType::Metadata) {
             continue;
         }
+        constexpr std::string_view metadata_end = "#METADATA END";
+        if (chunk.payload.size() >= metadata_end.size() &&
+            std::equal(metadata_end.begin(), metadata_end.end(), chunk.payload.begin())) {
+            continue;
+        }
         auto metadata = parse_cue_metadata(chunk, m_encoding);
         if (!metadata) {
             return std::unexpected(metadata.error());

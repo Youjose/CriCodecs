@@ -90,8 +90,8 @@ struct UsmStreamId {
     auto operator<=>(const UsmStreamId&) const = default;
 };
 
-// @CUE uses this same 0x20-byte chunk header, with magic "@CUE" and
-// payload type Metadata; it is followed by a CUEPOINT_INFO @UTF table.
+// @CUE uses this same 0x20-byte chunk header for its header, metadata,
+// and section-end chunks.
 struct UsmChunkHeader {
     static constexpr uint32_t encoded_header_size = 0x18;
     static constexpr uint32_t raw_header_size = 0x20;
@@ -483,8 +483,8 @@ struct UsmBuildInput {
     std::vector<SubtitleTrack> subtitle_tracks;
 
     std::vector<UsmCueMetadata> cue_metadata;
-    // Complete packed @CUE chunks are copied unchanged when rebuilding an
-    // existing USM, preserving cue data not represented by UsmCueMetadata.
+    // Complete packed @CUE header, metadata and section-end chunks are
+    // preserved when rebuilding an existing USM.
     std::vector<std::vector<uint8_t>> cue_metadata_chunks;
     // Optional CRID entries for preserved CUE streams.
     std::vector<UsmStreamInfo> cue_streams;

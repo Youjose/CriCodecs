@@ -1689,7 +1689,8 @@ private:
             selection.index >= 0 && static_cast<size_t>(selection.index) < m_usm->chunks().size()) {
             const auto& chunk = m_usm->chunks()[static_cast<size_t>(selection.index)];
             if (chunk.chunk_type() == cricodecs::usm::UsmChunkType::CUE &&
-                chunk.payload_type() == cricodecs::usm::UsmPayloadType::Metadata) {
+                chunk.payload_type() == cricodecs::usm::UsmPayloadType::Metadata &&
+                chunk.is_utf_payload()) {
                 auto metadata = cricodecs::usm::parse_cue_metadata(chunk);
                 if (!metadata) {
                     show_detail_preview(utf8_to_qstring(metadata.error()));

@@ -507,8 +507,10 @@ usm.mux(config, "movie_with_cues.usm")
 print(usm.load("movie_with_cues.usm").cue_metadata())
 ```
 
-When CriStudio rebuilds an existing USM, its `@CUE` chunks are copied without
-rewriting their contents.
+New cue streams include a `CUEPOINT_HDRINFO` header with a 1000-tick time unit
+and section-end markers. When CriStudio rebuilds an existing USM, its `@CUE`
+headers, metadata and section-end chunks are preserved without rewriting their
+contents and placed in their corresponding sections.
 
 ### Recover keys
 
