@@ -663,24 +663,24 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             break;
         }
         }
-        for (const auto& chunk : reader->chunks()) {
-            if (chunk.chunk_type() != cricodecs::usm::UsmChunkType::CUE) {
-                continue;
-            }
-            const auto track = std::find_if(
-                config.existing_usm_tracks.begin(), config.existing_usm_tracks.end(), [&](const auto& item) {
-                    return item.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Cue &&
-                        item.channel == chunk.header.channel_no;
-                });
-            if (track != config.existing_usm_tracks.end() && !track->enabled) {
-                continue;
-            }
-            if (chunk.header.data_offset() != 0) {
-                return std::unexpected(QCoreApplication::translate(
-                    "Usm.MediaBuild", "Cannot preserve a CUE chunk with an extended header."));
-            }
-            input.cue_metadata_chunks.push_back(chunk.pack());
+    }
+    for (const auto& chunk : reader->chunks()) {
+        if (chunk.chunk_type() != cricodecs::usm::UsmChunkType::CUE) {
+            continue;
         }
+        const auto track = std::find_if(
+            config.existing_usm_tracks.begin(), config.existing_usm_tracks.end(), [&](const auto& item) {
+                return item.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Cue &&
+                    item.channel == chunk.header.channel_no;
+            });
+        if (track != config.existing_usm_tracks.end() && !track->enabled) {
+            continue;
+        }
+        if (chunk.header.data_offset() != 0) {
+            return std::unexpected(QCoreApplication::translate(
+                "Usm.MediaBuild", "Cannot preserve a CUE chunk with an extended header."));
+        }
+        input.cue_metadata_chunks.push_back(chunk.pack());
     }
 
     for (size_t index = 0; index < config.audio_tracks.size(); ++index) {
