@@ -613,6 +613,7 @@ void print_usage(std::ostream& out, bool show_identity) {
         "                         AIX targets: segment:N, layer:N, or SEGMENT:LAYER for replacement\n"
         "                         USM rebuilds the container: T is a stream index from --list; --add SRC[=CHANNEL]\n"
         "                         adds ADX/HCA audio or a subtitle (.srt/.ass/.ssa/.sbt/.txt); use --key for encrypted USMs\n"
+        "                         existing USM CUE metadata is preserved; --remove can remove its stream\n"
         "      --compress       compress added/replaced CPK payloads\n"
         "      --raw            export raw contained/original payloads without audio decode\n"
         "      --list           list exportable items and exit\n"

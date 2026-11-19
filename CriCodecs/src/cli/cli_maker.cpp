@@ -910,14 +910,18 @@ struct UsmStageDir {
             return std::unexpected("USM mutation failed: no temporary directory: " + filesystem_error.message());
         }
         const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        stage.path = base / ("cricodecs_usm_" + std::to_string(stamp));
-        std::filesystem::create_directories(stage.path, filesystem_error);
-        if (filesystem_error) {
-            const auto message = filesystem_error.message();
-            stage.path.clear();
-            return std::unexpected("USM mutation failed: could not create staging directory: " + message);
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            const auto candidate = base / ("cricodecs_usm_" + std::to_string(stamp) + "_" + std::to_string(attempt));
+            filesystem_error.clear();
+            if (std::filesystem::create_directory(candidate, filesystem_error)) {
+                stage.path = candidate;
+                return {};
+            }
+            if (filesystem_error) {
+                return std::unexpected("USM mutation failed: could not create staging directory: " + filesystem_error.message());
+            }
         }
-        return {};
+        return std::unexpected("USM mutation failed: could not find a unique staging directory");
     };
     const auto materialize = [&](const UsmTrackEdit& track, std::string_view extension)
         -> std::expected<std::filesystem::path, std::string> {
@@ -980,11 +984,25 @@ struct UsmStageDir {
                 });
                 break;
             }
+            case usm::UsmChunkType::CUE:
+                input.cue_streams.push_back(reader.streams()[track.stream_index]);
+                break;
             default:
                 return std::unexpected(
                     "USM mutation cannot preserve stream " + std::to_string(track.stream_index) +
                     "; remove it with `--remove " + std::to_string(track.stream_index) + "`");
         }
+    }
+    for (const auto& chunk : reader.chunks()) {
+        if (chunk.chunk_type() != usm::UsmChunkType::CUE) continue;
+        const auto track = std::ranges::find_if(tracks, [&](const auto& item) {
+            return item.type == usm::UsmChunkType::CUE && item.channel == chunk.header.channel_no;
+        });
+        if (track != tracks.end() && !track->enabled) continue;
+        if (chunk.header.data_offset() != 0) {
+            return std::unexpected("USM mutation cannot preserve a CUE chunk with an extended header");
+        }
+        input.cue_metadata_chunks.push_back(chunk.pack());
     }
     if (!has_video) {
         return std::unexpected("USM mutation requires one video stream");

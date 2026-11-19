@@ -188,6 +188,21 @@ cricodecs archive.cpk --move 4=1 -o updated.cpk
 Use `--compress` to compress added or replaced CPK payloads. Mutation targets
 may be indices or archive paths depending on the format.
 
+USM mutation rebuilds the container from its streams. Use `--list` to find the
+video stream index, then replace it with a prepared video:
+
+```sh
+cricodecs movie.usm --list
+cricodecs movie.usm --replace 0=new-video.ivf -o updated.usm
+```
+
+Existing audio, subtitles, and CUE metadata are retained, including CUE
+channels and directory entries. `--remove` removes a selected CUE stream;
+replacing or adding CUE streams is not supported. CUE chunks with extended
+headers cannot be preserved and cause an error. Rebuilding can change the
+container layout; other unsupported streams must be removed explicitly. Use
+`--key` when the source needs its USM key for extraction.
+
 ### Recover keys
 
 Recovery always reports ranked candidates and their scores. It does not apply a
