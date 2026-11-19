@@ -625,6 +625,18 @@ private:
         set_preview_tabs(true, raw_preview_available(), 0);
     }
 
+    void show_cue_metadata_preview(std::span<const uint8_t> bytes) {
+        if (!m_usm) {
+            return;
+        }
+        auto document = modules::usm::summarize_cue_metadata(*m_usm);
+        if (!document) {
+            show_detail_preview(utf8_to_qstring(document.error()));
+            return;
+        }
+        show_document_preview(*document, bytes);
+    }
+
     void preview_usm_stream(int index, const modules::TransformDetailRow& detail) {
         if (!m_usm || index < 0 || index >= static_cast<int>(m_usm->streams().size())) {
             show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "USM stream preview failed: index out of range"));
@@ -675,6 +687,9 @@ private:
             }
             break;
         }
+        case cricodecs::usm::UsmChunkType::CUE:
+            show_cue_metadata_preview(*bytes);
+            return;
         default: {
             std::string reason;
             if (auto document = summarize_embedded_bytes(entry, *bytes, reason)) {
@@ -1685,6 +1700,16 @@ private:
             .index = detail->index,
             .layer = detail->layer,
         };
+        if (m_transform_kind == TransformKind::Usm && m_usm && selection.payload_kind == 10 &&
+            selection.index >= 0 && static_cast<size_t>(selection.index) < m_usm->chunks().size()) {
+            const auto& chunk = m_usm->chunks()[static_cast<size_t>(selection.index)];
+            if (chunk.chunk_type() == cricodecs::usm::UsmChunkType::CUE &&
+                chunk.payload_type() == cricodecs::usm::UsmPayloadType::Metadata &&
+                chunk.is_utf_payload()) {
+                show_cue_metadata_preview(chunk.payload);
+                return;
+            }
+        }
         if (m_transform_kind == TransformKind::Usm && selection.index >= 0 &&
             (selection.payload_kind == 3 || selection.payload_kind == 10)) {
             dismiss_editor_media_preview();

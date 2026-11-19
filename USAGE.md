@@ -188,6 +188,21 @@ cricodecs archive.cpk --move 4=1 -o updated.cpk
 Use `--compress` to compress added or replaced CPK payloads. Mutation targets
 may be indices or archive paths depending on the format.
 
+USM mutation rebuilds the container from its streams. Use `--list` to find the
+video stream index, then replace it with a prepared video:
+
+```sh
+cricodecs movie.usm --list
+cricodecs movie.usm --replace 0=new-video.ivf -o updated.usm
+```
+
+Existing audio, subtitles, and CUE metadata are retained, including CUE
+channels and directory entries. `--remove` removes a selected CUE stream;
+replacing or adding CUE streams is not supported. CUE chunks with extended
+headers cannot be preserved and cause an error. Rebuilding can change the
+container layout; other unsupported streams must be removed explicitly. Use
+`--key` when the source needs its USM key for extraction.
+
 ### Recover keys
 
 Recovery always reports ranked candidates and their scores. It does not apply a
@@ -492,6 +507,28 @@ usm.mux(config, "movie_with_subtitles.usm")
 SBT language IDs are numeric subtitle slots; the available SDK documentation
 does not define a universal locale mapping. ASS imports can preserve per-cue
 IDs from Dialogue names such as `lang5`.
+
+Cue metadata can be added as timed points. Each point's name is stored as the
+CUE `name` data, with its time in milliseconds and cue type in `CUEPOINT_INFO`:
+
+```python
+cue = usm.UsmCueMetadata()
+cue.points = [
+    usm.UsmCuePoint("Rumble=2000.000_80.000_80.000_6", 1, 1),
+    usm.UsmCuePoint("Trigger=stopVideoRendering", 110343, 1),
+]
+config.cue_metadata = [cue]
+usm.mux(config, "movie_with_cues.usm")
+print(usm.load("movie_with_cues.usm").cue_metadata())
+```
+
+New cue streams include a `CUEPOINT_HDRINFO` header with a 1000-tick time unit
+and section-end markers. When CriStudio rebuilds an existing USM, its `@CUE`
+headers, metadata and section-end chunks are preserved without rewriting their
+contents and placed in their corresponding sections.
+Extracting a CUE stream writes UTF-8 text: the `CUEPOINT_HDRINFO` time unit on
+the first line, followed by `time,cue_type,name` lines. Cue parameters are not
+represented in this text; rebuilding an existing USM preserves its raw chunks.
 
 ### Recover keys
 

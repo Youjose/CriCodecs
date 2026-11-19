@@ -1,5 +1,7 @@
 #include "cli_internal.hpp"
 
+#include <chrono>
+
 namespace cricodecs::cli::detail {
 
 [[nodiscard]] static std::expected<hca::HcaQuality, std::string> parse_hca_quality(std::string_view text) {
@@ -779,6 +781,254 @@ template <class Archive, class Apply, class Save>
     return save(archive);
 }
 
+struct UsmTrackEdit {
+    uint32_t stream_index = 0;
+    usm::UsmChunkType type = usm::UsmChunkType::CRID;
+    uint8_t channel = 0;
+    std::string filename;
+    std::optional<std::filesystem::path> replacement;
+    bool enabled = true;
+};
+
+struct UsmAddedTrack {
+    std::filesystem::path path;
+    bool subtitle = false;
+    std::optional<uint8_t> channel;
+};
+
+struct UsmStageDir {
+    std::filesystem::path path;
+    ~UsmStageDir() {
+        if (!path.empty()) {
+            std::error_code ignored;
+            std::filesystem::remove_all(path, ignored);
+        }
+    }
+};
+
+[[nodiscard]] std::expected<void, std::string> apply_usm_mutation(
+    std::vector<UsmTrackEdit>& tracks,
+    std::vector<UsmAddedTrack>& added,
+    const MutationSpec& mutation
+) {
+    const auto find_track = [&](std::string_view option) -> std::expected<UsmTrackEdit*, std::string> {
+        auto index = target_u32_index(mutation.first, option);
+        if (!index) return std::unexpected(index.error());
+        if (*index >= tracks.size()) {
+            return std::unexpected("USM " + std::string(option) + " target stream index is out of range");
+        }
+        return &tracks[*index];
+    };
+
+    switch (mutation.kind) {
+        case MutationKind::add: {
+            const std::filesystem::path source = mutation.first;
+            const auto extension = lower_ascii(source.extension().string());
+            const bool subtitle = extension == ".srt" || extension == ".ass" || extension == ".ssa" ||
+                extension == ".sbt" || extension == ".txt";
+            UsmAddedTrack track{.path = source, .subtitle = subtitle, .channel = std::nullopt};
+            if (mutation.second.has_value()) {
+                auto channel = parse_u32(*mutation.second, "USM `--add` channel");
+                if (!channel) return std::unexpected(channel.error());
+                if (*channel > std::numeric_limits<uint8_t>::max()) {
+                    return std::unexpected("USM `--add` channel must be 0-255");
+                }
+                track.channel = static_cast<uint8_t>(*channel);
+            }
+            added.push_back(std::move(track));
+            return {};
+        }
+        case MutationKind::replace: {
+            auto source = required_second(mutation, "--replace");
+            if (!source) return std::unexpected(source.error());
+            auto track = find_track("--replace");
+            if (!track) return std::unexpected(track.error());
+            if ((*track)->type != usm::UsmChunkType::SFV && (*track)->type != usm::UsmChunkType::ALP &&
+                (*track)->type != usm::UsmChunkType::SFA && (*track)->type != usm::UsmChunkType::SBT) {
+                return std::unexpected("USM `--replace` target stream type is not supported by the builder");
+            }
+            (*track)->replacement = std::filesystem::path(*source);
+            (*track)->enabled = true;
+            return {};
+        }
+        case MutationKind::remove: {
+            auto track = find_track("--remove");
+            if (!track) return std::unexpected(track.error());
+            (*track)->enabled = false;
+            return {};
+        }
+        case MutationKind::rename:
+            return std::unexpected("USM does not support `--rename`");
+        case MutationKind::move:
+            return std::unexpected("USM does not support `--move`");
+    }
+    return std::unexpected("unsupported USM mutation");
+}
+
+// USM has no in-place editor: kept streams are extracted to a staging
+// directory and the container is rebuilt with UsmBuilder, as CriStudio does.
+[[nodiscard]] std::expected<void, std::string> mutate_and_save_usm(
+    usm::UsmReader& reader,
+    const std::filesystem::path& output_path,
+    const Options& options
+) {
+    std::vector<UsmTrackEdit> tracks;
+    tracks.reserve(reader.streams().size());
+    for (size_t index = 0; index < reader.streams().size(); ++index) {
+        const auto& stream = reader.streams()[index];
+        tracks.push_back(UsmTrackEdit{
+            .stream_index = static_cast<uint32_t>(index),
+            .type = stream.stream_id,
+            .channel = stream.channel_no,
+            .filename = stream.filename.empty() ? stream.filename_raw : stream.filename,
+            .replacement = std::nullopt,
+            .enabled = true,
+        });
+    }
+
+    std::vector<UsmAddedTrack> added;
+    for (const auto& mutation : options.mutations) {
+        if (auto result = apply_usm_mutation(tracks, added, mutation); !result) {
+            return result;
+        }
+    }
+
+    usm::UsmBuildInput input;
+    input.encoding = encoding_options(options);
+    if (options.key.has_value()) {
+        auto key = parse_u64(*options.key, "--key");
+        if (!key) return std::unexpected(key.error());
+        input.key = *key;
+    }
+
+    std::error_code filesystem_error;
+    UsmStageDir stage;
+    const auto make_stage = [&]() -> std::expected<void, std::string> {
+        if (!stage.path.empty()) return {};
+        const auto base = std::filesystem::temp_directory_path(filesystem_error);
+        if (filesystem_error) {
+            return std::unexpected("USM mutation failed: no temporary directory: " + filesystem_error.message());
+        }
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            const auto candidate = base / ("cricodecs_usm_" + std::to_string(stamp) + "_" + std::to_string(attempt));
+            filesystem_error.clear();
+            if (std::filesystem::create_directory(candidate, filesystem_error)) {
+                stage.path = candidate;
+                return {};
+            }
+            if (filesystem_error) {
+                return std::unexpected("USM mutation failed: could not create staging directory: " + filesystem_error.message());
+            }
+        }
+        return std::unexpected("USM mutation failed: could not find a unique staging directory");
+    };
+    const auto materialize = [&](const UsmTrackEdit& track, std::string_view extension)
+        -> std::expected<std::filesystem::path, std::string> {
+        if (track.replacement.has_value()) return *track.replacement;
+        if (auto staged = make_stage(); !staged) return std::unexpected(staged.error());
+        const auto path = stage.path / ("stream_" + std::to_string(track.stream_index) + std::string(extension));
+        if (auto extracted = reader.extract_file(track.stream_index, path); !extracted) {
+            return std::unexpected(extracted.error());
+        }
+        return path;
+    };
+
+    bool has_video = false;
+    for (const auto& track : tracks) {
+        if (!track.enabled) continue;
+        switch (track.type) {
+            case usm::UsmChunkType::SFV: {
+                if (has_video) {
+                    return std::unexpected("USM mutation supports only one main video stream; remove the extra SFV stream");
+                }
+                auto path = materialize(track, ".video");
+                if (!path) return std::unexpected(path.error());
+                input.video_path = *path;
+                input.video_filename = track.filename;
+                has_video = true;
+                break;
+            }
+            case usm::UsmChunkType::ALP: {
+                if (input.alpha_path.has_value()) {
+                    return std::unexpected("USM mutation supports only one alpha-video stream");
+                }
+                auto path = materialize(track, ".alpha");
+                if (!path) return std::unexpected(path.error());
+                input.alpha_path = *path;
+                input.alpha_filename = track.filename;
+                break;
+            }
+            case usm::UsmChunkType::SFA: {
+                const auto* stream = reader.find_stream(usm::UsmStreamId{track.type, track.channel});
+                const bool hca = stream != nullptr && stream->audio_codec == usm::UsmAudioCodec::Hca;
+                auto path = materialize(track, hca ? ".hca" : ".adx");
+                if (!path) return std::unexpected(path.error());
+                input.audio_tracks.push_back({
+                    .path = *path,
+                    .encrypt = std::nullopt,
+                    .channel_no = track.channel,
+                    .filename = track.filename,
+                });
+                break;
+            }
+            case usm::UsmChunkType::SBT: {
+                auto path = materialize(track, ".sbt");
+                if (!path) return std::unexpected(path.error());
+                input.subtitle_tracks.push_back({
+                    .path = *path,
+                    .language_id = track.channel,
+                    .format = usm::UsmSubtitleFormat::Auto,
+                    .channel_no = track.channel,
+                    .filename = track.filename,
+                });
+                break;
+            }
+            case usm::UsmChunkType::CUE:
+                input.cue_streams.push_back(reader.streams()[track.stream_index]);
+                break;
+            default:
+                return std::unexpected(
+                    "USM mutation cannot preserve stream " + std::to_string(track.stream_index) +
+                    "; remove it with `--remove " + std::to_string(track.stream_index) + "`");
+        }
+    }
+    for (const auto& chunk : reader.chunks()) {
+        if (chunk.chunk_type() != usm::UsmChunkType::CUE) continue;
+        const auto track = std::ranges::find_if(tracks, [&](const auto& item) {
+            return item.type == usm::UsmChunkType::CUE && item.channel == chunk.header.channel_no;
+        });
+        if (track != tracks.end() && !track->enabled) continue;
+        if (chunk.header.data_offset() != 0) {
+            return std::unexpected("USM mutation cannot preserve a CUE chunk with an extended header");
+        }
+        input.cue_metadata_chunks.push_back(chunk.pack());
+    }
+    if (!has_video) {
+        return std::unexpected("USM mutation requires one video stream");
+    }
+
+    for (const auto& track : added) {
+        if (track.subtitle) {
+            input.subtitle_tracks.push_back({
+                .path = track.path,
+                .language_id = track.channel.value_or(0),
+                .format = usm::UsmSubtitleFormat::Auto,
+                .channel_no = track.channel,
+            });
+        } else {
+            input.audio_tracks.push_back({
+                .path = track.path,
+                .encrypt = std::nullopt,
+                .channel_no = track.channel,
+            });
+        }
+    }
+
+    usm::UsmBuilder builder;
+    return builder.build_to_file(output_path, input);
+}
+
 [[nodiscard]] std::expected<void, std::string> save_mutated_document(
     LoadedResult& loaded,
     const std::filesystem::path& output_path,
@@ -807,6 +1057,8 @@ template <class Archive, class Apply, class Save>
                 [&](auto& archive) { return archive.save_to_file(output_path, options.key.value_or("")); });
         } else if constexpr (std::is_same_v<T, acx::AcxContainer>) {
             return mutate_and_save(current, options.mutations, apply_acx_mutation, save);
+        } else if constexpr (std::is_same_v<T, usm::UsmReader>) {
+            return mutate_and_save_usm(current, output_path, options);
         } else {
             return std::unexpected(std::string(format_label(loaded.format)) + " does not support CLI mutation yet");
         }

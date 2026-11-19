@@ -90,6 +90,8 @@ struct UsmStreamId {
     auto operator<=>(const UsmStreamId&) const = default;
 };
 
+// @CUE uses this same 0x20-byte chunk header for its header, metadata,
+// and section-end chunks.
 struct UsmChunkHeader {
     static constexpr uint32_t encoded_header_size = 0x18;
     static constexpr uint32_t raw_header_size = 0x20;
@@ -123,6 +125,18 @@ struct UsmChunkHeader {
     [[nodiscard]] uint32_t data_offset() const noexcept {
         return payload_offset >= encoded_header_size ? payload_offset - encoded_header_size : 0;
     }
+};
+
+struct UsmCuePoint {
+    std::string name;
+    uint64_t time = 0;
+    int32_t cue_type = 0;
+    std::vector<uint8_t> parameter;
+};
+
+struct UsmCueMetadata {
+    // CUEPOINT_INFO times use milliseconds.
+    std::vector<UsmCuePoint> points;
 };
 
 template <class Byte>
@@ -414,6 +428,11 @@ struct UsmChunk {
     }
 };
 
+[[nodiscard]] std::expected<UsmCueMetadata, std::string> parse_cue_metadata(
+    const UsmChunk& chunk,
+    const text::EncodingOptions& encoding = {}
+);
+
 struct UsmStreamInfo {
     std::string filename;
     std::string filename_raw;
@@ -462,6 +481,13 @@ struct UsmBuildInput {
         std::string filename{};
     };
     std::vector<SubtitleTrack> subtitle_tracks;
+
+    std::vector<UsmCueMetadata> cue_metadata;
+    // Complete packed @CUE header, metadata and section-end chunks are
+    // preserved when rebuilding an existing USM.
+    std::vector<std::vector<uint8_t>> cue_metadata_chunks;
+    // Optional CRID entries for preserved CUE streams.
+    std::vector<UsmStreamInfo> cue_streams;
 
     std::optional<bool> encrypt_audio;
     uint64_t key = 0;
@@ -578,6 +604,7 @@ public:
     [[nodiscard]] const std::optional<SfshHeader>& sfsh_header() const noexcept { return m_sfsh_header; }
     [[nodiscard]] const std::vector<UsmStreamInfo>& streams() const noexcept { return m_streams; }
     [[nodiscard]] const std::vector<UsmChunk>& chunks() const noexcept { return m_chunks; }
+    [[nodiscard]] std::expected<std::vector<UsmCueMetadata>, std::string> cue_metadata() const;
     [[nodiscard]] const UsmStreamInfo* find_stream(UsmStreamId id) const noexcept;
     [[nodiscard]] const UsmStreamInfo* find_stream(const UsmChunk& chunk) const noexcept {
         return find_stream(chunk.stream_id());
@@ -633,6 +660,7 @@ private:
         std::vector<uint8_t>& output,
         size_t max_bytes = static_cast<size_t>(-1)
     ) const;
+    [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> cue_stream_text(UsmStreamId id) const;
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> transform_container(bool encrypt) const;
     [[nodiscard]] std::expected<void, std::string> write_stream_payloads(
         UsmStreamId id,

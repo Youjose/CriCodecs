@@ -28,6 +28,10 @@ using VideoFormatProbe = std::function<std::optional<std::string>(std::span<cons
 
 [[nodiscard]] std::optional<VideoMetadata> video_metadata_for_entry(const EntrySummary& entry);
 
+[[nodiscard]] std::expected<LoadedDocument, std::string> summarize_cue_metadata(
+    const cricodecs::usm::UsmReader& usm
+);
+
 [[nodiscard]] LoadedDocument summarize(
     const std::filesystem::path& path,
     cricodecs::usm::UsmReader& usm,
