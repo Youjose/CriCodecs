@@ -177,6 +177,32 @@ std::optional<VideoMetadata> video_metadata_for_entry(const EntrySummary& entry)
     return video_metadata(usm, entry.source_index);
 }
 
+std::expected<LoadedDocument, std::string> summarize_cue_metadata(
+    const cricodecs::usm::UsmReader& usm
+) {
+    auto metadata = usm.cue_metadata();
+    if (!metadata) {
+        return std::unexpected(metadata.error());
+    }
+
+    LoadedDocument document;
+    document.format = cristudio::i18n::translate_utf8("Usm.UsmBrowse", "CUE metadata");
+    document.entry_columns = {
+        cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Time (ms)"),
+        cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Type"),
+        cristudio::i18n::translate_utf8("Usm.UsmBrowse", "Name"),
+    };
+    document.entry_column_types = {"u64", "i32", "string"};
+    for (const auto& cue : *metadata) {
+        for (const auto& point : cue.points) {
+            EntrySummary entry;
+            entry.cells = {std::to_string(point.time), std::to_string(point.cue_type), point.name};
+            document.entries.push_back(std::move(entry));
+        }
+    }
+    return document;
+}
+
 LoadedDocument summarize(
     const std::filesystem::path& path,
     cricodecs::usm::UsmReader& usm,

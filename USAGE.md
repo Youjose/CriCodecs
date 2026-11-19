@@ -511,6 +511,8 @@ New cue streams include a `CUEPOINT_HDRINFO` header with a 1000-tick time unit
 and section-end markers. When CriStudio rebuilds an existing USM, its `@CUE`
 headers, metadata and section-end chunks are preserved without rewriting their
 contents and placed in their corresponding sections.
+Extracting a CUE stream writes its packed `@CUE` chunks, since cue streams have
+no payload chunks of type `Stream`.
 
 ### Recover keys
 

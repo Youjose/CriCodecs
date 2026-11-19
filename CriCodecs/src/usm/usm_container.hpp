@@ -660,6 +660,11 @@ private:
         std::vector<uint8_t>& output,
         size_t max_bytes = static_cast<size_t>(-1)
     ) const;
+    void append_cue_chunks(
+        UsmStreamId id,
+        std::vector<uint8_t>& output,
+        size_t max_bytes = static_cast<size_t>(-1)
+    ) const;
     [[nodiscard]] std::expected<std::vector<uint8_t>, std::string> transform_container(bool encrypt) const;
     [[nodiscard]] std::expected<void, std::string> write_stream_payloads(
         UsmStreamId id,

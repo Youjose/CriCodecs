@@ -89,6 +89,41 @@ int main() {
         UsmReader reader;
         require(reader.load(*output).has_value(), "could not read rebuilt USM");
         require(cue_chunk(reader).pack() == raw, "preserved CUE differs from sample");
+        std::vector<uint8_t> expected_cue_stream;
+        size_t cue_stream_index = reader.streams().size();
+        for (size_t i = 0; i < reader.streams().size(); ++i) {
+            if (reader.streams()[i].stream_id == UsmChunkType::CUE) {
+                cue_stream_index = i;
+            }
+        }
+        require(cue_stream_index < reader.streams().size(), "CUE stream missing from CRID");
+        for (const auto& current : reader.chunks()) {
+            if (current.chunk_type() == UsmChunkType::CUE) {
+                const auto packed = current.pack();
+                expected_cue_stream.insert(expected_cue_stream.end(), packed.begin(), packed.end());
+            }
+        }
+        auto extracted_cue = reader.extract_stream(static_cast<uint32_t>(cue_stream_index));
+        require(extracted_cue.has_value() && *extracted_cue == expected_cue_stream,
+                "CUE stream extraction did not include its packed chunks");
+        auto cue_sample = reader.extract_stream_sample(static_cast<uint32_t>(cue_stream_index), 24);
+        require(cue_sample.has_value() &&
+                *cue_sample == std::vector<uint8_t>(expected_cue_stream.begin(), expected_cue_stream.begin() + 24),
+                "CUE stream preview sample is incorrect");
+        auto demuxed = reader.demux();
+        require(demuxed.has_value() && demuxed->contains(reader.describe_stream(reader.streams()[cue_stream_index].id())) &&
+                demuxed->at(reader.describe_stream(reader.streams()[cue_stream_index].id())) == expected_cue_stream,
+                "CUE demux output is empty or incorrect");
+        const auto cue_extract_path = path.string() + ".cue";
+        require(reader.extract_file(static_cast<uint32_t>(cue_stream_index), cue_extract_path).has_value(),
+                "could not extract CUE stream to file");
+        {
+            std::ifstream extracted_file(cue_extract_path, std::ios::binary);
+            const std::vector<uint8_t> extracted_bytes{
+                std::istreambuf_iterator<char>(extracted_file), std::istreambuf_iterator<char>()};
+            require(extracted_bytes == expected_cue_stream, "extracted CUE file is empty or incorrect");
+        }
+        std::filesystem::remove(cue_extract_path);
         const auto& chunks = reader.chunks();
         require(chunks.size() >= 10, "missing USM chunks");
         require(chunks[0].chunk_type() == UsmChunkType::CRID, "CRID not first");

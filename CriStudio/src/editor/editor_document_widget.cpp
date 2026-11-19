@@ -625,6 +625,18 @@ private:
         set_preview_tabs(true, raw_preview_available(), 0);
     }
 
+    void show_cue_metadata_preview(std::span<const uint8_t> bytes) {
+        if (!m_usm) {
+            return;
+        }
+        auto document = modules::usm::summarize_cue_metadata(*m_usm);
+        if (!document) {
+            show_detail_preview(utf8_to_qstring(document.error()));
+            return;
+        }
+        show_document_preview(*document, bytes);
+    }
+
     void preview_usm_stream(int index, const modules::TransformDetailRow& detail) {
         if (!m_usm || index < 0 || index >= static_cast<int>(m_usm->streams().size())) {
             show_detail_preview(QCoreApplication::translate("Editor.EditorDocumentWidget", "USM stream preview failed: index out of range"));
@@ -675,6 +687,9 @@ private:
             }
             break;
         }
+        case cricodecs::usm::UsmChunkType::CUE:
+            show_cue_metadata_preview(*bytes);
+            return;
         default: {
             std::string reason;
             if (auto document = summarize_embedded_bytes(entry, *bytes, reason)) {
@@ -1691,21 +1706,7 @@ private:
             if (chunk.chunk_type() == cricodecs::usm::UsmChunkType::CUE &&
                 chunk.payload_type() == cricodecs::usm::UsmPayloadType::Metadata &&
                 chunk.is_utf_payload()) {
-                auto metadata = cricodecs::usm::parse_cue_metadata(chunk);
-                if (!metadata) {
-                    show_detail_preview(utf8_to_qstring(metadata.error()));
-                    return;
-                }
-                LoadedDocument document;
-                document.format = "CUE metadata";
-                document.entry_columns = {"Time (ms)", "Type", "Name"};
-                document.entry_column_types = {"u64", "i32", "string"};
-                for (const auto& point : metadata->points) {
-                    EntrySummary entry;
-                    entry.cells = {std::to_string(point.time), std::to_string(point.cue_type), point.name};
-                    document.entries.push_back(std::move(entry));
-                }
-                show_document_preview(document, chunk.payload);
+                show_cue_metadata_preview(chunk.payload);
                 return;
             }
         }
