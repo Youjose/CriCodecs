@@ -1,6 +1,7 @@
 #include "usm/usm_container.hpp"
 #include "adx/adx_codec.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <filesystem>
@@ -89,7 +90,17 @@ int main() {
         UsmReader reader;
         require(reader.load(*output).has_value(), "could not read rebuilt USM");
         require(cue_chunk(reader).pack() == raw, "preserved CUE differs from sample");
-        std::vector<uint8_t> expected_cue_stream;
+        const std::string expected_text =
+            "1000\n"
+            "1,1,Rumble=2000.000_80.000_80.000_6\n"
+            "41000,1,Rumble=2000.000_80.000_80.000_6\n"
+            "76814,1,Rumble=2000.000_80.000_80.000_6\n"
+            "99327,1,Rumble=2000.000_60.000_60.000_6\n"
+            "108250,1,Rumble=2000.000_60.000_60.000_6\n"
+            "109843,1,Trigger=PreEnd\n"
+            "110343,1,Trigger=stopVideoRendering\n"
+            "113113,1,Trigger=End\n";
+        const std::vector<uint8_t> expected_cue_stream(expected_text.begin(), expected_text.end());
         size_t cue_stream_index = reader.streams().size();
         for (size_t i = 0; i < reader.streams().size(); ++i) {
             if (reader.streams()[i].stream_id == UsmChunkType::CUE) {
@@ -97,15 +108,9 @@ int main() {
             }
         }
         require(cue_stream_index < reader.streams().size(), "CUE stream missing from CRID");
-        for (const auto& current : reader.chunks()) {
-            if (current.chunk_type() == UsmChunkType::CUE) {
-                const auto packed = current.pack();
-                expected_cue_stream.insert(expected_cue_stream.end(), packed.begin(), packed.end());
-            }
-        }
         auto extracted_cue = reader.extract_stream(static_cast<uint32_t>(cue_stream_index));
         require(extracted_cue.has_value() && *extracted_cue == expected_cue_stream,
-                "CUE stream extraction did not include its packed chunks");
+                "CUE stream extraction text is incorrect");
         auto cue_sample = reader.extract_stream_sample(static_cast<uint32_t>(cue_stream_index), 24);
         require(cue_sample.has_value() &&
                 *cue_sample == std::vector<uint8_t>(expected_cue_stream.begin(), expected_cue_stream.begin() + 24),
@@ -113,8 +118,17 @@ int main() {
         auto demuxed = reader.demux();
         require(demuxed.has_value() && demuxed->contains(reader.describe_stream(reader.streams()[cue_stream_index].id())) &&
                 demuxed->at(reader.describe_stream(reader.streams()[cue_stream_index].id())) == expected_cue_stream,
-                "CUE demux output is empty or incorrect");
-        const auto cue_extract_path = path.string() + ".cue";
+                "CUE demux text is incorrect");
+        require(reader.describe_stream(reader.streams()[cue_stream_index].id()).ends_with(".txt"),
+                "CUE output name does not use a text extension");
+        std::vector<uint8_t> visited_cue;
+        auto visited = reader.visit_demuxed_payloads([&](const UsmPayloadView& payload) {
+            if (payload.stream_id == reader.streams()[cue_stream_index].id()) {
+                visited_cue.insert(visited_cue.end(), payload.payload.begin(), payload.payload.end());
+            }
+        });
+        require(visited.has_value() && visited_cue == expected_cue_stream, "CUE visitor output is incorrect");
+        const auto cue_extract_path = path.string() + ".txt";
         require(reader.extract_file(static_cast<uint32_t>(cue_stream_index), cue_extract_path).has_value(),
                 "could not extract CUE stream to file");
         {
@@ -124,6 +138,28 @@ int main() {
             require(extracted_bytes == expected_cue_stream, "extracted CUE file is empty or incorrect");
         }
         std::filesystem::remove(cue_extract_path);
+        auto nondefault_header = raw_header;
+        nondefault_header[96] = 0;
+        nondefault_header[97] = 100;
+        input.cue_metadata_chunks = {nondefault_header, raw};
+        auto nondefault_output = builder.build(input);
+        require(nondefault_output.has_value(), "could not build CUE with custom time unit");
+        UsmReader nondefault_reader;
+        require(nondefault_reader.load(*nondefault_output).has_value(), "could not load custom time unit USM");
+        auto nondefault_text = nondefault_reader.extract_stream(static_cast<uint32_t>(cue_stream_index));
+        require(nondefault_text.has_value() &&
+                std::string(nondefault_text->begin(), nondefault_text->end()) == "100\n" + expected_text.substr(5),
+                "CUE extraction did not use the header time unit");
+        auto missing_header_output = *output;
+        const auto header_position = std::search(missing_header_output.begin(), missing_header_output.end(),
+                                                 raw_header.begin(), raw_header.end());
+        require(header_position != missing_header_output.end(), "could not find CUE header");
+        missing_header_output.erase(header_position, header_position + static_cast<std::ptrdiff_t>(raw_header.size()));
+        UsmReader missing_header_reader;
+        require(missing_header_reader.load(missing_header_output).has_value(), "could not load USM without CUE header");
+        require(!missing_header_reader.extract_stream(static_cast<uint32_t>(cue_stream_index)).has_value(),
+                "CUE extraction accepted a missing header");
+        input.cue_metadata_chunks = {raw_header, raw};
         const auto& chunks = reader.chunks();
         require(chunks.size() >= 10, "missing USM chunks");
         require(chunks[0].chunk_type() == UsmChunkType::CRID, "CRID not first");
@@ -199,6 +235,13 @@ int main() {
         auto parameters = parameter_reader.cue_metadata();
         require(parameters.has_value() && parameters->front().points[0].parameter == std::vector<uint8_t>({1, 2, 3}),
                 "CUE parameter did not round trip");
+        input.cue_metadata[0].points[0].name = "invalid\nname";
+        auto multiline_output = builder.build(input);
+        require(multiline_output.has_value(), "could not build CUE with multiline name");
+        UsmReader multiline_reader;
+        require(multiline_reader.load(*multiline_output).has_value(), "could not read multiline CUE");
+        require(!multiline_reader.extract_stream(static_cast<uint32_t>(cue_stream_index)).has_value(),
+                "CUE text extraction accepted a multiline name");
 
         input.cue_metadata.clear();
         input.cue_metadata_chunks.clear();
@@ -222,6 +265,21 @@ int main() {
         }
         require(rebuilt_cues == input.cue_metadata_chunks, "CUE chunks did not preserve their order and bytes");
         require(rebuilt_reader.find_stream({UsmChunkType::CUE, 7}) != nullptr, "CUE channel directory entry missing");
+        auto channel_seven_chunks = input.cue_metadata_chunks;
+        input.cue_metadata_chunks.insert(input.cue_metadata_chunks.end(), {nondefault_header, raw});
+        auto two_channel_output = builder.build(input);
+        require(two_channel_output.has_value(), "could not build two CUE streams");
+        UsmReader two_channel_reader;
+        require(two_channel_reader.load(*two_channel_output).has_value(), "could not read two CUE streams");
+        for (size_t i = 0; i < two_channel_reader.streams().size(); ++i) {
+            const auto& stream = two_channel_reader.streams()[i];
+            if (stream.stream_id != UsmChunkType::CUE) continue;
+            auto text = two_channel_reader.extract_stream(static_cast<uint32_t>(i));
+            const auto expected = stream.channel_no == 0 ? "100\n" + expected_text.substr(5) : expected_text;
+            require(text.has_value() && std::string(text->begin(), text->end()) == expected,
+                    "CUE extraction combined channels or used the wrong time unit");
+        }
+        input.cue_metadata_chunks = std::move(channel_seven_chunks);
         input.cue_metadata_chunks.push_back(input.cue_metadata_chunks.back());
         require(!builder.build(input).has_value(), "duplicate CUE end marker was accepted");
         input.cue_metadata_chunks.pop_back();

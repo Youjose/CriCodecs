@@ -122,6 +122,16 @@ std::expected<UsmReader::OutputNameMap, std::string> build_output_name_map(
             return std::unexpected("USM filename decode failed: " + decoded.error());
         }
         auto stream_name = sanitize_output_name(basename_of(*decoded));
+        if (stream.stream_id == UsmChunkType::CUE) {
+            if (stream_name.empty()) {
+                stream_name = fallback_stream_name(stream.id());
+            }
+            const auto dot = stream_name.find_last_of('.');
+            if (dot != std::string::npos && dot != 0) {
+                stream_name.erase(dot);
+            }
+            stream_name += ".txt";
+        }
         stream_name = dedupe_stream_name(std::move(stream_name), stream.id(), used_names);
         used_names.insert(stream_name);
         output_names.emplace(stream.id(), std::move(stream_name));
@@ -553,21 +563,29 @@ std::expected<void, std::string> UsmReader::visit_demuxed_payloads_impl(
     if (!output_names) {
         return std::unexpected(output_names.error());
     }
+    for (const auto& stream : m_streams) {
+        if (stream.stream_id != UsmChunkType::CUE) {
+            continue;
+        }
+        const auto output_name = (*output_names)->find(stream.id());
+        if (output_name == (*output_names)->end()) {
+            continue;
+        }
+        auto text = cue_stream_text(stream.id());
+        if (!text) {
+            return std::unexpected(text.error());
+        }
+        auto result = visitor(context, UsmPayloadView{
+            .output_name = output_name->second,
+            .stream_id = stream.id(),
+            .payload = *text,
+        });
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+    }
     for (const auto& chunk : m_chunks) {
         if (chunk.chunk_type() == UsmChunkType::CUE) {
-            const auto output_name = (*output_names)->find(chunk.stream_id());
-            if (output_name == (*output_names)->end()) {
-                continue;
-            }
-            const auto packed = chunk.pack();
-            auto result = visitor(context, UsmPayloadView{
-                .output_name = output_name->second,
-                .stream_id = chunk.stream_id(),
-                .payload = packed,
-            });
-            if (!result) {
-                return std::unexpected(result.error());
-            }
             continue;
         }
         if (chunk.payload_type() != UsmPayloadType::Stream) {
@@ -602,11 +620,6 @@ void UsmReader::append_stream_payloads(
     if (max_bytes == 0) {
         return;
     }
-    if (id.stream_id == UsmChunkType::CUE) {
-        append_cue_chunks(id, output, max_bytes);
-        return;
-    }
-
     for (const auto& chunk : m_chunks) {
         if (chunk.stream_id() != id || chunk.payload_type() != UsmPayloadType::Stream) {
             continue;
@@ -622,21 +635,61 @@ void UsmReader::append_stream_payloads(
     }
 }
 
-void UsmReader::append_cue_chunks(UsmStreamId id, std::vector<uint8_t>& output, size_t max_bytes) const {
+std::expected<std::vector<uint8_t>, std::string> UsmReader::cue_stream_text(UsmStreamId id) const {
+    std::optional<uint32_t> time_unit;
+    std::string rows;
     for (const auto& chunk : m_chunks) {
-        if (chunk.stream_id() != id || chunk.chunk_type() != UsmChunkType::CUE || output.size() >= max_bytes) {
+        if (chunk.stream_id() != id) {
             continue;
         }
-        const auto packed = chunk.pack();
-        const auto count = std::min(packed.size(), max_bytes - output.size());
-        output.insert(output.end(), packed.begin(), packed.begin() + static_cast<std::ptrdiff_t>(count));
+        const auto is_marker = [&](std::string_view marker) {
+            return chunk.payload.size() >= marker.size() &&
+                std::equal(marker.begin(), marker.end(), chunk.payload.begin());
+        };
+        if (is_marker("#HEADER END") || is_marker("#METADATA END") || is_marker("#CONTENTS END")) {
+            continue;
+        }
+        if (chunk.payload_type() == UsmPayloadType::Header) {
+            auto table = chunk.load_utf_payload();
+            if (!table || table->table_name() != "CUEPOINT_HDRINFO") {
+                return std::unexpected("USM CUE extraction failed: invalid CUEPOINT_HDRINFO");
+            }
+            auto unit = table->get<uint32_t>(0, "time_unit");
+            if (!unit || *unit == 0 || time_unit) {
+                return std::unexpected("USM CUE extraction failed: missing, invalid or duplicate time unit");
+            }
+            time_unit = *unit;
+        } else if (chunk.payload_type() == UsmPayloadType::Metadata) {
+            auto metadata = parse_cue_metadata(chunk, m_encoding);
+            if (!metadata) {
+                return std::unexpected(metadata.error());
+            }
+            for (const auto& point : metadata->points) {
+                if (point.name.find_first_of("\r\n") != std::string::npos) {
+                    return std::unexpected("USM CUE extraction failed: cue name contains a newline");
+                }
+                rows += std::to_string(point.time) + "," + std::to_string(point.cue_type) + "," + point.name + "\n";
+            }
+        }
     }
+    if (!time_unit) {
+        return std::unexpected("USM CUE extraction failed: missing CUEPOINT_HDRINFO time unit");
+    }
+    const auto text = std::to_string(*time_unit) + "\n" + rows;
+    return std::vector<uint8_t>(text.begin(), text.end());
 }
 
 std::expected<void, std::string> UsmReader::write_stream_payloads(
     UsmStreamId id,
     const std::filesystem::path& output_path
 ) const {
+    if (id.stream_id == UsmChunkType::CUE) {
+        auto text = cue_stream_text(id);
+        if (!text) {
+            return std::unexpected(text.error());
+        }
+        return io::write_file_bytes(output_path, *text, "USM CUE extraction failed");
+    }
     if (output_path.has_parent_path()) {
         std::error_code filesystem_error;
         std::filesystem::create_directories(output_path.parent_path(), filesystem_error);
@@ -648,19 +701,6 @@ std::expected<void, std::string> UsmReader::write_stream_payloads(
     io::writer writer;
     if (auto result = writer.open(output_path); !result) {
         return std::unexpected("USM extract failed: could not open export output: " + output_path.string());
-    }
-
-    if (id.stream_id == UsmChunkType::CUE) {
-        std::vector<uint8_t> packed_chunks;
-        append_cue_chunks(id, packed_chunks);
-        if (auto result = writer.write(packed_chunks); !result) {
-            (void)writer.close();
-            return std::unexpected("USM extract failed: could not write CUE chunks: " + output_path.string());
-        }
-        if (auto result = writer.close(); !result) {
-            return std::unexpected("USM extract failed: could not finalize export output: " + output_path.string());
-        }
-        return {};
     }
 
     for (const auto& chunk : m_chunks) {
@@ -685,6 +725,9 @@ std::expected<std::vector<uint8_t>, std::string> UsmReader::extract_stream(uint3
     if (index >= m_streams.size()) {
         return std::unexpected("USM stream index is out of range");
     }
+    if (m_streams[index].stream_id == UsmChunkType::CUE) {
+        return cue_stream_text(m_streams[index].id());
+    }
 
     std::vector<uint8_t> output;
     if (m_streams[index].filesize != 0) {
@@ -700,6 +743,14 @@ std::expected<std::vector<uint8_t>, std::string> UsmReader::extract_stream_sampl
 ) const {
     if (index >= m_streams.size()) {
         return std::unexpected("USM stream index is out of range");
+    }
+    if (m_streams[index].stream_id == UsmChunkType::CUE) {
+        auto text = cue_stream_text(m_streams[index].id());
+        if (!text) {
+            return std::unexpected(text.error());
+        }
+        text->resize(std::min(text->size(), max_bytes));
+        return text;
     }
 
     std::vector<uint8_t> output;
@@ -812,19 +863,19 @@ std::expected<std::map<std::string, std::vector<uint8_t>>, std::string> UsmReade
             continue;
         }
         auto [entry, inserted] = output.emplace(output_name->second, std::vector<uint8_t>{});
-        if (inserted && stream.filesize != 0) {
+        if (inserted && stream.stream_id == UsmChunkType::CUE) {
+            auto text = cue_stream_text(stream.id());
+            if (!text) {
+                return std::unexpected(text.error());
+            }
+            entry->second = std::move(*text);
+        } else if (inserted && stream.filesize != 0) {
             entry->second.reserve(stream.filesize);
         }
     }
 
     for (const auto& chunk : m_chunks) {
         if (chunk.chunk_type() == UsmChunkType::CUE) {
-            const auto output_name = (*output_names)->find(chunk.stream_id());
-            if (output_name != (*output_names)->end()) {
-                auto& stream_bytes = output[output_name->second];
-                const auto packed = chunk.pack();
-                stream_bytes.insert(stream_bytes.end(), packed.begin(), packed.end());
-            }
             continue;
         }
         switch (chunk.payload_type()) {

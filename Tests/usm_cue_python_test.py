@@ -38,11 +38,21 @@ class UsmCuePythonTest(unittest.TestCase):
             points = parsed[0].points
             points[0].parameter = [1, 2, 3]
             config.cue_metadata = [usm.UsmCueMetadata(points)]
-            rebuilt = usm.Usm.load_bytes(usm.mux(config)).cue_metadata()
+            rebuilt_usm = usm.Usm.load_bytes(usm.mux(config))
+            rebuilt = rebuilt_usm.cue_metadata()
             self.assertEqual([(p.time, p.name, p.cue_type) for p in rebuilt[0].points],
                              list(zip(times, names, [1] * 8)))
             self.assertEqual(rebuilt[0].points[0].parameter, [1, 2, 3])
             self.assertFalse(hasattr(rebuilt[0], "frame_rate"))
+            cue_index = next(i for i, stream in enumerate(rebuilt_usm.streams)
+                             if stream.stream_id == usm.UsmChunkType.CUE)
+            expected_text = "1000\n" + "".join(
+                f"{time},1,{name}\n" for time, name in zip(times, names)
+            )
+            self.assertEqual(rebuilt_usm.stream_bytes(cue_index).decode("utf-8"), expected_text)
+            output_path = Path(directory) / "cues.txt"
+            rebuilt_usm.extract_file(cue_index, output_path)
+            self.assertEqual(output_path.read_text(), expected_text)
 
 
 if __name__ == "__main__":

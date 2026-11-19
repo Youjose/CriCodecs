@@ -219,7 +219,7 @@ LoadedDocument summarize(
     doc.entries.reserve(usm.streams().size());
     for (uint32_t i = 0; i < usm.streams().size(); ++i) {
         const auto& stream = usm.streams()[i];
-        const auto stream_name = stream.filename.empty()
+        const auto stream_name = stream.filename.empty() || stream.stream_id == cricodecs::usm::UsmChunkType::CUE
             ? archive_display_path(usm.describe_stream(stream.id()))
             : archive_display_path(stream.filename);
         auto entry = source_entry({
