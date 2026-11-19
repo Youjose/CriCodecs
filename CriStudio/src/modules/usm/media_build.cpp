@@ -21,6 +21,7 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <system_error>
@@ -483,6 +484,7 @@ std::filesystem::path existing_track_path(
     case MediaBuildConfig::ExistingUsmTrack::Kind::Subtitle:
         extension = ".sbt";
         break;
+    case MediaBuildConfig::ExistingUsmTrack::Kind::Cue:
     case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported:
         break;
     }
@@ -540,7 +542,6 @@ std::expected<void, QString> build_existing_usm_from_tracks(
     cricodecs::usm::UsmBuildInput input;
     input.key = config.keys.has_cri_key ? config.keys.cri_key : 0;
     input.encrypt_audio = config.encrypt_audio;
-
     bool has_video = false;
     for (const auto& track : config.existing_usm_tracks) {
         if (!track.enabled) {
@@ -645,6 +646,14 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             });
             break;
         }
+        case MediaBuildConfig::ExistingUsmTrack::Kind::Cue: {
+            if (track.stream_index >= reader->streams().size() ||
+                reader->streams()[track.stream_index].stream_id != cricodecs::usm::UsmChunkType::CUE) {
+                return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "Invalid CUE stream index."));
+            }
+            input.cue_streams.push_back(reader->streams()[track.stream_index]);
+            break;
+        }
         case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported: {
             if (track.enabled) {
                 return std::unexpected(QCoreApplication::translate("Usm.MediaBuild", "USM rebuild does not support stream %1 (%2). Disable it before building.")
@@ -654,6 +663,24 @@ std::expected<void, QString> build_existing_usm_from_tracks(
             break;
         }
         }
+    }
+    for (const auto& chunk : reader->chunks()) {
+        if (chunk.chunk_type() != cricodecs::usm::UsmChunkType::CUE) {
+            continue;
+        }
+        const auto track = std::find_if(
+            config.existing_usm_tracks.begin(), config.existing_usm_tracks.end(), [&](const auto& item) {
+                return item.kind == MediaBuildConfig::ExistingUsmTrack::Kind::Cue &&
+                    item.channel == chunk.header.channel_no;
+            });
+        if (track != config.existing_usm_tracks.end() && !track->enabled) {
+            continue;
+        }
+        if (chunk.header.data_offset() != 0) {
+            return std::unexpected(QCoreApplication::translate(
+                "Usm.MediaBuild", "Cannot preserve a CUE chunk with an extended header."));
+        }
+        input.cue_metadata_chunks.push_back(chunk.pack());
     }
 
     for (size_t index = 0; index < config.audio_tracks.size(); ++index) {
@@ -754,7 +781,7 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
             if (!track.enabled) {
                 continue;
             }
-            if (track.filename.empty()) {
+            if (track.filename.empty() && track.kind != MediaBuildConfig::ExistingUsmTrack::Kind::Cue) {
                 return QCoreApplication::translate("Usm.MediaBuild", "Stream %1 needs a non-empty stream name.")
                     .arg(track.stream_index);
             }
@@ -783,6 +810,8 @@ std::optional<QString> validate_media_build_config(const MediaBuildConfig& confi
                     return QCoreApplication::translate("Usm.MediaBuild", "Subtitle channel %1 is assigned more than once.").arg(track.channel);
                 }
                 subtitle_channels[track.channel] = true;
+                break;
+            case MediaBuildConfig::ExistingUsmTrack::Kind::Cue:
                 break;
             case MediaBuildConfig::ExistingUsmTrack::Kind::Unsupported:
                 return QCoreApplication::translate("Usm.MediaBuild", "Disable unsupported stream %1 before rebuilding.").arg(track.stream_index);

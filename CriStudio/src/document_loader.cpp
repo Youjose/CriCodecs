@@ -900,6 +900,23 @@ EmbeddedPreview load_embedded_entry_preview(const EntrySummary& entry, const Dec
         preview.raw_preview_bytes = std::move(*bytes);
     };
 
+    if (entry.source_format == "USM" && !entry.has_nested_source) {
+        cricodecs::usm::UsmReader usm;
+        if (auto loaded = usm.load(entry.source_path); loaded &&
+            entry.source_index < usm.streams().size() &&
+            usm.streams()[entry.source_index].stream_id == cricodecs::usm::UsmChunkType::CUE) {
+            auto document = modules::usm::summarize_cue_metadata(usm);
+            if (!document) {
+                preview.message = document.error();
+                retain_raw_preview();
+                return preview;
+            }
+            preview.document = std::move(*document);
+            retain_raw_preview();
+            return preview;
+        }
+    }
+
     std::string reason;
     if (auto doc = summarize_embedded_bytes(entry, *bytes, reason)) {
         attach_nested_sources(*doc, entry);

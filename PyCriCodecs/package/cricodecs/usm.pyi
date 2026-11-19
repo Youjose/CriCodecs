@@ -91,14 +91,29 @@ class UsmMuxSubtitleTrack:
         filename: str = "",
     ) -> None: ...
 
+class UsmCuePoint:
+    name: str
+    time: int
+    cue_type: int
+    parameter: list[int]
+    def __init__(self, name: str, time: int, cue_type: int = 0) -> None: ...
+
+class UsmCueMetadata:
+    points: list[UsmCuePoint]
+    def __init__(
+        self,
+        points: list[UsmCuePoint] = ...,
+    ) -> None: ...
+
 class UsmMuxConfig:
-    """USM mux configuration with optional alpha video and repeatable audio/subtitle tracks."""
+    """USM mux configuration with optional alpha video, audio, subtitles, and cue metadata."""
     video_path: str
     alpha_path: str | None
     video_filename: str
     alpha_filename: str
     audio_tracks: list[UsmMuxAudioTrack]
     subtitle_tracks: list[UsmMuxSubtitleTrack]
+    cue_metadata: list[UsmCueMetadata]
     key: int | None
     encrypt_audio: bool | None
     def __init__(
@@ -121,6 +136,7 @@ class UsmInfo:
     streams: list[UsmStreamInfo]
 
 class Usm:
+    def cue_metadata(self) -> list[UsmCueMetadata]: ...
     source_path: str | None
     container_filename: str
     stream_count: int
